@@ -1,6 +1,7 @@
 import type { SimulateRequest, SimulateResponse } from "../types/simulation";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
+// Local dev + laptop demo default to the local backend; production sets VITE_API_URL.
+const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 
 export async function postSimulate(body: SimulateRequest): Promise<SimulateResponse> {
   const res = await fetch(`${API_BASE}/simulate`, {
