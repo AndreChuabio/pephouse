@@ -33,6 +33,7 @@ create table if not exists trials (
   primary_endpoint text,
   efficacy_summary text,
   source_url    text,
+  matched_intervention text,           -- the CT.gov intervention string that verified this row
   tier          data_tier default 'tier1_evidence'
 );
 
