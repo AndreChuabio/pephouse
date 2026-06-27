@@ -95,7 +95,13 @@ export type InteractionPair = {
   mechanism: string | null;
   management: string | null;
   source_url: string | null;
-  source_kind: "fda_label" | "fda_label_live" | "curated" | "mechanistic" | "no_data";
+  source_kind:
+    | "fda_label"
+    | "fda_label_live"
+    | "drugbank_pubchem"
+    | "curated"
+    | "mechanistic"
+    | "no_data";
 };
 
 export type InteractionsResponse = {
