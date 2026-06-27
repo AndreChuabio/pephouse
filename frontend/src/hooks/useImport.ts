@@ -141,11 +141,31 @@ export function useImport() {
     }
   }, [apply]);
 
+  // Actually use Junction: open the hosted Link flow so a real wearable provider
+  // (Oura / WHOOP / …) can be connected, then poll Junction for real summaries.
+  // Only the metrics Junction doesn't return are mock-filled (sandbox has none
+  // until a provider is linked).
   const pullWearable = useCallback(async () => {
     setError(null);
     setWearableState("working");
     try {
-      const res = await importWearable(getUserRef());
+      // 1) try real data first (a provider may already be linked)
+      let res = await importWearable(getUserRef());
+      // 2) if it's all mock, open Junction Link to connect a real provider, then poll
+      if (res.mocked) {
+        try {
+          const { link_url } = await importLink(getUserRef());
+          window.open(link_url, "_blank", "noopener,noreferrer");
+        } catch {
+          /* link unavailable — keep the mock fallback */
+        }
+        cancelled.current = false;
+        for (let i = 0; i < 8 && res.mocked; i++) {
+          await sleep(POLL_INTERVAL_MS);
+          if (cancelled.current) break;
+          res = await importWearable(getUserRef());
+        }
+      }
       setWearableMetrics(res.metrics);
       setWearableMocked(res.mocked);
       setWearableState("done");

@@ -106,17 +106,28 @@ function BiomarkerRow({ lab }: { lab: LabValue }) {
   );
 }
 
+// Translate a weight_change_pct outcome into an actual weight delta (kg).
+function weightProjection(outcome: OutcomeResult, baselineKg: number) {
+  if (outcome.outcome_name !== "weight_change_pct" || outcome.p50 == null) return null;
+  const projected = baselineKg * (1 + outcome.p50 / 100);
+  return { from: baselineKg, to: Math.round(projected * 10) / 10, delta: Math.round((projected - baselineKg) * 10) / 10 };
+}
+
 function ProjectedTrajectory({
   outcome,
   loading,
   compoundName,
   excludedReason,
+  baselineWeightKg,
 }: {
   outcome: OutcomeResult | null;
   loading: boolean;
   compoundName: string;
   excludedReason?: string | null;
+  baselineWeightKg: number;
 }) {
+  const unit = outcome?.unit === "percent" ? "%" : outcome?.unit ?? "%";
+  const wp = outcome ? weightProjection(outcome, baselineWeightKg) : null;
   return (
     <div className="bg-zinc-800/30 border border-zinc-800/50 rounded-xl p-4">
       <div className="flex justify-between items-center mb-2">
@@ -142,11 +153,20 @@ function ProjectedTrajectory({
         </div>
       ) : outcome ? (
         <>
-          <div className="text-sm font-semibold text-emerald-400 mb-2">
-            {outcome.p50 != null
-              ? `${outcome.p50.toFixed(1)}${outcome.unit ?? "%"} median by month ${outcome.quarters.at(-1)?.month ?? 12}`
-              : "Projection ready"}
-          </div>
+          {/* actual metric change (weight) */}
+          {wp ? (
+            <div className="mb-2">
+              <div className="text-base font-semibold text-emerald-400">
+                Weight {wp.from} kg → {wp.to} kg
+                <span className="text-zinc-500 text-sm font-normal"> ({wp.delta > 0 ? "+" : ""}{wp.delta} kg · {outcome.p50!.toFixed(1)}%)</span>
+              </div>
+              <div className="text-[10px] text-zinc-500">median over {outcome.quarters.at(-1)?.month ?? 12} months</div>
+            </div>
+          ) : (
+            <div className="text-sm font-semibold text-emerald-400 mb-2">
+              {outcome.p50 != null ? `${outcome.p50.toFixed(1)}${unit} median` : "Projection ready"}
+            </div>
+          )}
           <div className="flex items-end gap-1 h-14">
             {outcome.quarters.map((q) => {
               const maxAbs = Math.max(1, ...outcome.quarters.map((x) => Math.abs(x.p50)));
@@ -160,6 +180,12 @@ function ProjectedTrajectory({
                 />
               );
             })}
+          </div>
+          {/* distribution spread, like the Arena's Projected Outcomes */}
+          <div className="grid grid-cols-3 gap-2 mt-3 text-center">
+            <div><div className="text-[9px] text-zinc-500 uppercase tracking-wider">p10</div><div className="text-xs text-zinc-300">{outcome.p10?.toFixed(1)}{unit}</div></div>
+            <div><div className="text-[9px] text-zinc-500 uppercase tracking-wider">mean</div><div className="text-xs text-zinc-300">{outcome.mean?.toFixed(1)}{unit}</div></div>
+            <div><div className="text-[9px] text-zinc-500 uppercase tracking-wider">p90</div><div className="text-xs text-zinc-300">{outcome.p90?.toFixed(1)}{unit}</div></div>
           </div>
         </>
       ) : null}
@@ -721,6 +747,7 @@ export default function DigitalTwinPage() {
                       loading={loading}
                       compoundName={c.name}
                       excludedReason={excludedFor(c.realId)}
+                      baselineWeightKg={patient.weightKg}
                     />
                   ))}
                   <div className="flex gap-3">
