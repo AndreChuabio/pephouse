@@ -2,34 +2,45 @@
 
 Supabase project `aglgyphihqcconivmmux`. Read with the publishable key (frontend) or service key (backend). Every table has public-read RLS.
 
+## What `/simulate` does (Andre architecture)
+
+User submits compound + profile → server returns outcome quarters or says it can't.
+
+1. **`synthetic_patients`** — pull matching Tier-4 bodies from Supabase (Synthea cohort already loaded; no Synthea at request time).
+2. **`case_studies`** — match cluster (`trial_backed`, confidence).
+3. **`outcome_priors`** — Monte Carlo `N(mean, SD)` for trial-backed paths only.
+4. **Honesty gates** — no prior → `distribution_void`; ineligible → `excluded_priors`.
+5. **Tier-4 miss** — if `cohort_n` too low, pull **`anecdotes`** with `cohort_fallback: "anecdote"` and `substrate_missing: true` (widen SD; never feed anecdotes into priors).
+
+Synthea custom modules are **optional** (see `synthea/README.md`) — not on the `/simulate` hot path.
+
 ## What the sim consumes
 
-**`case_studies`** — the primary input. One row per evidence cluster per compound.
-`compound_id · cluster_label · evidence_basis('trial'|'anecdote') · demographic · reported_effect · typical_dose · n · confidence(0-1) · trial_backed · source_refs[]`
-- 7 trial-backed clusters (confidence 0.56-0.69), 12 anecdotal (0.31-0.38).
+**`synthetic_patients`** — Tier 4 substrate (age, sex, weight_kg, conditions, baseline_labs). Pre-seeded; `/simulate` filters only.
 
-**`outcome_priors`** — the seed distributions for the Monte Carlo (the numbers Synthea extrapolates from).
+**`case_studies`** — primary router. One row per evidence cluster per compound.
+`compound_id · cluster_label · evidence_basis('trial'|'anecdote') · demographic · reported_effect · typical_dose · n · confidence(0-1) · trial_backed · source_refs[]`
+
+**`outcome_priors`** — Tier-1 seeds for the Monte Carlo engine.
 `compound_id · outcome_name · effect_mean · effect_sd · unit · population_n · min_age · max_age · sex · source_nct · dispersion_basis`
-- 7 priors: Semaglutide/Tirzepatide/Retatrutide (weight % + HbA1c %), Tesamorelin (liver fat %).
-- `dispersion_basis` flags whether SD was reported directly or derived `SD = SE x sqrt(n)`.
+
+**`anecdotes`** — Tier 3. Cohort-miss fallback context only; never outcomes or priors.
 
 ## Grounding / evidence layer (Tier 1)
 
-- **`compounds`** (12) — the spine. `name · aliases · drug_class · fda_status · approved · summary`.
-- **`trials`** (84) — CT.gov, intervention-verified. `nct_id · phase · indication · status · n_enrolled · matched_intervention · source_url`. Fuzzy matches were dropped; `matched_intervention` is the proof.
-- **`trial_outcomes`** — raw per-arm outcome measures from CT.gov results (value, dispersion, n, eligibility). Audit staging; reproducible via `scripts/extract_outcome_priors.py`.
-- **`research_papers`** (34) — real PubMed metadata, cited on peptidecompared. `is_narrative` flags Reviews/Comments/Meta-analyses (11) vs primary studies (23). Curator-attributed; only title-verified papers were kept.
+- **`compounds`** (12) — the spine.
+- **`trials`** (84) — CT.gov, intervention-verified.
+- **`trial_outcomes`** — raw per-arm measures (audit staging).
+- **`research_papers`** (34) — PubMed metadata cited on peptidecompared.
 
 ## Secondary / context layers (never cited as evidence)
 
-- **`editorial_profiles`** (12) — peptidecompared summaries/benefits/dosing/side-effects + `cited_source_links`. Tier-2 editorial.
-- **`anecdotes`** (37) — Reddit, real permalinks. `body · claimed_effect · sentiment · dose_mentioned`. Tier-3 — seeds personas/case studies, never outcomes.
-- **`vendor_lab_results`** (1) — Finnrick third-party purity tests.
-- **`sourcing`** (11) — where compounds are made/shipped from (origin_country, ships_from, vendor). Gray-market = China origin.
+- **`editorial_profiles`** (12) — peptidecompared Tier-2 editorial.
+- **`vendor_lab_results`**, **`sourcing`** — quality / gray-market context.
 
 ## The one rule
 
-Tier 3 (anecdotes) and vendor/editorial claims never feed `outcome_priors` or a trial citation. The grader cites only Tier 1; the twin's distributions come only from `outcome_priors`. `case_studies.trial_backed` tells you which side a cluster is on.
+Tier 3 (anecdotes) and vendor/editorial claims never feed `outcome_priors` or a trial citation. The twin's distributions come only from `outcome_priors`. `case_studies.trial_backed` tells you which side a cluster is on.
 
 ## Compound coverage (for the sim's honesty UI)
 
