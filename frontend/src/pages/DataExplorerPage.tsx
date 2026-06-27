@@ -1,0 +1,228 @@
+import { useEffect, useState } from "react";
+import { Icon } from "@iconify/react";
+import { AppShell } from "../components/layout/AppShell";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { supabase } from "../lib/supabase";
+
+type Compound = {
+  id: number;
+  name: string;
+  drug_class: string | null;
+  fda_status: string | null;
+  approved: boolean;
+  summary: string | null;
+};
+
+type Detail = {
+  priors: any[];
+  caseStudies: any[];
+  trials: any[];
+  anecdotes: any[];
+  papers: any[];
+  sourcing: any[];
+};
+
+function Badge({ tone, children }: { tone: "green" | "orange" | "zinc"; children: React.ReactNode }) {
+  const map = {
+    green: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    orange: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+    zinc: "bg-zinc-800 text-zinc-400 border-zinc-700",
+  } as const;
+  return (
+    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border uppercase tracking-wider ${map[tone]}`}>
+      {children}
+    </span>
+  );
+}
+
+function Section({ icon, title, count, children }: { icon: string; title: string; count: number; children: React.ReactNode }) {
+  return (
+    <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-lg p-4">
+      <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-widest mb-3 flex items-center gap-2">
+        <Icon icon={icon} className="text-zinc-500" /> {title}
+        <span className="text-zinc-600">({count})</span>
+      </h3>
+      {count === 0 ? <p className="text-xs text-zinc-600 italic">none in the database</p> : children}
+    </div>
+  );
+}
+
+export default function DataExplorerPage() {
+  useDocumentTitle("PepHouse | Database Explorer");
+  const [compounds, setCompounds] = useState<Compound[]>([]);
+  const [selected, setSelected] = useState<Compound | null>(null);
+  const [detail, setDetail] = useState<Detail | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    supabase
+      .from("compounds")
+      .select("id,name,drug_class,fda_status,approved,summary")
+      .order("name")
+      .then(({ data }) => {
+        const list = (data ?? []) as Compound[];
+        setCompounds(list);
+        if (list.length) setSelected(list[0]);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!selected) return;
+    setLoading(true);
+    const id = selected.id;
+    Promise.all([
+      supabase.from("outcome_priors").select("outcome_name,effect_mean,effect_sd,unit,population_n,source_nct,dispersion_basis").eq("compound_id", id),
+      supabase.from("case_studies").select("cluster_label,evidence_basis,n,confidence,trial_backed").eq("compound_id", id),
+      supabase.from("trials").select("nct_id,phase,indication,status,n_enrolled,source_url,matched_intervention").eq("compound_id", id).limit(25),
+      supabase.from("anecdotes").select("body,claimed_effect,sentiment,permalink,dose_mentioned").eq("compound_id", id),
+      supabase.from("research_papers").select("title,journal,year,is_narrative,url").eq("compound_id", id),
+      supabase.from("sourcing").select("vendor_name,origin_country,notes,source_url").eq("compound_id", id),
+    ]).then(([p, cs, t, a, rp, s]) => {
+      setDetail({
+        priors: p.data ?? [],
+        caseStudies: cs.data ?? [],
+        trials: t.data ?? [],
+        anecdotes: a.data ?? [],
+        papers: rp.data ?? [],
+        sourcing: s.data ?? [],
+      });
+      setLoading(false);
+    });
+  }, [selected]);
+
+  return (
+    <AppShell>
+      <div className="h-16 flex items-center px-8 border-b border-zinc-800/60 shrink-0 z-10">
+        <h1 className="text-sm font-medium text-white tracking-tight flex items-center gap-2">
+          <Icon icon="solar:database-linear" className="text-blue-500" /> Database Explorer
+        </h1>
+        <span className="ml-3 text-xs text-zinc-500">live from Supabase &mdash; click a compound</span>
+      </div>
+
+      <div className="flex-1 overflow-hidden flex z-10">
+        {/* compound list */}
+        <div className="w-64 border-r border-zinc-800/60 overflow-y-auto shrink-0">
+          {compounds.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setSelected(c)}
+              className={`w-full text-left px-4 py-3 border-b border-zinc-800/40 transition-colors ${
+                selected?.id === c.id ? "bg-zinc-800/50" : "hover:bg-zinc-900"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-zinc-200">{c.name}</span>
+                <Badge tone={c.approved ? "green" : "orange"}>{c.approved ? "FDA" : "Gray"}</Badge>
+              </div>
+              <p className="text-xs text-zinc-500 mt-0.5 truncate">{c.drug_class}</p>
+            </button>
+          ))}
+        </div>
+
+        {/* detail */}
+        <div className="flex-1 overflow-y-auto p-8">
+          {!selected ? (
+            <p className="text-zinc-500">Loading compounds&hellip;</p>
+          ) : (
+            <div className="max-w-4xl space-y-5">
+              <div>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-2xl font-semibold text-white">{selected.name}</h2>
+                  <Badge tone={selected.approved ? "green" : "orange"}>{selected.fda_status ?? (selected.approved ? "approved" : "research")}</Badge>
+                </div>
+                <p className="text-sm text-zinc-400 mt-1">{selected.drug_class}</p>
+                <p className="text-sm text-zinc-500 mt-2">{selected.summary}</p>
+              </div>
+
+              {loading || !detail ? (
+                <p className="text-zinc-500 text-sm">Loading data&hellip;</p>
+              ) : (
+                <>
+                  <Section icon="solar:graph-new-linear" title="Seed Distribution (Monte Carlo priors)" count={detail.priors.length}>
+                    <div className="space-y-2">
+                      {detail.priors.map((p, i) => (
+                        <div key={i} className="flex items-center justify-between text-sm bg-zinc-950/50 rounded px-3 py-2">
+                          <span className="text-zinc-300">{p.outcome_name}</span>
+                          <span className="font-mono text-emerald-400">
+                            {p.effect_mean} &plusmn; {p.effect_sd} {p.unit} &middot; n={p.population_n}
+                          </span>
+                          <span className="text-xs text-zinc-600">{p.source_nct} &middot; {p.dispersion_basis}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </Section>
+
+                  <Section icon="solar:layers-linear" title="Case Studies" count={detail.caseStudies.length}>
+                    <div className="space-y-1.5">
+                      {detail.caseStudies.map((cs, i) => (
+                        <div key={i} className="flex items-center justify-between text-sm">
+                          <span className="text-zinc-300 flex items-center gap-2">
+                            <Badge tone={cs.trial_backed ? "green" : "orange"}>{cs.evidence_basis}</Badge>
+                            {cs.cluster_label}
+                          </span>
+                          <span className="font-mono text-xs text-zinc-500">n={cs.n} &middot; conf {cs.confidence}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </Section>
+
+                  <Section icon="solar:document-text-linear" title="Clinical Trials" count={detail.trials.length}>
+                    <div className="space-y-1.5">
+                      {detail.trials.map((t, i) => (
+                        <a key={i} href={t.source_url} target="_blank" rel="noreferrer" className="flex items-center justify-between text-sm hover:bg-zinc-950/60 rounded px-2 py-1.5 group">
+                          <span className="text-zinc-300 group-hover:text-blue-400">{t.nct_id} <span className="text-zinc-600">&mdash; {t.indication}</span></span>
+                          <span className="font-mono text-xs text-zinc-500">{t.phase} &middot; n={t.n_enrolled ?? "?"} &middot; {t.status}</span>
+                        </a>
+                      ))}
+                    </div>
+                  </Section>
+
+                  <Section icon="solar:chat-round-line-linear" title="Reddit Anecdotes" count={detail.anecdotes.length}>
+                    <div className="space-y-2">
+                      {detail.anecdotes.map((a, i) => (
+                        <a key={i} href={a.permalink} target="_blank" rel="noreferrer" className="block text-sm hover:bg-zinc-950/60 rounded px-2 py-1.5 group">
+                          <div className="flex items-center gap-2">
+                            <Badge tone="orange">{a.sentiment}</Badge>
+                            <span className="text-zinc-300">{a.claimed_effect}</span>
+                            {a.dose_mentioned && <span className="text-xs font-mono text-zinc-600">{a.dose_mentioned}</span>}
+                          </div>
+                          <p className="text-xs text-zinc-600 mt-0.5 truncate group-hover:text-zinc-500">{a.body}</p>
+                        </a>
+                      ))}
+                    </div>
+                  </Section>
+
+                  <Section icon="solar:book-linear" title="Research Papers" count={detail.papers.length}>
+                    <div className="space-y-1.5">
+                      {detail.papers.map((p, i) => (
+                        <a key={i} href={p.url} target="_blank" rel="noreferrer" className="flex items-start justify-between gap-3 text-sm hover:bg-zinc-950/60 rounded px-2 py-1.5 group">
+                          <span className="text-zinc-300 group-hover:text-blue-400">{p.title}</span>
+                          <span className="shrink-0">
+                            <Badge tone={p.is_narrative ? "zinc" : "green"}>{p.is_narrative ? "review" : "primary"}</Badge>
+                            <span className="text-xs text-zinc-600 ml-1">{p.year}</span>
+                          </span>
+                        </a>
+                      ))}
+                    </div>
+                  </Section>
+
+                  <Section icon="solar:map-point-linear" title="Sourcing" count={detail.sourcing.length}>
+                    <div className="space-y-1.5">
+                      {detail.sourcing.map((s, i) => (
+                        <div key={i} className="flex items-center justify-between text-sm">
+                          <span className="text-zinc-300">{s.vendor_name}</span>
+                          <span className="text-xs text-zinc-500">{s.origin_country}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </Section>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </AppShell>
+  );
+}

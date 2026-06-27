@@ -24,6 +24,11 @@ const PROVENANCE_BADGE: Record<ProvenanceTier, Badge> = {
     className:
       "px-1.5 py-0.5 rounded text-[10px] font-medium border uppercase tracking-wider bg-orange-500/10 text-orange-400 border-orange-500/20",
   },
+  trial: {
+    label: "Trial",
+    className:
+      "px-1.5 py-0.5 rounded text-[10px] font-medium border uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  },
 };
 
 export function getTierBadge(tier: EvidenceTier): Badge {

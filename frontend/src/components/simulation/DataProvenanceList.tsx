@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
 import { MOCK_PROVENANCE } from "../../data/mockSimulation";
+import { useProvenance } from "../../hooks/useProvenance";
 import { getProvenanceBadge } from "../../lib/badges";
 import type { ProvenanceSource } from "../../types/simulation";
 import { cn } from "../../lib/cn";
@@ -33,6 +34,10 @@ function ProvenanceRow({ source, showDivider }: ProvenanceRowProps) {
 }
 
 export function DataProvenanceList() {
+  // Real tier-1 trials + Reddit anecdotes from Supabase; mock only while loading.
+  const { sources } = useProvenance();
+  const list = sources ?? MOCK_PROVENANCE;
+
   return (
     <div className="bg-zinc-900/20 border border-zinc-800/50 rounded-lg p-4">
       <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-widest mb-3">
@@ -40,7 +45,7 @@ export function DataProvenanceList() {
       </h3>
 
       <div className="space-y-2">
-        {MOCK_PROVENANCE.map((source, index) => (
+        {list.map((source, index) => (
           <ProvenanceRow key={source.id} source={source} showDivider={index === 0} />
         ))}
       </div>
