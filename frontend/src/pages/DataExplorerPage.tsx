@@ -65,7 +65,7 @@ function Section({ icon, title, count, children }: { icon: string; title: string
 }
 
 export default function DataExplorerPage() {
-  useDocumentTitle("PepHouse | Database Explorer");
+  useDocumentTitle("PepHouse | PepBase");
   const [compounds, setCompounds] = useState<Compound[]>([]);
   const [selected, setSelected] = useState<Compound | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -120,7 +120,7 @@ export default function DataExplorerPage() {
     <AppShell>
       <div className="h-16 flex items-center px-8 border-b border-zinc-800/60 shrink-0 z-10">
         <h1 className="text-sm font-medium text-white tracking-tight flex items-center gap-2">
-          <Icon icon="solar:database-linear" className="text-blue-500" /> Database Explorer
+          <Icon icon="solar:database-linear" className="text-blue-500" /> PepBase
         </h1>
       </div>
 

@@ -11,7 +11,7 @@ export function ArenaHeader({ onRun, running }: ArenaHeaderProps) {
       <div className="flex items-center gap-4">
         <h1 className="text-lg font-semibold tracking-tight text-white flex items-center gap-2">
           <Icon icon="solar:chart-2-linear" className="text-blue-400 text-xl" />
-          Simulation Arena
+          Simulation [old]
         </h1>
         <div className="h-4 w-px bg-zinc-800" />
         <div className="flex items-center gap-2 text-xs font-medium text-zinc-400 bg-zinc-900 border border-zinc-800 px-2 py-1 rounded-full">
