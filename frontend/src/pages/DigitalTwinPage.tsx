@@ -1,7 +1,8 @@
 import { Icon } from "@iconify/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "../components/layout/AppShell";
 import { BodyVisualization } from "../components/twin/BodyVisualization";
+import { DEMOGRAPHICS } from "../data/mockSimulation";
 import {
   BODY_SYSTEMS,
   gradeFor,
@@ -11,14 +12,15 @@ import {
 } from "../lib/biomarkers";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useImport } from "../hooks/useImport";
-import type { LabValue } from "../types/simulation";
+import { useSimulation } from "../hooks/useSimulation";
+import type { LabValue, OutcomeResult, PatientInput } from "../types/simulation";
 
+// realId = registry compound_id used by POST /simulate (BPC-157=1, Tirzepatide=3).
 const DEMO_COMPOUNDS = [
-  { id: "bpc-157", name: "BPC-157", tag: "GRAY MKT", tagClass: "bg-zinc-800 text-zinc-400", desc: "Body Protective Compound" },
-  { id: "tirzepatide", name: "Tirzepatide", tag: "FDA APPRV", tagClass: "bg-emerald-950/50 border border-emerald-900/50 text-emerald-400", desc: "GLP-1 / GIP Agonist" },
+  { id: "bpc-157", realId: 1, name: "BPC-157", tag: "GRAY MKT", tagClass: "bg-zinc-800 text-zinc-400", desc: "Body Protective Compound" },
+  { id: "tirzepatide", realId: 3, name: "Tirzepatide", tag: "FDA APPRV", tagClass: "bg-emerald-950/50 border border-emerald-900/50 text-emerald-400", desc: "GLP-1 / GIP Agonist" },
 ] as const;
 
-// Decorative history sparkline (real longitudinal data is a future step).
 function Sparkline({ tone }: { tone: string }) {
   const bars = [2, 3, 4, 5, 6];
   return (
@@ -96,18 +98,112 @@ function ActionCard({
   );
 }
 
+// Projected trajectory from the Monte Carlo quarters (replaces the placeholder
+// once Run Simulation returns).
+function ProjectedTrajectory({
+  outcome,
+  loading,
+  compoundName,
+}: {
+  outcome: OutcomeResult | null;
+  loading: boolean;
+  compoundName: string;
+}) {
+  return (
+    <div className="bg-zinc-800/30 border border-zinc-800/50 rounded-xl p-4">
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-xs font-medium text-zinc-300 flex items-center gap-1.5">
+          <Icon icon="lucide:trending-up" className="w-3.5 h-3.5 text-blue-400" />
+          Projected Trajectory
+        </span>
+        <span className="text-[10px] text-zinc-500">{compoundName}</span>
+      </div>
+
+      {loading ? (
+        <div className="text-sm text-zinc-400 flex items-center gap-2">
+          <Icon icon="svg-spinners:180-ring" className="text-blue-400" /> Running Monte Carlo…
+        </div>
+      ) : !outcome ? (
+        <div className="text-sm font-medium text-zinc-400">
+          Run a simulation to project your trajectory.
+        </div>
+      ) : outcome.distribution_void ? (
+        <div className="text-sm text-amber-300">
+          No controlled-trial distribution — {compoundName} is anecdote-only. The twin
+          can't honestly project a curve.
+        </div>
+      ) : (
+        <>
+          <div className="text-sm font-semibold text-emerald-400 mb-2">
+            {outcome.p50 != null
+              ? `${outcome.p50.toFixed(1)}${outcome.unit ?? "%"} median by month ${
+                  outcome.quarters.at(-1)?.month ?? 12
+                }`
+              : "Projection ready"}
+          </div>
+          <div className="flex items-end gap-1 h-14">
+            {outcome.quarters.map((q) => {
+              const maxAbs = Math.max(
+                1,
+                ...outcome.quarters.map((x) => Math.abs(x.p50)),
+              );
+              const h = 8 + (Math.abs(q.p50) / maxAbs) * 40;
+              return (
+                <div
+                  key={q.q}
+                  className="flex-1 bg-gradient-to-t from-blue-600/40 to-emerald-500/70 rounded-t"
+                  style={{ height: `${h}px` }}
+                  title={`Q${q.q} (m${q.month}): p10 ${q.p10.toFixed(1)} · p50 ${q.p50.toFixed(1)} · p90 ${q.p90.toFixed(1)}`}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MetricChip({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <div className="flex-1 bg-zinc-900/40 border border-zinc-800 rounded-lg p-3">
+      <div className="text-[10px] text-zinc-500 flex items-center gap-1.5 mb-1">
+        <Icon icon={icon} /> {label}
+      </div>
+      <div className="text-sm font-semibold text-zinc-200">{value}</div>
+    </div>
+  );
+}
+
 export default function DigitalTwinPage() {
   useDocumentTitle("PepHouse | Digital Twin");
   const imp = useImport();
+  const { result, loading, run } = useSimulation();
   const [linkOpen, setLinkOpen] = useState(false);
   const [goalsOpen, setGoalsOpen] = useState(false);
   const [selectedCompound, setSelectedCompound] = useState<string>("tirzepatide");
 
+  // Patient profile fed to /simulate — seeded by imported data, default otherwise.
+  const [patient, setPatient] = useState<PatientInput>(DEMOGRAPHICS);
+  useEffect(() => {
+    setPatient((prev) => ({
+      ...prev,
+      ...(imp.age != null ? { age: imp.age } : {}),
+      ...(imp.sex ? { sex: imp.sex } : {}),
+      ...(imp.weightKg != null ? { weightKg: imp.weightKg } : {}),
+      conditions: imp.conditions.length ? imp.conditions : prev.conditions,
+    }));
+  }, [imp.age, imp.sex, imp.weightKg, imp.conditions]);
+
+  const compound = DEMO_COMPOUNDS.find((c) => c.id === selectedCompound) ?? DEMO_COMPOUNDS[1];
   const overallGrade = useMemo(() => gradeFor(imp.labs), [imp.labs]);
   const og = gradeMeta(overallGrade);
+  const weightOutcome = result?.outcomes.find((o) => o.outcome_name === "weight_change_pct") ?? null;
 
   const deviceWorking = imp.device === "working";
   const bloodWorking = imp.bloodwork === "working";
+
+  const handleRun = () => run(compound.realId, patient, { tiers: ["trial"] });
 
   return (
     <AppShell>
@@ -167,22 +263,18 @@ export default function DigitalTwinPage() {
                   ? "Simulating physiology from your linked data."
                   : "Link your data to bring the twin to life."}
               </p>
-              {(imp.age != null || imp.sex || imp.weightKg != null) && (
-                <div className="mt-3 text-xs text-zinc-400 font-mono">
-                  {[
-                    imp.age != null ? `age ${imp.age}` : null,
-                    imp.sex ? (imp.sex === "M" ? "male" : "female") : null,
-                    imp.weightKg != null ? `${imp.weightKg} kg` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </div>
-              )}
+              <div className="mt-3 text-xs text-zinc-400 font-mono">
+                {[
+                  `age ${patient.age}`,
+                  patient.sex === "M" ? "male" : "female",
+                  `${patient.weightKg} kg`,
+                ].join(" · ")}
+              </div>
             </div>
             <BodyVisualization active={imp.hasData} />
           </div>
 
-          {/* RIGHT — data + actions */}
+          {/* RIGHT — data + simulation */}
           <div className="w-[480px] flex-shrink-0 bg-[#121214] h-full overflow-y-auto flex flex-col">
             <div className="p-6 border-b border-zinc-800/50 bg-[#0a0a0a]">
               <div className="grid grid-cols-2 gap-3 mb-4">
@@ -245,13 +337,16 @@ export default function DigitalTwinPage() {
                       ))}
                     </div>
                   )}
+                  <p className="text-[10px] text-zinc-600 pt-1">
+                    Saved to your profile (GET/POST /users/&lt;id&gt;/data).
+                  </p>
                 </div>
               )}
 
               {goalsOpen && (
                 <div className="mb-4 rounded-xl border border-zinc-800 bg-[#121214]/60 p-3 text-[11px] text-zinc-500">
                   Goals & current stack entry — next step. Your linked profile and
-                  bloodwork will seed the simulation here.
+                  bloodwork already seed the simulation below.
                 </div>
               )}
 
@@ -282,16 +377,19 @@ export default function DigitalTwinPage() {
                     </button>
                   );
                 })}
-                <div className="flex items-start gap-2.5">
-                  <Icon icon="lucide:info" className="w-[15px] h-[15px] text-zinc-500 shrink-0 mt-0.5" />
-                  <span className="text-[13px] text-zinc-500 leading-snug">
-                    Tirzepatide (trial curve) vs BPC-157 (anecdote void).
-                  </span>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleRun}
+                  disabled={loading}
+                  className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-3 text-sm font-semibold text-white flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Icon icon={loading ? "svg-spinners:180-ring" : "lucide:play"} />
+                  {loading ? "Simulating…" : "Run Simulation"}
+                </button>
               </div>
             </div>
 
-            {/* Biomarker panel */}
+            {/* Twin + simulation output */}
             <div className="p-6 flex-1 flex flex-col gap-6">
               <div className="flex items-start justify-between">
                 <div>
@@ -307,23 +405,29 @@ export default function DigitalTwinPage() {
                 </div>
               </div>
 
-              {/* Projected trend (goal/projection wiring is the next step) */}
-              <div className="bg-zinc-800/30 border border-zinc-800/50 rounded-xl p-4">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs font-medium text-zinc-300 flex items-center gap-1.5">
-                    <Icon icon="lucide:trending-up" className="w-3.5 h-3.5 text-blue-400" />
-                    Projected Trend
-                  </span>
-                  <span className="text-[10px] text-zinc-500">
-                    {DEMO_COMPOUNDS.find((c) => c.id === selectedCompound)?.name}
-                  </span>
-                </div>
-                <div className="text-sm font-medium text-zinc-400 mb-2">
-                  Set a goal & run a projection to see your trajectory.
-                </div>
-                <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-blue-500 to-emerald-500 w-[8%] rounded-full" />
-                </div>
+              <ProjectedTrajectory outcome={weightOutcome} loading={loading} compoundName={compound.name} />
+
+              {/* Simulation metrics */}
+              <div className="flex gap-3">
+                <MetricChip
+                  icon="lucide:users"
+                  label="Cohort match"
+                  value={result ? (result.cohort_n === 0 ? "No match" : `${result.cohort_n}`) : "—"}
+                />
+                <MetricChip
+                  icon="lucide:shield-check"
+                  label="Confidence"
+                  value={result?.data_confidence ?? "—"}
+                />
+                <MetricChip
+                  icon="lucide:bar-chart-2"
+                  label="P(≥15% loss)"
+                  value={
+                    weightOutcome?.prob_threshold != null
+                      ? `${Math.round(weightOutcome.prob_threshold * 100)}%`
+                      : "—"
+                  }
+                />
               </div>
 
               <div>

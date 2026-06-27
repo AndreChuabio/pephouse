@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { importLabs, importLink, importProfile } from "../lib/api";
+import {
+  fetchUserData,
+  importLabs,
+  importLink,
+  importProfile,
+  saveUserData,
+} from "../lib/api";
 import { getUserRef } from "../lib/userRef";
 import type { ImportPatch, LabValue } from "../types/simulation";
 
@@ -28,15 +34,51 @@ export function useImport() {
     cancelled.current = true;
   }, []);
 
-  const apply = useCallback((p: ImportPatch) => {
+  const applyState = useCallback((p: ImportPatch) => {
     if (p.age != null) setAge(p.age);
     if (p.sex) setSex(p.sex);
     if (p.weightKg != null) setWeightKg(p.weightKg);
     if (p.labs && p.labs.length) setLabs(p.labs);
     if (p.conditions && p.conditions.length) setConditions(p.conditions);
-    if (p.source.kind === "device") setDeviceLabel(p.source.label);
-    if (p.source.kind === "bloodwork") setBloodworkLabel(p.source.label);
+    if (p.source?.kind === "device") setDeviceLabel(p.source.label);
+    if (p.source?.kind === "bloodwork") setBloodworkLabel(p.source.label);
   }, []);
+
+  // Apply an import + persist it to the user-data store (fire-and-forget so a
+  // store outage never blocks the live import).
+  const apply = useCallback(
+    (p: ImportPatch) => {
+      applyState(p);
+      saveUserData(getUserRef(), p).catch(() => {
+        /* user-data store unavailable; UI still works off live import */
+      });
+    },
+    [applyState],
+  );
+
+  // On mount, hydrate from anything this browser saved before (no re-save).
+  useEffect(() => {
+    let alive = true;
+    fetchUserData(getUserRef())
+      .then((bundle) => {
+        if (!alive || !bundle) return;
+        applyState({
+          ...(bundle.age != null ? { age: bundle.age } : {}),
+          ...(bundle.sex ? { sex: bundle.sex } : {}),
+          ...(bundle.weight_kg != null ? { weightKg: bundle.weight_kg } : {}),
+          conditions: bundle.conditions ?? [],
+          labs: bundle.labs ?? [],
+          source: bundle.source ?? { kind: "bloodwork", label: "Restored", at: "" },
+        });
+        if (bundle.labs?.length) setBloodwork("done");
+      })
+      .catch(() => {
+        /* nothing saved yet, or store unavailable */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [applyState]);
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
