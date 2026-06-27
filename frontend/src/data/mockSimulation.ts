@@ -6,9 +6,9 @@ import type {
   ProvenanceSource,
 } from "../types/simulation";
 
-export const MOCK_COMPOUNDS: Compound[] = [
+export const COMPOUNDS: Compound[] = [
   {
-    id: "bpc-157",
+    id: "1",
     name: "BPC-157",
     tier: "gray-market",
     description: "Body Protective Compound",
@@ -16,7 +16,7 @@ export const MOCK_COMPOUNDS: Compound[] = [
     dosagePercent: 40,
   },
   {
-    id: "tirzepatide",
+    id: "3",
     name: "Tirzepatide",
     tier: "fda-approved",
     description: "GLP-1 / GIP Agonist",
@@ -24,6 +24,9 @@ export const MOCK_COMPOUNDS: Compound[] = [
     dosagePercent: 25,
   },
 ];
+
+/** @deprecated use COMPOUNDS */
+export const MOCK_COMPOUNDS = COMPOUNDS;
 
 export const MOCK_CHART_BARS: ChartBar[] = [
   { id: "base", heightPercent: 15, className: "bg-zinc-800", tooltip: "Month 1" },
@@ -88,9 +91,7 @@ export const MOCK_PROVENANCE: ProvenanceSource[] = [
 ];
 
 export const DEMOGRAPHICS: Demographics = {
-  ageRange: "50 - 60 yrs",
-  sex: "Male",
+  age: 55,
+  sex: "M",
   weightKg: 102,
-  weightPercent: 65,
-  extrapolateComorbidities: true,
 };

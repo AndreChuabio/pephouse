@@ -20,7 +20,7 @@ function SidebarNavItem({ item, isActive }: SidebarNavItemProps) {
   if (item.to.startsWith("/")) {
     return (
       <Link to={item.to} className={className}>
-        <Icon icon={item.icon} className="text-zinc-400 text-base" />
+        <Icon icon={item.icon} className={cn("text-base", isActive ? "text-blue-400" : "text-zinc-400")} />
         {item.label}
       </Link>
     );

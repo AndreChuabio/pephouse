@@ -1,27 +1,13 @@
 import { Icon } from "@iconify/react";
-import { MOCK_METRICS } from "../../data/mockSimulation";
 import { cn } from "../../lib/cn";
 import type { MetricCard } from "../../types/simulation";
 import { Panel } from "../ui/Panel";
 
-function ConfidenceMeter({ level }: { level: 1 | 2 | 3 }) {
-  return (
-    <div className="mt-2 flex gap-1">
-      {([1, 2, 3] as const).map((step) => (
-        <div
-          key={step}
-          className={cn("h-1 flex-1 rounded-full", step <= level ? "bg-blue-500" : "bg-zinc-800")}
-        />
-      ))}
-    </div>
-  );
-}
-
-type MetricCardViewProps = {
-  metric: MetricCard;
+type MetricsGridProps = {
+  metrics: MetricCard[];
 };
 
-function MetricCardView({ metric }: MetricCardViewProps) {
+function MetricCardView({ metric }: { metric: MetricCard }) {
   const isWarning = metric.tone === "warning";
   const foreground = isWarning ? "relative z-10" : undefined;
 
@@ -48,22 +34,27 @@ function MetricCardView({ metric }: MetricCardViewProps) {
       )}
 
       {metric.tone === "confidence" && metric.confidenceLevel !== undefined && (
-        <ConfidenceMeter level={metric.confidenceLevel} />
+        <div className="mt-2 flex gap-1">
+          {([1, 2, 3] as const).map((step) => (
+            <div
+              key={step}
+              className={cn("h-1 flex-1 rounded-full", step <= metric.confidenceLevel! ? "bg-blue-500" : "bg-zinc-800")}
+            />
+          ))}
+        </div>
       )}
 
       {metric.note && (
-        <p className={cn("text-[10px] text-zinc-500 mt-2 leading-tight", foreground)}>
-          {metric.note}
-        </p>
+        <p className={cn("text-[10px] text-zinc-500 mt-2 leading-tight", foreground)}>{metric.note}</p>
       )}
     </Panel>
   );
 }
 
-export function MetricsGrid() {
+export function MetricsGrid({ metrics }: MetricsGridProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {MOCK_METRICS.map((metric) => (
+      {metrics.map((metric) => (
         <MetricCardView key={metric.id} metric={metric} />
       ))}
     </div>
