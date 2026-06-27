@@ -155,7 +155,7 @@ export default function DataExplorerPage() {
               <div>
                 <div className="flex items-center gap-3">
                   <h2 className="text-2xl font-semibold text-white">{selected.name}</h2>
-                  <Badge tone={selected.approved ? "green" : "orange"}>{selected.fda_status ?? (selected.approved ? "approved" : "research")}</Badge>
+                  <Badge tone={selected.approved ? "green" : "orange"}>{selected.approved ? "FDA approved" : "Non-FDA"}</Badge>
                 </div>
                 <p className="text-sm text-zinc-400 mt-1">{selected.drug_class}</p>
                 <p className="text-sm text-zinc-500 mt-2">{selected.summary}</p>
