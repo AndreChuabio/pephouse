@@ -42,6 +42,7 @@ export default function Simulation2Page() {
   const [hasRun, setHasRun] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(true);
+  const [draws, setDraws] = useState(MONTE_CARLO_DRAWS);
 
   const registry = useCompoundRegistry();
   const { bundles, loading: bundleLoading, errors: bundleErrors } = useCompoundData(
@@ -156,7 +157,7 @@ export default function Simulation2Page() {
   // canvas and report stay reconciled (and responsive) until the next Run Execution.
   useEffect(() => {
     backend.reset();
-  }, [compoundIds, age, sex, weight, sourceFractions, backend.reset]);
+  }, [compoundIds, age, sex, weight, sourceFractions, draws, backend.reset]);
 
   const toggleInteraction = useCallback((pairKey: string) => {
     setExcludedInteractions((prev) => {
@@ -215,7 +216,7 @@ export default function Simulation2Page() {
   const handleRun = () => {
     setHasRun(true);
     if (compoundBackendIds.length) {
-      backend.run(compoundBackendIds, { age, sex, weightKg: weight }, sourceFractions, outcomeNames);
+      backend.run(compoundBackendIds, { age, sex, weightKg: weight }, sourceFractions, outcomeNames, draws);
     }
   };
 
@@ -374,7 +375,8 @@ export default function Simulation2Page() {
           interactionsRequested={compoundIds.length >= 2}
           band={band}
           running={backend.loading}
-          draws={MONTE_CARLO_DRAWS}
+          draws={draws}
+          onDrawsChange={setDraws}
         />
       </div>
 
