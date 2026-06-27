@@ -141,7 +141,7 @@ export default function DataExplorerPage() {
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm text-zinc-200">{c.name}</span>
-                <Badge tone={c.approved ? "green" : "orange"}>{c.approved ? "FDA" : "Gray"}</Badge>
+                <Badge tone={c.approved ? "green" : "orange"}>{c.approved ? "FDA approved" : "Non-FDA"}</Badge>
               </div>
               <p className="text-xs text-zinc-500 mt-0.5 truncate">{c.drug_class}</p>
             </button>
