@@ -8,6 +8,28 @@ import type {
 // For local dev against your own backend, set VITE_API_URL=http://localhost:8001 in frontend/.env.local
 const API_BASE = import.meta.env.VITE_API_URL ?? "https://pephouse-backend-production.up.railway.app";
 
+/** Digital Twin one-shot run: full payload (patient/user_ref + compounds + controls). */
+export type TwinSimulatePayload = {
+  user_ref?: string;
+  patient?: { age: number; sex: "M" | "F"; weight_kg: number; conditions?: string[] };
+  compounds: number[];
+  outcomes?: string[];
+  tiers?: string[];
+  source_type?: string;
+  n_draws?: number;
+  seed?: number;
+};
+
+export async function twinSimulate(payload: TwinSimulatePayload): Promise<SimulateResponse> {
+  const res = await fetch(`${API_BASE}/twin/simulate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error((await res.text()) || `twin simulate failed (${res.status})`);
+  return res.json() as Promise<SimulateResponse>;
+}
+
 export async function postSimulate(body: SimulateRequest): Promise<SimulateResponse> {
   const res = await fetch(`${API_BASE}/simulate`, {
     method: "POST",

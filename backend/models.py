@@ -229,3 +229,20 @@ class InteractionPair(BaseModel):
 
 class InteractionsResponse(BaseModel):
     pairs: list[InteractionPair] = Field(default_factory=list)
+
+
+# ------------------------------------------------------------- twin simulate
+# One endpoint that takes the Digital Twin's full payload — the patient (or a
+# saved user_ref to pull from user_profiles), the selected compound stack, and
+# the simulation controls — and runs the Monte Carlo over it.
+
+
+class TwinSimulateRequest(BaseModel):
+    user_ref: str | None = None  # when given (and patient omitted), load the saved profile
+    patient: PatientProfile | None = None
+    compounds: list[int] = Field(default_factory=list)  # registry compound ids
+    outcomes: list[str] = Field(default_factory=lambda: ["weight_change_pct"])
+    tiers: list[str] | None = None  # trial | quality | anecdote | synthetic
+    source_type: str | None = None  # compounding_pharmacy | vendor_tested | gray_market | ...
+    n_draws: int = 5000
+    seed: int = 42

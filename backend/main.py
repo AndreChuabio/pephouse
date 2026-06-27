@@ -20,14 +20,17 @@ import user_data
 from evidence import build_simulation_data
 from interactions import build_interactions
 from models import (
+    CompoundInput,
     InteractionsResponse,
     LinkRequest,
     LinkResponse,
+    PatientProfile,
     ProfilePatch,
     ProfileResponse,
     SimulateRequest,
     SimulateResponse,
     SimulationDataResponse,
+    TwinSimulateRequest,
     UserDataBundle,
     UserDataPatch,
 )
@@ -250,6 +253,49 @@ def save_user_data(user_ref: str, body: UserDataPatch) -> UserDataBundle:
         raise HTTPException(status_code=400, detail="user_ref required")
     merged = user_data.save_user_data(user_ref, body.model_dump(exclude_none=True))
     return UserDataBundle(**merged)
+
+
+# ------------------------------------------------------------------ twin sim
+# The Digital Twin's one-shot run: take the full payload (saved-or-supplied
+# patient + compound stack + controls) and run the Monte Carlo over it.
+
+
+@app.post("/twin/simulate", response_model=SimulateResponse)
+def twin_simulate(body: TwinSimulateRequest) -> SimulateResponse:
+    """Run a simulation from the Digital Twin's data + controls.
+
+    Patient resolution: an explicit `patient` wins; otherwise the saved profile
+    for `user_ref` is loaded from user_profiles. The compound stack and controls
+    (tiers / source_type / n_draws) feed the same engine as POST /simulate.
+    """
+    patient = body.patient
+    if patient is None and body.user_ref:
+        bundle = user_data.get_user_data(body.user_ref)
+        if bundle is not None:
+            patient = PatientProfile(
+                age=int(bundle.get("age") or 40),
+                sex=bundle.get("sex") or "M",
+                weight_kg=bundle.get("weight_kg"),
+                conditions=bundle.get("conditions") or [],
+            )
+    if patient is None:
+        raise HTTPException(status_code=400, detail="patient or a known user_ref required")
+    if not body.compounds:
+        raise HTTPException(status_code=400, detail="compounds required")
+    for cid in body.compounds:
+        if db.get_compound(cid) is None:
+            raise HTTPException(status_code=404, detail=f"compound {cid} not found")
+
+    return run_simulation(
+        compounds=[CompoundInput(compound_id=cid) for cid in body.compounds],
+        patient=patient,
+        outcomes=body.outcomes,
+        n_draws=body.n_draws,
+        seed=body.seed,
+        source_type=body.source_type,
+        live_cohort="synthetic" in (body.tiers or []),
+        tiers=body.tiers,
+    )
 
 
 # TODO(grader): POST /grade -> score a clinician transcript against get_evidence()
