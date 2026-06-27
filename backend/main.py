@@ -12,7 +12,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 import db
-from models import SimulateRequest, SimulateResponse
+from evidence import build_simulation_data
+from models import SimulateRequest, SimulateResponse, SimulationDataResponse
 from twin_engine import run_simulation
 
 app = FastAPI(title="pephouse")
@@ -48,6 +49,20 @@ def get_compound(compound_id: int) -> dict:
 def get_evidence(compound_id: int) -> dict:
     """Tier-1 evidence bundle the grader is allowed to cite."""
     return db.get_evidence(compound_id)
+
+
+@app.get("/compounds/{compound_id}/data", response_model=SimulationDataResponse)
+def get_compound_data(compound_id: int) -> SimulationDataResponse:
+    """Supabase data layer for the simulation builder (Arena 2).
+
+    Read-only: returns the compound, its evidence layers/tiers (for the evidence
+    map toggles), outcome names, clusters, anecdotes, studied age range, and the
+    Tier-4 cohort size. Does NOT run any Monte Carlo — use POST /simulate for that.
+    """
+    bundle = build_simulation_data(compound_id)
+    if bundle is None:
+        raise HTTPException(status_code=404, detail="compound not found")
+    return bundle
 
 
 @app.post("/simulate", response_model=SimulateResponse)
