@@ -69,6 +69,33 @@ def build_module(compound_name: str, prior: dict) -> dict:
     }
 
 
+def anecdote_band(anecdotes: list[dict]) -> tuple[int, int]:
+    """A wide, ILLUSTRATIVE effect band (low, high) skewed by net sentiment.
+
+    There is no numeric anecdote effect data; this is intentionally coarse + wide
+    and is only ever used flagged as anecdotal / low-confidence.
+    """
+    sentiment: dict[str, int] = {}
+    for a in anecdotes:
+        key = (a.get("sentiment") or "unknown").lower()
+        sentiment[key] = sentiment.get(key, 0) + 1
+    pos, neg = sentiment.get("positive", 0), sentiment.get("negative", 0)
+    if pos > neg:
+        return -10, 30
+    if neg > pos:
+        return -30, 10
+    return -25, 25
+
+
+def anecdote_distribution(compound_id: int) -> tuple[float, float] | None:
+    """Illustrative (mean, sd) for the anecdote tier, or None if no anecdotes."""
+    anec = supabase.table("anecdotes").select("sentiment").eq("compound_id", compound_id).limit(50).execute().data
+    if not anec:
+        return None
+    low, high = anecdote_band(anec)
+    return (low + high) / 2.0, (high - low) / 4.0
+
+
 def build_anecdote_module(compound_name: str, anecdotes: list[dict]) -> dict:
     """Build an ANECDOTE-derived module for a compound with no trial priors.
 
@@ -83,14 +110,7 @@ def build_anecdote_module(compound_name: str, anecdotes: list[dict]) -> dict:
         sentiment[key] = sentiment.get(key, 0) + 1
     sent_summary = ", ".join(f"{v} {k}" for k, v in sorted(sentiment.items(), key=lambda kv: -kv[1]))
     claims = [a.get("claimed_effect") for a in anecdotes if a.get("claimed_effect")][:3]
-
-    pos, neg = sentiment.get("positive", 0), sentiment.get("negative", 0)
-    if pos > neg:
-        low, high = -10, 30          # illustrative, skewed by net-positive sentiment
-    elif neg > pos:
-        low, high = -30, 10
-    else:
-        low, high = -25, 25
+    low, high = anecdote_band(anecdotes)
 
     return {
         "name": f"Peptide (anecdotal) - {compound_name} - self-reported response",

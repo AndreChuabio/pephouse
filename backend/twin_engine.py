@@ -10,6 +10,7 @@ import db
 import modules
 import runs
 import synthea_live
+from tiers import TIER_NAMES, availability as tier_availability, confidence_cap as tier_cap, resolve as tier_resolve
 from models import (
     AnecdoteSnippet,
     CompoundInput,
@@ -25,6 +26,7 @@ QUARTER_MONTHS = (3, 6, 9, 12)
 QUARTER_RAMP = (0.25, 0.55, 0.80, 1.0)
 WEIGHT_LOSS_THRESHOLD = -15.0
 SUBSTRATE_SD_INFLATE = 1.25
+ANECDOTE_WIDEN = 1.5  # extra SD when the anecdote tier is layered on a trial distribution
 
 
 def _parse_int(text) -> int | None:
@@ -149,11 +151,15 @@ def _simulate_trial_outcome(
     cohort_n: int,
     substrate_missing: bool,
     source_prior: dict | None = None,
+    anecdote_widen: bool = False,
+    conf_cap: float = 1.0,
 ) -> OutcomeResult:
     bio_mean = float(prior["effect_mean"])
     sd = float(prior["effect_sd"] or 0)
     if substrate_missing:
         sd *= SUBSTRATE_SD_INFLATE
+    if anecdote_widen:
+        sd *= ANECDOTE_WIDEN  # anecdote tier adds real-world uncertainty on top of the trial prior
 
     rng = np.random.default_rng(seed)
     terminal = rng.normal(bio_mean, sd, n_draws)
@@ -175,6 +181,7 @@ def _simulate_trial_outcome(
     if source_prior:
         # a sketchy source is itself uncertainty -> penalize confidence
         confidence *= max(0.4, 1.0 - (p_fail + p_contam))
+    confidence = min(confidence, conf_cap)  # weakest included tier caps confidence
 
     threshold = WEIGHT_LOSS_THRESHOLD if "weight" in outcome_name else bio_mean - abs(sd)
     prob = float(np.mean(terminal <= threshold))
@@ -183,7 +190,7 @@ def _simulate_trial_outcome(
         compound_id=compound_id,
         outcome_name=outcome_name,
         unit=prior.get("unit"),
-        evidence_basis="trial" if cluster and cluster.get("trial_backed") else "anecdote",
+        evidence_basis="trial+anecdote" if anecdote_widen else ("trial" if cluster and cluster.get("trial_backed") else "anecdote"),
         trial_backed=bool(cluster.get("trial_backed")) if cluster else True,
         confidence=round(confidence, 2),
         distribution_void=False,
@@ -215,6 +222,50 @@ def _void_outcome(compound_id: int, outcome_name: str, cluster: dict | None) -> 
     )
 
 
+def _simulate_anecdote_outcome(
+    compound_id: int, outcome_name: str, source_prior: dict | None,
+    n_draws: int, seed: int, conf_cap: float,
+) -> OutcomeResult:
+    """Anecdote tier: an ILLUSTRATIVE band from sentiment-skewed reports. Flagged
+    illustrative + very low confidence; never presented as a trial prediction."""
+    dist = modules.anecdote_distribution(compound_id)
+    if dist is None:
+        return _void_outcome(compound_id, outcome_name, None)
+    mean, sd = dist
+    rng = np.random.default_rng(seed)
+    terminal = rng.normal(mean, sd, n_draws)
+
+    source_type = None
+    source_dud_pct = None
+    if source_prior:
+        terminal = terminal * _draw_potency(source_prior, n_draws, rng)
+        source_type = source_prior.get("source_type")
+        source_dud_pct = round(float(source_prior.get("p_fail") or 0.0) * 100, 1)
+
+    p10, p50, p90 = _percentiles(terminal)
+    threshold = WEIGHT_LOSS_THRESHOLD if "weight" in outcome_name else mean - abs(sd)
+    prob = float(np.mean(terminal <= threshold))
+    return OutcomeResult(
+        compound_id=compound_id,
+        outcome_name=outcome_name,
+        unit="%",
+        evidence_basis="anecdote",
+        trial_backed=False,
+        confidence=round(min(0.3, conf_cap), 2),
+        distribution_void=False,
+        illustrative=True,
+        mean=round(float(np.mean(terminal)), 2),
+        sd=round(float(np.std(terminal)), 2),
+        p10=round(p10, 2),
+        p50=round(p50, 2),
+        p90=round(p90, 2),
+        prob_threshold=round(prob, 3),
+        source_type=source_type,
+        source_dud_pct=source_dud_pct,
+        quarters=_quarter_bands(terminal),
+    )
+
+
 def run_simulation(
     compounds: list[CompoundInput],
     patient: PatientProfile,
@@ -223,9 +274,13 @@ def run_simulation(
     seed: int,
     source_type: str | None = None,
     live_cohort: bool = False,
+    tiers: list[str] | None = None,
 ) -> SimulateResponse:
-    active_module = modules.get_active_module(compounds[0].compound_id) if (live_cohort and compounds) else None
-    cohort, cohort_source, cohort_gen_ms = resolve_cohort(patient, live_cohort, active_module)
+    explicit = tiers is not None
+    eff_live = live_cohort or (explicit and "synthetic" in tiers)
+
+    active_module = modules.get_active_module(compounds[0].compound_id) if (eff_live and compounds) else None
+    cohort, cohort_source, cohort_gen_ms = resolve_cohort(patient, eff_live, active_module)
     cohort_n = len(cohort)
     substrate_missing = cohort_n < MIN_COHORT
 
@@ -245,58 +300,61 @@ def run_simulation(
 
     result_outcomes: list[OutcomeResult] = []
     excluded: list[ExcludedPrior] = []
+    tiers_used_all: list[str] = []
+    tier_notes_all: list[str] = []
 
     for compound in compounds:
-        clusters = db.get_case_studies(compound.compound_id)
-        priors = db.get_outcome_priors(compound.compound_id)
+        cid = compound.compound_id
+        avail = tier_availability(cid)
+        used, notes = tier_resolve(tiers, avail)
+        for t in used:
+            if t not in tiers_used_all:
+                tiers_used_all.append(t)
+        tier_notes_all.extend(notes)
+
+        use_quality = ("quality" in used) if explicit else (source_type is not None)
+        source_prior = db.get_source_potency_prior(source_type, cid) if (use_quality and source_type) else None
+        cap = tier_cap(used) if explicit else 1.0
+
+        clusters = db.get_case_studies(cid)
+        priors = db.get_outcome_priors(cid)
         priors_by_name = {p["outcome_name"]: p for p in priors}
-        source_prior = (
-            db.get_source_potency_prior(source_type, compound.compound_id)
-            if source_type
-            else None
-        )
 
         for outcome_name in outcomes:
             cluster = _pick_cluster(clusters, outcome_name)
             prior = priors_by_name.get(outcome_name)
+            use_trial = ("trial" in used) if explicit else (prior is not None)
+            use_anecdote = ("anecdote" in used) if explicit else False
 
-            if prior is None:
-                result_outcomes.append(_void_outcome(compound.compound_id, outcome_name, cluster))
-                if substrate_missing and not anecdotes:
-                    anecdotes = _anecdote_snippets(compound.compound_id)
-                continue
-
-            reason = check_eligibility(patient, prior)
-            if reason:
-                excluded.append(
-                    ExcludedPrior(
-                        compound_id=compound.compound_id,
-                        outcome_name=outcome_name,
-                        reason=reason,
+            if use_trial and prior is not None:
+                reason = check_eligibility(patient, prior)
+                if reason:
+                    excluded.append(ExcludedPrior(compound_id=cid, outcome_name=outcome_name, reason=reason))
+                    continue
+                result_outcomes.append(
+                    _simulate_trial_outcome(
+                        cid, outcome_name, prior, cluster, patient, n_draws, seed + cid,
+                        cohort_n, substrate_missing, source_prior,
+                        anecdote_widen=use_anecdote, conf_cap=cap,
                     )
                 )
-                continue
-
-            result_outcomes.append(
-                _simulate_trial_outcome(
-                    compound.compound_id,
-                    outcome_name,
-                    prior,
-                    cluster,
-                    patient,
-                    n_draws,
-                    seed + compound.compound_id,
-                    cohort_n,
-                    substrate_missing,
-                    source_prior,
+            elif use_anecdote and avail["anecdote"]["available"]:
+                result_outcomes.append(
+                    _simulate_anecdote_outcome(cid, outcome_name, source_prior, n_draws, seed + cid, cap)
                 )
-            )
+                if not anecdotes:
+                    anecdotes = _anecdote_snippets(cid)
+            else:
+                result_outcomes.append(_void_outcome(cid, outcome_name, cluster))
+                if (substrate_missing or use_anecdote) and not anecdotes:
+                    anecdotes = _anecdote_snippets(cid)
 
     if substrate_missing and not anecdotes and compounds:
         anecdotes = _anecdote_snippets(compounds[0].compound_id)
 
     has_trial = any(o.trial_backed and not o.distribution_void for o in result_outcomes)
-    data_confidence = "High" if has_trial and not substrate_missing else "Low"
+    data_confidence = "High" if (has_trial and not substrate_missing and "anecdote" not in tiers_used_all) else "Low"
+    tiers_used = [t for t in TIER_NAMES if t in tiers_used_all]
 
     response = SimulateResponse(
         cohort_n=cohort_n,
@@ -309,6 +367,9 @@ def run_simulation(
         excluded_priors=excluded,
         anecdotes=anecdotes,
         data_confidence=data_confidence,
+        tiers_requested=tiers,
+        tiers_used=tiers_used,
+        tier_notes=tier_notes_all,
     )
 
     # Persist the run (best-effort). Save the live-generated bodies only.
@@ -317,7 +378,7 @@ def run_simulation(
         patient=patient.model_dump(),
         source_type=source_type,
         n_draws=n_draws,
-        live_cohort=live_cohort,
+        live_cohort=eff_live,
         cohort_source=cohort_source,
         cohort_n=cohort_n,
         cohort_gen_ms=cohort_gen_ms,

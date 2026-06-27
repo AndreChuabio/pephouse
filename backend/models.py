@@ -30,6 +30,9 @@ class SimulateRequest(BaseModel):
     # Run Synthea LIVE for a patient-matched cohort (falls back to the pre-loaded
     # synthetic_patients table on timeout/failure). Default uses the offline cohort.
     live_cohort: bool = False
+    # Data tiers to include: trial | quality | anecdote | synthetic. None = legacy
+    # behaviour (trial when available, plus source_type/live_cohort if given).
+    tiers: list[str] | None = None
 
 
 class QuarterBand(BaseModel):
@@ -59,6 +62,7 @@ class OutcomeResult(BaseModel):
     biological_mean: float | None = None  # label-dose mean, before source adjustment
     source_type: str | None = None
     source_dud_pct: float | None = None  # P(near-inert "sugar water" lot), as a %
+    illustrative: bool = False  # anecdote-tier band: not a prediction, shown low-confidence
     quarters: list[QuarterBand] = Field(default_factory=list)
 
 
@@ -86,6 +90,9 @@ class SimulateResponse(BaseModel):
     anecdotes: list[AnecdoteSnippet] = Field(default_factory=list)
     data_confidence: str
     run_id: int | None = None  # persisted simulation_runs row, for recall / recent list
+    tiers_requested: list[str] | None = None
+    tiers_used: list[str] = Field(default_factory=list)
+    tier_notes: list[str] = Field(default_factory=list)
 
 
 class EvidenceSource(BaseModel):
