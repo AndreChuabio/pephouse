@@ -474,7 +474,9 @@ export default function DataExplorerPage() {
                                 {Object.keys(m.module?.states ?? {}).length} states
                               </span>
                             </div>
-                            <ModuleGraph states={m.module?.states ?? {}} />
+                            <div className="overflow-x-auto -mx-2 px-2">
+                              <ModuleGraph states={m.module?.states ?? {}} />
+                            </div>
                             <button
                               type="button"
                               onClick={() => toggle(inspectorKey)}
