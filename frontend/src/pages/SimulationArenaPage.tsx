@@ -79,13 +79,21 @@ function buildMetrics(result: SimulateResponse | null, weightOutcome: OutcomeRes
   ];
 }
 
+const TIER_OPTIONS: { key: string; label: string }[] = [
+  { key: "trial", label: "Trial" },
+  { key: "quality", label: "Quality (source)" },
+  { key: "anecdote", label: "Anecdote" },
+  { key: "synthetic", label: "Synthetic (live)" },
+];
+
 export default function SimulationArenaPage() {
   useDocumentTitle("PepHouse | Simulation Arena");
 
   const [patient, setPatient] = useState(DEMOGRAPHICS);
   const [selectedCompoundId, setSelectedCompoundId] = useState(COMPOUNDS[1].id);
   const [sourceType, setSourceType] = useState("");
-  const [liveCohort, setLiveCohort] = useState(false);
+  const [tiers, setTiers] = useState<string[]>(["trial"]);
+  const toggleTier = (k: string) => setTiers((ts) => (ts.includes(k) ? ts.filter((x) => x !== k) : [...ts, k]));
   const [nDraws, setNDraws] = useState(5000);
   const { result, loading, error, run } = useSimulation();
 
@@ -104,9 +112,10 @@ export default function SimulationArenaPage() {
 
   const handleRun = () => {
     run(Number(selectedCompoundId), patient, {
-      sourceType: sourceType || undefined,
-      liveCohort,
+      sourceType: tiers.includes("quality") ? sourceType || "gray_market" : undefined,
+      liveCohort: tiers.includes("synthetic"),
       nDraws,
+      tiers,
     });
   };
 
@@ -126,6 +135,27 @@ export default function SimulationArenaPage() {
               </h3>
 
               <div>
+                <label className="text-xs text-zinc-500">Data tiers (what feeds the twin)</label>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {TIER_OPTIONS.map((t) => {
+                    const on = tiers.includes(t.key);
+                    return (
+                      <button
+                        key={t.key}
+                        type="button"
+                        onClick={() => toggleTier(t.key)}
+                        aria-pressed={on}
+                        className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${on ? "bg-blue-500/20 border-blue-500/50 text-blue-200" : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-600"}`}
+                      >
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-zinc-600 mt-1">Anecdote widens the band + lowers confidence. Synthetic = live Synthea cohort (~7s).</p>
+              </div>
+
+              <div>
                 <label className="text-xs text-zinc-500">Source (where you bought it)</label>
                 <select
                   value={sourceType}
@@ -139,23 +169,8 @@ export default function SimulationArenaPage() {
                 </select>
               </div>
 
-              <div className="flex items-center justify-between">
-                <div>
-                  <label className="text-sm text-zinc-200">Generate cohort live (Synthea)</label>
-                  <p className="text-[10px] text-zinc-600">~7s; falls back to pre-loaded cohort</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setLiveCohort((v) => !v)}
-                  aria-pressed={liveCohort}
-                  className={`relative w-11 h-6 rounded-full transition-colors ${liveCohort ? "bg-blue-500" : "bg-zinc-700"}`}
-                >
-                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${liveCohort ? "translate-x-5" : ""}`} />
-                </button>
-              </div>
-
               <div>
-                <label className="text-xs text-zinc-500">Simulation runs (Monte Carlo)</label>
+                <label className="text-xs text-zinc-500">Monte Carlo draws (statistical samples, not patients)</label>
                 <select
                   value={nDraws}
                   onChange={(e) => setNDraws(Number(e.target.value))}
@@ -178,6 +193,24 @@ export default function SimulationArenaPage() {
               distributionVoid={weightOutcome?.distribution_void}
               excludedReason={excludedReason}
             />
+            {result && (
+              <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-lg p-3 text-xs flex flex-wrap items-center gap-2">
+                <span className="text-zinc-500">Tiers used:</span>
+                {(result.tiers_used ?? []).length ? (
+                  (result.tiers_used ?? []).map((t) => (
+                    <span key={t} className="px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30">{t}</span>
+                  ))
+                ) : (
+                  <span className="text-zinc-600">none available</span>
+                )}
+                {weightOutcome?.illustrative && (
+                  <span className="text-amber-400">illustrative band (anecdote-only, not a prediction)</span>
+                )}
+                {(result.tier_notes ?? []).map((n, i) => (
+                  <span key={i} className="text-orange-400/80">{n}</span>
+                ))}
+              </div>
+            )}
             <MetricsGrid metrics={metrics} />
             <DataProvenanceList
               anecdotes={result?.anecdotes}
