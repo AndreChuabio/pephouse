@@ -29,6 +29,24 @@ curl -X POST http://localhost:8000/simulate \
 
 See `DATA_CONTRACT.md`, `backend/twin_engine.py`, and `synthea/README.md` (offline cohort only).
 
+## Data layer: `GET /compounds/{id}/data`
+
+The Supabase read path is **separate from the Monte Carlo compute**. `POST /simulate` runs the simulation; `GET /compounds/{id}/data` just returns everything the registry holds for a compound, so a builder UI (Simulation Arena 2) can render the evidence map and inputs without running a sim.
+
+```bash
+curl http://localhost:8000/compounds/3/data
+```
+
+Returns the compound, derived conveniences (`evidence_sources` with display tiers 4→1, `outcome_names`, `studied_age_min/max`, `cohort_total`), and a `tables` map of all related rows: `trials`, `evidence_facts`, `outcome_priors`, `case_studies`, `research_papers`, `vendor_lab_results`, `sourcing`, `source_potency_priors`, `anecdotes`, `vendors`. Tables present in the live DB but not in `schema.sql` are fetched defensively (missing → `[]`), so the endpoint never crashes on an absent table. Implemented in `backend/evidence.py` (data shaping) + `backend/db.py` (reads).
+
+| Endpoint | Role |
+|----------|------|
+| `GET /health` | liveness |
+| `GET /compounds` / `GET /compounds/{id}` | registry catalog |
+| `GET /compounds/{id}/evidence` | Tier-1 bundle the grader may cite |
+| `GET /compounds/{id}/data` | full Supabase bundle for the builder (read-only) |
+| `POST /simulate` | Monte Carlo twin engine (compute) |
+
 ## Structure
 
 ```
@@ -70,7 +88,7 @@ cd frontend
 npm install
 npm run dev    # http://localhost:5173/simulation-arena
 ```
-Simulation Arena UI exists; wiring to `/simulate` is next. Data Explorer at `/explorer`.
+Simulation Arena is wired to `POST /simulate`. Data Explorer at `/explorer` (queries Supabase directly). Simulation Arena 2 builder can pull `GET /compounds/{id}/data`.
 
 ## Registry status
 

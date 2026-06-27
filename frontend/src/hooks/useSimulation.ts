@@ -10,12 +10,8 @@ export function useSimulation() {
   const run = useCallback(
     async (
       compoundId: number,
-      patient: {
-        age: number;
-        sex: "M" | "F";
-        weightKg: number;
-        conditions?: string[];
-      },
+      patient: { age: number; sex: "M" | "F"; weightKg: number },
+      options?: { sourceType?: string; liveCohort?: boolean; nDraws?: number; tiers?: string[] },
     ) => {
       setLoading(true);
       setError(null);
@@ -26,13 +22,13 @@ export function useSimulation() {
             age: patient.age,
             sex: patient.sex,
             weight_kg: patient.weightKg,
-            ...(patient.conditions && patient.conditions.length > 0
-              ? { conditions: patient.conditions }
-              : {}),
           },
           outcomes: ["weight_change_pct"],
-          n_draws: 5000,
+          n_draws: options?.nDraws ?? 5000,
           seed: 42,
+          source_type: options?.sourceType || undefined,
+          live_cohort: options?.liveCohort ?? false,
+          tiers: options?.tiers && options.tiers.length ? options.tiers : undefined,
         });
         setResult(data);
       } catch (e) {

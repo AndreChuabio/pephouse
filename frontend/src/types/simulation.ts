@@ -92,6 +92,12 @@ export type SimulateRequest = {
   n_draws?: number;
   horizon_months?: number;
   seed?: number;
+  // SOURCE axis: compounding_pharmacy | vendor_tested | gray_market | research_chem | brand
+  source_type?: string;
+  // Run Synthea live for a patient-matched cohort (~7s); falls back to the pre-loaded cohort.
+  live_cohort?: boolean;
+  // Data tiers to include: trial | quality | anecdote | synthetic
+  tiers?: string[];
 };
 
 export type QuarterBand = {
@@ -116,11 +122,17 @@ export type OutcomeResult = {
   p50?: number | null;
   p90?: number | null;
   prob_threshold?: number | null;
+  biological_mean?: number | null;
+  source_type?: string | null;
+  source_dud_pct?: number | null;
+  illustrative?: boolean;
   quarters: QuarterBand[];
 };
 
 export type SimulateResponse = {
   cohort_n: number;
+  cohort_source?: string;
+  cohort_gen_ms?: number | null;
   cohort_fallback?: string | null;
   cohort_callout?: string | null;
   substrate_missing: boolean;
@@ -128,4 +140,6 @@ export type SimulateResponse = {
   excluded_priors: { compound_id: number; outcome_name: string; reason: string }[];
   anecdotes: { permalink?: string | null; claimed_effect?: string | null; sentiment?: string | null }[];
   data_confidence: string;
+  tiers_used?: string[];
+  tier_notes?: string[];
 };
