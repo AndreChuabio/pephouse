@@ -281,7 +281,7 @@ export function ReportPanel({
 
               <div className="space-y-3 pt-2">
                 <h4 className="text-xs font-medium text-zinc-400">
-                  {audience === "individual" ? "Possible benefits" : "Likely Benefits"}
+                  {audience === "individual" ? "Possible benefits" : "Reported Benefits"}
                 </h4>
                 {topBenefits.map((b) => (
                   <div key={b.label} className="space-y-2">
