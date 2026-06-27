@@ -1,13 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "../components/layout/AppShell";
 import { ArenaHeader } from "../components/layout/ArenaHeader";
 import { CocktailMixerCard } from "../components/simulation/CocktailMixerCard";
 import { DataProvenanceList } from "../components/simulation/DataProvenanceList";
 import { DemographicsCard } from "../components/simulation/DemographicsCard";
 import { MetricsGrid } from "../components/simulation/MetricsGrid";
-import { ProjectedOutcomesChart } from "../components/simulation/ProjectedOutcomesChart";
+import { ConnectDataCard } from "../components/twin/ConnectDataCard";
+import { TwinPanel } from "../components/twin/TwinPanel";
 import { COMPOUNDS, DEMOGRAPHICS } from "../data/mockSimulation";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useImport } from "../hooks/useImport";
 import { useSimulation } from "../hooks/useSimulation";
 import type {
   MetricCard,
@@ -88,18 +90,22 @@ export default function SimulationArenaPage() {
 
   const [patient, setPatient] = useState<PatientInput>(DEMOGRAPHICS);
   const [selectedCompoundId, setSelectedCompoundId] = useState(COMPOUNDS[1].id);
-  const { result, loading, error, run } = useSimulation();
+  const { result, loading, run } = useSimulation();
+  const imp = useImport();
+
+  // Imported wearable profile flows into the (editable) demographics + sim input.
+  useEffect(() => {
+    setPatient((prev) => ({
+      ...prev,
+      ...(imp.age != null ? { age: imp.age } : {}),
+      ...(imp.sex ? { sex: imp.sex } : {}),
+      ...(imp.weightKg != null ? { weightKg: imp.weightKg } : {}),
+      conditions: imp.conditions.length ? imp.conditions : prev.conditions,
+      labs: imp.labs.length ? imp.labs : prev.labs,
+    }));
+  }, [imp.age, imp.sex, imp.weightKg, imp.conditions, imp.labs]);
 
   const weightOutcome = result?.outcomes.find((o) => o.outcome_name === "weight_change_pct") ?? null;
-
-  const excludedReason = useMemo(() => {
-    const ex = result?.excluded_priors?.[0];
-    if (!ex) return null;
-    if (ex.reason.toLowerCase().includes("age")) {
-      return "Patient age is outside the range covered by trial priors.";
-    }
-    return ex.reason.replace(/_/g, " ");
-  }, [result]);
 
   const metrics = useMemo(() => buildMetrics(result, weightOutcome), [result, weightOutcome]);
 
@@ -114,18 +120,18 @@ export default function SimulationArenaPage() {
       <div className="flex-1 overflow-y-auto p-8 z-10">
         <div className="max-w-7xl mx-auto grid grid-cols-1 xl:grid-cols-12 gap-6">
           <section className="xl:col-span-4 space-y-6" aria-label="Simulation inputs">
+            <ConnectDataCard imp={imp} />
             <DemographicsCard patient={patient} onChange={setPatient} />
             <CocktailMixerCard selectedId={selectedCompoundId} onSelect={setSelectedCompoundId} />
           </section>
 
-          <section className="xl:col-span-8 space-y-6" aria-label="Simulation outputs">
-            <ProjectedOutcomesChart
+          <section className="xl:col-span-8 space-y-6" aria-label="Digital twin & outputs">
+            <TwinPanel
+              labs={imp.labs}
+              patient={patient}
+              hasImport={imp.hasData}
               outcome={weightOutcome}
-              loading={loading}
-              error={error}
-              cohortCallout={result?.cohort_callout}
-              distributionVoid={weightOutcome?.distribution_void}
-              excludedReason={excludedReason}
+              onLinkData={imp.pullBloodwork}
             />
             <MetricsGrid metrics={metrics} />
             <DataProvenanceList
