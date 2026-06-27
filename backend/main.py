@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import db
 import modules
 import runs
+import tiers
 from evidence import build_simulation_data
 from models import SimulateRequest, SimulateResponse, SimulationDataResponse
 from twin_engine import run_simulation
@@ -91,7 +92,16 @@ def simulate(body: SimulateRequest) -> SimulateResponse:
         seed=body.seed,
         source_type=body.source_type,
         live_cohort=body.live_cohort,
+        tiers=body.tiers,
     )
+
+
+@app.get("/compounds/{compound_id}/tiers")
+def get_tiers(compound_id: int) -> dict:
+    """Which data tiers are available for this compound (for the UI tier toggles)."""
+    if db.get_compound(compound_id) is None:
+        raise HTTPException(status_code=404, detail="compound not found")
+    return tiers.availability(compound_id)
 
 
 @app.get("/runs")
