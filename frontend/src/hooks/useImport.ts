@@ -139,6 +139,20 @@ export function useImport() {
     }
   }, [apply]);
 
+  // Reset to the pre-connect (gated) state for this session. Keeps the saved
+  // profile fields, but clears the live link so the twin greys out and the
+  // link-data gate shows again.
+  const disconnect = useCallback(() => {
+    cancelled.current = true;
+    setConnected(false);
+    setLabs([]);
+    setDevice("idle");
+    setBloodwork("idle");
+    setError(null);
+    setDeviceLabel(null);
+    setBloodworkLabel(null);
+  }, []);
+
   return {
     device,
     bloodwork,
@@ -155,5 +169,6 @@ export function useImport() {
     connectDevice,
     recheckDevice,
     pullBloodwork,
+    disconnect,
   };
 }

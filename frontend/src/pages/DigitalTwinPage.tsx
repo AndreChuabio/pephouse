@@ -580,16 +580,23 @@ export default function DigitalTwinPage() {
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={handleLinkData}
-                  className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/50 text-xs p-3 rounded-xl flex flex-col gap-2 transition-colors text-left group"
+                  onClick={connected ? imp.disconnect : handleLinkData}
+                  className={`text-xs p-3 rounded-xl flex flex-col gap-2 transition-colors text-left group border ${
+                    connected
+                      ? "bg-zinc-900 hover:bg-rose-950/30 border-zinc-700/50 hover:border-rose-800/60"
+                      : "bg-zinc-900 hover:bg-zinc-800 border-zinc-700/50"
+                  }`}
                 >
                   <div className="flex justify-between items-center w-full">
-                    <Icon icon={imp.bloodwork === "working" ? "svg-spinners:180-ring" : "lucide:link"} className="w-4 h-4 text-zinc-500 group-hover:text-zinc-300" />
+                    <Icon
+                      icon={imp.bloodwork === "working" ? "svg-spinners:180-ring" : connected ? "lucide:unlink" : "lucide:link"}
+                      className={`w-4 h-4 ${connected ? "text-rose-400" : "text-zinc-500 group-hover:text-zinc-300"}`}
+                    />
                     <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-500" : "bg-zinc-600"}`} />
                   </div>
                   <div>
-                    <div className="text-zinc-200 font-semibold mb-0.5">Link Data</div>
-                    <div className="text-[10px] text-zinc-500">Oura, Labs via Junction</div>
+                    <div className="text-zinc-200 font-semibold mb-0.5">{connected ? "Unlink Data" : "Link Data"}</div>
+                    <div className="text-[10px] text-zinc-500">{connected ? "Disconnect & reset" : "Oura, Labs via Junction"}</div>
                   </div>
                 </button>
                 <button type="button" className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/50 text-xs p-3 rounded-xl flex flex-col gap-2 transition-colors text-left group">
