@@ -73,3 +73,44 @@ class SimulateResponse(BaseModel):
     excluded_priors: list[ExcludedPrior] = Field(default_factory=list)
     anecdotes: list[AnecdoteSnippet] = Field(default_factory=list)
     data_confidence: str
+
+
+# ----------------------------------------------------------------- import API
+# Patient-data import (Junction wearable + bloodwork). Every import path returns
+# the same ImportSource-stamped patch that the frontend merges into `patient`.
+
+
+class ImportSource(BaseModel):
+    kind: str  # device | bloodwork | upload
+    label: str
+    at: str  # ISO timestamp
+
+
+class LabValue(BaseModel):
+    name: str
+    value: float | str | None = None
+    unit: str | None = None
+    flag: str | None = None
+
+
+class ProfilePatch(BaseModel):
+    age: int | None = None
+    sex: str | None = None  # M | F
+    weight_kg: float | None = None
+    conditions: list[str] = Field(default_factory=list)
+    labs: list[LabValue] = Field(default_factory=list)
+    source: ImportSource
+
+
+class LinkRequest(BaseModel):
+    user_ref: str
+
+
+class LinkResponse(BaseModel):
+    user_id: str
+    link_url: str
+
+
+class ProfileResponse(BaseModel):
+    connected: bool
+    patch: ProfilePatch | None = None

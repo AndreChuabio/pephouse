@@ -12,7 +12,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 import db
-from models import SimulateRequest, SimulateResponse
+import junction
+from models import (
+    LinkRequest,
+    LinkResponse,
+    ProfilePatch,
+    ProfileResponse,
+    SimulateRequest,
+    SimulateResponse,
+)
 from twin_engine import run_simulation
 
 app = FastAPI(title="pephouse")
@@ -73,6 +81,45 @@ def simulate(body: SimulateRequest) -> SimulateResponse:
         n_draws=body.n_draws,
         seed=body.seed,
     )
+
+
+# ----------------------------------------------------------------- import API
+# Patient-data import via Junction (wearable + bloodwork). The frontend keys a
+# per-browser `user_ref`; the Vital API key stays server-side in junction.py.
+
+
+@app.post("/import/link", response_model=LinkResponse)
+async def import_link(body: LinkRequest) -> LinkResponse:
+    """Create a Junction Link token + hosted URL to connect a wearable provider."""
+    if not body.user_ref:
+        raise HTTPException(status_code=400, detail="user_ref required")
+    try:
+        result = await junction.create_link_token(body.user_ref)
+    except Exception as exc:  # noqa: BLE001 - surface Junction failures as 502
+        raise HTTPException(status_code=502, detail=f"junction link failed: {exc}")
+    return LinkResponse(**result)
+
+
+@app.get("/import/profile", response_model=ProfileResponse)
+async def import_profile(user_ref: str) -> ProfileResponse:
+    """Poll target: once a provider is linked, return a patient patch from it."""
+    try:
+        patch = await junction.get_profile_and_body(user_ref)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"junction profile failed: {exc}")
+    if patch is None:
+        return ProfileResponse(connected=False)
+    return ProfileResponse(connected=True, patch=ProfilePatch(**patch))
+
+
+@app.get("/import/labs", response_model=ProfilePatch)
+async def import_labs(user_ref: str, order_id: str | None = None) -> ProfilePatch:
+    """Pull a lab order's biomarkers and map flags to conditions."""
+    try:
+        patch = await junction.get_lab_results(user_ref, order_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"junction labs failed: {exc}")
+    return ProfilePatch(**patch)
 
 
 # TODO(grader): POST /grade -> score a clinician transcript against get_evidence()
