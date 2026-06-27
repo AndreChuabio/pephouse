@@ -245,9 +245,11 @@ export default function Simulation2Page() {
         if (!profile) continue;
         const newSources = sourceNodesFor(profile);
         if (newSources.length === 0) continue;
+        // Sources slot between Demographics (or Compound) and the terminal
+        // pair: Drug Interactions if present, then Run, then end of chain.
+        const intIdx = next.findIndex((n) => n.type === "interactions");
         const runIdx = next.findIndex((n) => n.type === "run");
-        const demoIdx = next.findIndex((n) => n.type === "demographics");
-        const insertAt = demoIdx !== -1 ? demoIdx : runIdx !== -1 ? runIdx : next.length;
+        const insertAt = intIdx !== -1 ? intIdx : runIdx !== -1 ? runIdx : next.length;
         next = [...next.slice(0, insertAt), ...newSources, ...next.slice(insertAt)];
       }
 
@@ -255,15 +257,15 @@ export default function Simulation2Page() {
     });
   }, [compoundIds, profileBySlug]);
 
-  // Interactions node present iff >=2 compounds. The card body explains
-  // honestly whether anything was documented after the live lookup runs.
+  // Interactions node present iff >=2 compounds. Sits right before Run so
+  // the user reads it last (it's the warning, not an input).
   useEffect(() => {
     const wantsInteractions = compoundIds.length >= 2;
     setNodes((prev) => {
       const hasNode = prev.some((n) => n.type === "interactions");
       if (wantsInteractions && !hasNode) {
-        const compoundIdx = prev.findIndex((n) => n.type === "compound");
-        const insertAt = compoundIdx === -1 ? 0 : compoundIdx + 1;
+        const runIdx = prev.findIndex((n) => n.type === "run");
+        const insertAt = runIdx === -1 ? prev.length : runIdx;
         return [
           ...prev.slice(0, insertAt),
           { id: "interactions", type: "interactions" },

@@ -333,8 +333,8 @@ export function sourceNodesFor(compound: CompoundProfile): ChainNode[] {
 export function defaultChain(compound: CompoundProfile): ChainNode[] {
   return [
     { id: "compound", type: "compound" },
-    ...sourceNodesFor(compound),
     { id: "demographics", type: "demographics" },
+    ...sourceNodesFor(compound),
     { id: "run", type: "run" },
   ];
 }
