@@ -1,0 +1,12 @@
+**/.venv
+**/node_modules
+**/__pycache__
+*.pyc
+**/.env
+**/.env.*
+frontend/dist
+frontend/node_modules
+synthea/*.jar
+synthea-with-dependencies.jar
+.git
+**/.DS_Store

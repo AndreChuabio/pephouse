@@ -1,24 +1,29 @@
-"""Synthea AT REQUEST TIME: generate a patient-matched cohort live via Docker.
+"""Synthea AT REQUEST TIME: generate a patient-matched cohort live.
 
-The twin engine normally reads a pre-loaded cohort from synthetic_patients. With
-live_cohort=true, /simulate instead spins the synthea-local image (built per
-synthea/README.md) with age/sex filters, streams the CSV export out as a tar on
-stdout (no bind mounts -- macOS-safe), parses it in memory, and returns bodies in
-the SAME shape as synthetic_patients so the engine can use them interchangeably.
+Two execution modes, picked automatically:
+  * Hosted (container): SYNTHEA_CP points at an exploded Synthea jar -> run `java`
+    directly in this container. This is what makes live generation work on Railway.
+  * Local dev (your mac): no SYNTHEA_CP -> shell out to the `synthea-local` Docker
+    image and stream CSV out as a tar.
 
-Returns None on timeout / docker error so the caller can fall back to the
-pre-loaded cohort -- the endpoint degrades, it does not hang.
+Either way we parse the CSV to the SAME shape as the synthetic_patients table so the
+twin engine uses live and pre-loaded bodies interchangeably. Returns None on any
+failure/timeout so the caller falls back to the pre-loaded cohort -- it degrades,
+it never hangs.
 """
 
 from __future__ import annotations
 
 import csv
 import io
+import os
 import subprocess
 import tarfile
+import tempfile
 from datetime import date
 
-IMAGE = "synthea-local"
+SYNTHEA_CP = os.environ.get("SYNTHEA_CP")  # set in the deployed image (exploded jar dir)
+DOCKER_IMAGE = "synthea-local"
 
 # Synthea observation DESCRIPTION -> our baseline_labs keys (mirrors scripts/load_synthea.py)
 LAB_MAP = {
@@ -45,20 +50,7 @@ def _num(v: str | None) -> float | None:
         return None
 
 
-def _parse(tar_bytes: bytes) -> list[dict]:
-    """Extract patients/observations/conditions from the tar and map to body dicts."""
-    with tarfile.open(fileobj=io.BytesIO(tar_bytes)) as tf:
-        def rows(name: str) -> list[dict]:
-            member = next((m for m in tf.getmembers() if m.name.endswith(name)), None)
-            if member is None:
-                return []
-            handle = tf.extractfile(member)
-            return list(csv.DictReader(io.TextIOWrapper(handle, encoding="utf-8"))) if handle else []
-
-        patients = rows("patients.csv")
-        observations = rows("observations.csv")
-        conditions = rows("conditions.csv")
-
+def _map_bodies(patients: list[dict], observations: list[dict], conditions: list[dict]) -> list[dict]:
     labs: dict[str, dict] = {}
     for o in observations:
         key = LAB_MAP.get(o.get("DESCRIPTION", ""))
@@ -82,18 +74,43 @@ def _parse(tar_bytes: bytes) -> list[dict]:
     return bodies
 
 
-def generate_cohort(age: int, sex: str, n: int = 10, span: int = 5, timeout_s: int = 150) -> list[dict] | None:
-    """Run Synthea live for a cohort near (age, sex). None on failure/timeout."""
-    lo, hi = max(0, age - span), age + span
-    gender = "M" if str(sex).upper().startswith("M") else "F"
-    inner = (
-        f"mkdir -p /out && java -cp /app App -p {int(n)} -a {lo}-{hi} -g {gender} "
-        f"--exporter.csv.export true --exporter.baseDirectory /out Massachusetts "
-        f">/dev/null 2>&1; tar -C /out -cf - csv"
-    )
+def _synthea_args(lo: int, hi: int, gender: str, n: int, out_dir: str) -> list[str]:
+    return [
+        "-p", str(int(n)), "-a", f"{lo}-{hi}", "-g", gender,
+        "--exporter.csv.export", "true", "--exporter.baseDirectory", out_dir,
+        "Massachusetts",
+    ]
+
+
+def _run_java(lo: int, hi: int, gender: str, n: int, timeout_s: int) -> list[dict] | None:
+    """Hosted path: run Synthea via java -cp against the exploded jar dir."""
+    with tempfile.TemporaryDirectory() as out:
+        cmd = ["java", "-cp", SYNTHEA_CP, "App", *_synthea_args(lo, hi, gender, n, out)]
+        try:
+            subprocess.run(cmd, capture_output=True, timeout=timeout_s, check=False)
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            return None
+        csv_dir = os.path.join(out, "csv")
+        if not os.path.isdir(csv_dir):
+            return None
+
+        def rows(name: str) -> list[dict]:
+            path = os.path.join(csv_dir, name)
+            if not os.path.exists(path):
+                return []
+            with open(path, newline="") as fh:
+                return list(csv.DictReader(fh))
+
+        return _map_bodies(rows("patients.csv"), rows("observations.csv"), rows("conditions.csv"))
+
+
+def _run_docker(lo: int, hi: int, gender: str, n: int, timeout_s: int) -> list[dict] | None:
+    """Local-dev path: run the synthea-local image and stream CSV out as a tar."""
+    args = " ".join(_synthea_args(lo, hi, gender, n, "/out"))
+    inner = f"mkdir -p /out && java -cp /app App {args} >/dev/null 2>&1; tar -C /out -cf - csv"
     try:
         proc = subprocess.run(
-            ["docker", "run", "--rm", IMAGE, "bash", "-lc", inner],
+            ["docker", "run", "--rm", DOCKER_IMAGE, "bash", "-lc", inner],
             capture_output=True, timeout=timeout_s,
         )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
@@ -101,8 +118,26 @@ def generate_cohort(age: int, sex: str, n: int = 10, span: int = 5, timeout_s: i
     if proc.returncode != 0 or not proc.stdout:
         return None
     try:
-        bodies = _parse(proc.stdout)
+        with tarfile.open(fileobj=io.BytesIO(proc.stdout)) as tf:
+            def rows(name: str) -> list[dict]:
+                member = next((m for m in tf.getmembers() if m.name.endswith(name)), None)
+                if member is None:
+                    return []
+                handle = tf.extractfile(member)
+                return list(csv.DictReader(io.TextIOWrapper(handle, encoding="utf-8"))) if handle else []
+
+            return _map_bodies(rows("patients.csv"), rows("observations.csv"), rows("conditions.csv"))
     except (tarfile.TarError, KeyError, ValueError):
+        return None
+
+
+def generate_cohort(age: int, sex: str, n: int = 10, span: int = 5, timeout_s: int = 150) -> list[dict] | None:
+    """Run Synthea live for a cohort near (age, sex). None on failure/timeout."""
+    lo, hi = max(0, age - span), age + span
+    gender = "M" if str(sex).upper().startswith("M") else "F"
+    runner = _run_java if SYNTHEA_CP else _run_docker
+    bodies = runner(lo, hi, gender, n, timeout_s)
+    if not bodies:
         return None
     bodies = [b for b in bodies if b["age"] is not None]
     return bodies or None

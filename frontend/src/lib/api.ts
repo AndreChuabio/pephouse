@@ -1,7 +1,8 @@
 import type { SimulateRequest, SimulateResponse } from "../types/simulation";
 
-// Local dev + laptop demo default to the local backend; production sets VITE_API_URL.
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
+// Hosted backend (Railway) is the default so the deployed app works for everyone.
+// For local dev against your own backend, set VITE_API_URL=http://localhost:8001 in frontend/.env.local
+const API_BASE = import.meta.env.VITE_API_URL ?? "https://pephouse-backend-production.up.railway.app";
 
 export async function postSimulate(body: SimulateRequest): Promise<SimulateResponse> {
   const res = await fetch(`${API_BASE}/simulate`, {
