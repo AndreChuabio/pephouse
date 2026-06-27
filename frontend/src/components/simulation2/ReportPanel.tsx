@@ -29,8 +29,6 @@ function confidenceColor(level: SimulationSnapshot["confidenceLevel"]) {
 const SEVERITY_RANK: Record<string, number> = { major: 3, moderate: 2, minor: 1, unknown: 0 };
 
 function InteractionsCallout({ pairs }: { pairs: InteractionPair[] }) {
-  if (pairs.length === 0) return null;
-
   const documented = pairs.filter((p) => p.source_kind !== "no_data");
 
   if (documented.length === 0) {
