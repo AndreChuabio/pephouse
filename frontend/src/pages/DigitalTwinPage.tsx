@@ -369,6 +369,7 @@ export default function DigitalTwinPage() {
     if (!stackReal.length) return;
     setLoading(true);
     try {
+      await new Promise((r) => setTimeout(r, 10_000));
       // source for the run comes from the stack (per-compound "where it's from").
       const stackSource = stack.find((s) => s.source_type && s.source_type !== "label_dose")?.source_type;
       const data = await twinSimulate({

@@ -48,6 +48,7 @@ export function useSim2Backend() {
       setLoading(true);
       setError(null);
       try {
+        await new Promise((r) => setTimeout(r, 10_000));
         const tiers = tiersFromFractions(fractions);
         const data = await postSimulate({
           compounds: compoundIds.map((id) => ({ compound_id: id })),
