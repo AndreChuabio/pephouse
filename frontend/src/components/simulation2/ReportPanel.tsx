@@ -107,7 +107,7 @@ export function ReportPanel({
   draws,
   onDrawsChange,
 }: ReportPanelProps) {
-  // Elapsed-time loader: a fast Monte Carlo run flashes "Running…"; a live Synthea
+  // Elapsed-time loader: a fast cohort of synthetic patients flashes "Running…"; a live Synthea
   // cohort (~15-20s) crosses the threshold and shows the labelled progress bar.
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -211,7 +211,7 @@ export function ReportPanel({
             <p className="text-sm font-medium text-zinc-100">
               {liveCohort
                 ? `Generating live Synthea cohort… ${elapsed.toFixed(0)}s`
-                : `Running ${(draws ?? MONTE_CARLO_DRAWS).toLocaleString()} Monte Carlo simulations…`}
+                : `Running cohort of ${(draws ?? MONTE_CARLO_DRAWS).toLocaleString()} synthetic patients…`}
             </p>
             {liveCohort && (
               <>
@@ -368,7 +368,7 @@ export function ReportPanel({
                       ) : null}
                       {draws ? (
                         <p className="text-[10px] text-zinc-600">
-                          Projected from {draws.toLocaleString()} Monte Carlo simulations.
+                          Projected from cohort of {draws.toLocaleString()} synthetic patients.
                         </p>
                       ) : null}
                     </>

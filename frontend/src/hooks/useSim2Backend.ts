@@ -13,7 +13,7 @@ import type { ConfidenceLevel, LedgerLine, Sex, SimulationSnapshot } from "../da
 // tier2 = verified real-world/lab data (the source-quality axis), tier1 = anecdote.
 const TIER_MAP: Record<string, string> = { tier4: "trial", tier3: "trial", tier2: "quality", tier1: "anecdote" };
 
-// Monte Carlo sample count. These are statistical DRAWS (not patients) — numpy does
+// Synthetic-patient cohort sample count. These are statistical DRAWS (not patients) — numpy does
 // 100k in <1s, so it's an honest "100,000 simulations" number, distinct from the ~20
 // Synthea bodies (the cohort). Never conflate the two on stage.
 export const MONTE_CARLO_DRAWS = 100_000;
@@ -122,7 +122,7 @@ export function mergeBackendSnapshot(
     ? `No trial-backed distribution. Tiers: ${used.join(", ") || "none"}.`
     : headline.illustrative
       ? `Anecdote-only illustrative band (not a prediction). Tiers: ${used.join(", ")}.`
-      : `Monte Carlo over ${used.join(", ") || "trial"}; cohort n=${result.cohort_n}` +
+      : `Cohort of synthetic patients over ${used.join(", ") || "trial"}; cohort n=${result.cohort_n}` +
         (result.cohort_source === "synthea_live" ? ` (live Synthea ${result.cohort_gen_ms}ms).` : ".") +
         (nCompounds > 1 ? ` Stack of ${nCompounds} — weakest-link confidence.` : "");
 

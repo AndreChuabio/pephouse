@@ -125,7 +125,7 @@ export default function SimulationArenaPage() {
   const isLive = tiers.includes("synthetic");
   const loadingLabel = isLive
     ? `Generating patient-matched Synthea cohort live… ${elapsed.toFixed(0)}s (~15-20s)`
-    : "Running Monte Carlo…";
+    : "Running cohort of synthetic patients…";
   const loadingProgress = isLive ? Math.min(95, (elapsed / 20) * 100) : null;
 
   const handleRun = () => {
