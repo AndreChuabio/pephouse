@@ -22,6 +22,7 @@ type Detail = {
   sourcing: any[];
   sourcePriors: any[];
   labResults: any[];
+  vendors: any[];
 };
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -70,6 +71,8 @@ export default function DataExplorerPage() {
   const [selected, setSelected] = useState<Compound | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const toggle = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
 
   useEffect(() => {
     supabase
@@ -96,7 +99,8 @@ export default function DataExplorerPage() {
       supabase.from("sourcing").select("vendor_name,origin_country,notes,source_url").eq("compound_id", id),
       supabase.from("source_potency_priors").select("source_type,potency_mean,potency_sd,p_fail,p_contam,quantity_variance_p95,compound_id,basis").or(`compound_id.eq.${id},compound_id.is.null`),
       supabase.from("vendor_lab_results").select("vendor_name,purity_pct,label_mg,tested_mg,quantity_variance_pct,potency_factor,test_lab,failed").eq("compound_id", id),
-    ]).then(([p, cs, t, a, rp, s, sp, lr]) => {
+      supabase.from("vendors").select("*").order("reliability_score", { ascending: false }),
+    ]).then(([p, cs, t, a, rp, s, sp, lr, v]) => {
       // prefer compound-specific prior over the NULL default, per source_type
       const bySource: Record<string, any> = {};
       for (const row of (sp.data ?? [])) {
@@ -113,6 +117,7 @@ export default function DataExplorerPage() {
         sourcing: s.data ?? [],
         sourcePriors: order.map((k) => bySource[k]).filter(Boolean),
         labResults: lr.data ?? [],
+        vendors: v.data ?? [],
       });
       setLoading(false);
     });
@@ -238,18 +243,34 @@ export default function DataExplorerPage() {
                   <Section icon="solar:shield-warning-linear" title="Source Quality — delivered-dose variance" count={detail.sourcePriors.length}>
                     <p className="text-xs text-zinc-500 mb-3">delivered_dose = label &times; potency_factor. Where you source it shifts the curve.</p>
                     <div className="space-y-1.5">
-                      {detail.sourcePriors.map((sp, i) => (
-                        <div key={i} className="flex items-center justify-between text-sm bg-zinc-950/50 rounded px-3 py-2">
-                          <span className="flex items-center gap-2">
-                            <Badge tone={SOURCE_TONE[sp.source_type] ?? "zinc"}>{SOURCE_LABEL[sp.source_type] ?? sp.source_type}</Badge>
-                          </span>
-                          <span className="font-mono text-xs text-zinc-400">
-                            potency {sp.potency_mean}&plusmn;{sp.potency_sd}
-                            {sp.p_fail > 0 && <span className="text-orange-400"> &middot; {Math.round(sp.p_fail * 100)}% dud</span>}
-                            {sp.p_contam > 0 && <span className="text-red-400"> &middot; {Math.round(sp.p_contam * 100)}% contam</span>}
-                          </span>
-                        </div>
-                      ))}
+                      {detail.sourcePriors.map((sp, i) => {
+                        const k = `sp-${i}`;
+                        return (
+                          <div key={k} className="bg-zinc-950/50 rounded">
+                            <button type="button" onClick={() => toggle(k)} className="w-full flex items-center justify-between text-sm px-3 py-2 hover:bg-zinc-900/60 rounded">
+                              <span className="flex items-center gap-2">
+                                <Icon icon={open[k] ? "solar:alt-arrow-down-linear" : "solar:alt-arrow-right-linear"} className="text-zinc-600 text-xs" />
+                                <Badge tone={SOURCE_TONE[sp.source_type] ?? "zinc"}>{SOURCE_LABEL[sp.source_type] ?? sp.source_type}</Badge>
+                              </span>
+                              <span className="font-mono text-xs text-zinc-400">
+                                potency {sp.potency_mean}&plusmn;{sp.potency_sd}
+                                {sp.p_fail > 0 && <span className="text-orange-400"> &middot; {Math.round(sp.p_fail * 100)}% dud</span>}
+                                {sp.p_contam > 0 && <span className="text-red-400"> &middot; {Math.round(sp.p_contam * 100)}% contam</span>}
+                              </span>
+                            </button>
+                            {open[k] && (
+                              <div className="px-9 pb-3 pt-1 text-xs text-zinc-500 space-y-1">
+                                <p>Delivered-dose model: <span className="text-zinc-300 font-mono">label &times; {sp.potency_mean}&plusmn;{sp.potency_sd}</span>, with a {Math.round((sp.p_fail || 0) * 100)}% chance of a near-inert "dud" lot{sp.p_contam > 0 ? ` and ${Math.round(sp.p_contam * 100)}% contamination risk` : ""}.</p>
+                                {sp.quantity_variance_p95 != null && <p>Quantity divergence (95th pct): <span className="text-zinc-300 font-mono">&plusmn;{Math.round(sp.quantity_variance_p95 * 100)}%</span>{sp.n_samples ? ` across ${sp.n_samples} tested samples` : ""}.</p>}
+                                <p className="flex items-center gap-2">
+                                  <Badge tone={sp.basis === "verified" ? "green" : "zinc"}>{sp.basis === "verified" ? "verified" : "estimate"}</Badge>
+                                  <span className="text-zinc-600">{(sp.source_refs || []).find((r: string) => r.startsWith("http")) ? <a className="hover:text-blue-400" href={(sp.source_refs || []).find((r: string) => r.startsWith("http"))} target="_blank" rel="noreferrer">source &rarr;</a> : (sp.source_refs || [])[0]}</span>
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                     {detail.labResults.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-zinc-800/50">
@@ -265,6 +286,46 @@ export default function DataExplorerPage() {
                         ))}
                       </div>
                     )}
+                  </Section>
+
+                  <Section icon="solar:shop-2-linear" title="Vendors & Sellers" count={detail.vendors.length}>
+                    <div className="space-y-1.5">
+                      {detail.vendors.map((v) => {
+                        const k = `v-${v.id}`;
+                        const labs = detail.labResults.filter((lr) => lr.vendor_name === v.name);
+                        return (
+                          <div key={k} className="bg-zinc-950/50 rounded">
+                            <button type="button" onClick={() => toggle(k)} className="w-full flex items-center justify-between text-sm px-3 py-2 hover:bg-zinc-900/60 rounded">
+                              <span className="flex items-center gap-2">
+                                <Icon icon={open[k] ? "solar:alt-arrow-down-linear" : "solar:alt-arrow-right-linear"} className="text-zinc-600 text-xs" />
+                                <span className="text-zinc-200">{v.name}</span>
+                                <Badge tone={SOURCE_TONE[v.source_type] ?? "zinc"}>{SOURCE_LABEL[v.source_type] ?? v.source_type}</Badge>
+                              </span>
+                              <span className="font-mono text-xs text-zinc-500">
+                                {v.finnrick_rating ? `rated ${v.finnrick_rating} · ` : ""}reliability {v.reliability_score}
+                              </span>
+                            </button>
+                            {open[k] && (
+                              <div className="px-9 pb-3 pt-1 text-xs text-zinc-400 space-y-1.5">
+                                {v.manufacturer && <p>Manufacturer: <span className="text-zinc-300">{v.manufacturer}</span></p>}
+                                <p>Origin: <span className="text-zinc-300">{v.country}</span> &middot; cost ~{v.cost_multiple_vs_gray}x gray-market</p>
+                                <p className="flex flex-wrap gap-1.5">
+                                  {v.third_party_tested && <Badge tone="green">3rd-party tested</Badge>}
+                                  {v.gmp_certified && <Badge tone="green">GMP</Badge>}
+                                  {v.fda_green_list && <Badge tone="green">FDA Green List</Badge>}
+                                  {v.fda_dmf && <Badge tone="green">FDA DMF {v.fda_dmf}</Badge>}
+                                </p>
+                                {v.notes && <p className="text-zinc-500">{v.notes}</p>}
+                                {labs.map((lr, j) => (
+                                  <p key={j} className="font-mono text-emerald-400">measured {selected.name}: {lr.purity_pct}% pure, {lr.tested_mg}/{lr.label_mg}mg &rarr; {lr.potency_factor}&times;</p>
+                                ))}
+                                {v.source_url && <a className="text-blue-400 hover:underline" href={v.source_url} target="_blank" rel="noreferrer">source &rarr;</a>}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </Section>
 
                   <Section icon="solar:map-point-linear" title="Sourcing" count={detail.sourcing.length}>
