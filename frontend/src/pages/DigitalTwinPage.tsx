@@ -425,8 +425,8 @@ export default function DigitalTwinPage() {
       </div>
       <div className="flex flex-row w-full flex-1 overflow-hidden">
         {/* LEFT — inputs + simulation controls */}
-        <div className="w-64 flex-shrink-0 border-r border-zinc-800/60 flex flex-col h-full overflow-y-auto">
-          <div className="p-3 flex flex-col gap-3">
+        <div className="w-[420px] flex-shrink-0 border-r border-zinc-800/60 flex flex-col bg-[#121214] h-full overflow-y-auto">
+          <div className="p-4 flex flex-col gap-4">
             {/* Base Demographic (editable, explicit Save) */}
             <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-lg p-4 flex flex-col gap-3">
               <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-widest flex items-center gap-2">
