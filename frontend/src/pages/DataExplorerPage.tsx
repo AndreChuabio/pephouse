@@ -77,17 +77,20 @@ export default function DataExplorerPage() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const toggle = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
   const [refreshKey, setRefreshKey] = useState(0);
-  const [genState, setGenState] = useState<"idle" | "loading" | "error">("idle");
+  const [genState, setGenState] = useState<"idle" | "loading">("idle");
+  const [genError, setGenError] = useState<string | null>(null);
 
   const handleGenerateModule = async () => {
     if (!selected) return;
     setGenState("loading");
+    setGenError(null);
     try {
       await postGenerateModule(selected.id);
-      setGenState("idle");
       setRefreshKey((k) => k + 1);
-    } catch {
-      setGenState("error");
+    } catch (e) {
+      setGenError(e instanceof Error ? e.message : "Generation failed");
+    } finally {
+      setGenState("idle");
     }
   };
 
@@ -106,6 +109,7 @@ export default function DataExplorerPage() {
   useEffect(() => {
     if (!selected) return;
     setLoading(true);
+    setGenError(null);
     const id = selected.id;
     Promise.all([
       supabase.from("outcome_priors").select("outcome_name,effect_mean,effect_sd,unit,population_n,source_nct,dispersion_basis").eq("compound_id", id),
@@ -242,8 +246,9 @@ export default function DataExplorerPage() {
                       <button
                         type="button"
                         onClick={handleGenerateModule}
-                        disabled={genState === "loading"}
-                        className="text-[10px] normal-case px-2.5 py-1 rounded border border-blue-500/40 text-blue-300 hover:bg-blue-500/10 disabled:opacity-50"
+                        disabled={genState === "loading" || detail.priors.length === 0}
+                        title={detail.priors.length === 0 ? "No trial priors to build a module from" : undefined}
+                        className="text-[10px] normal-case px-2.5 py-1 rounded border border-blue-500/40 text-blue-300 hover:bg-blue-500/10 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {genState === "loading" ? "Generating…" : "Generate module"}
                       </button>
@@ -251,11 +256,15 @@ export default function DataExplorerPage() {
                     <p className="text-xs text-zinc-500 mb-2">
                       Generic Modules built from this compound&apos;s priors; the newest is loaded into live cohort generation.
                     </p>
-                    {genState === "error" && (
-                      <p className="text-xs text-orange-400 mb-2">Generation failed &mdash; is the backend reachable?</p>
-                    )}
+                    {detail.priors.length === 0 ? (
+                      <p className="text-xs text-amber-500/80 mb-2">Anecdote-only compound &mdash; no trial priors, so there is no module to build.</p>
+                    ) : genError ? (
+                      <p className="text-xs text-orange-400 mb-2">{genError}</p>
+                    ) : null}
                     {detail.modules.length === 0 ? (
-                      <p className="text-xs text-zinc-600">No modules yet &mdash; click Generate to build one from the priors.</p>
+                      detail.priors.length > 0 ? (
+                        <p className="text-xs text-zinc-600">No modules yet &mdash; click Generate to build one from the priors.</p>
+                      ) : null
                     ) : (
                       <div className="space-y-1.5">
                         {detail.modules.map((m) => (

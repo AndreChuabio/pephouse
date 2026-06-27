@@ -26,8 +26,14 @@ export type GenerateModuleResult = {
 export async function postGenerateModule(compoundId: number): Promise<GenerateModuleResult> {
   const res = await fetch(`${API_BASE}/compounds/${compoundId}/module`, { method: "POST" });
   if (!res.ok) {
-    const detail = await res.text();
-    throw new Error(detail || `module generation failed (${res.status})`);
+    let detail = `module generation failed (${res.status})`;
+    try {
+      const body = (await res.json()) as { detail?: string };
+      if (body?.detail) detail = body.detail;
+    } catch {
+      // non-JSON error body; keep the default
+    }
+    throw new Error(detail);
   }
   return res.json() as Promise<GenerateModuleResult>;
 }
