@@ -1,12 +1,44 @@
-// Digital-twin body — a holographic anatomical figure: a glowing blue body with
-// a wireframe mesh, internal organ glow (lungs/heart warm, abdomen soft), and a
-// base platform. A cleaned-up, calmer take on the reference x-ray render.
+// Digital-twin body. Prefers a real anatomical render dropped at
+// public/twin-body.png — its dark background is removed for free via
+// mix-blend-mode:screen on the dark dashboard. Falls back to the holographic
+// SVG figure when the image isn't present.
+
+import { useState } from "react";
 
 type BodyVisualizationProps = {
   active: boolean; // true once real data is linked → the twin lights up
 };
 
 export function BodyVisualization({ active }: BodyVisualizationProps) {
+  const [imageOk, setImageOk] = useState(true);
+
+  if (imageOk) {
+    return (
+      <div className="relative w-full max-w-sm mx-auto h-[600px] flex items-center justify-center">
+        <img
+          src="/twin-body.png"
+          alt="Digital twin body"
+          onError={() => setImageOk(false)}
+          className="h-[600px] w-auto object-contain relative z-10 transition-all duration-700"
+          style={{
+            mixBlendMode: "screen", // drops the image's black background
+            filter: active ? "drop-shadow(0 0 14px rgba(56,189,248,0.5))" : "grayscale(0.7) brightness(0.55)",
+            opacity: active ? 1 : 0.6,
+          }}
+        />
+        {/* base platform */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-[300px] h-16 pointer-events-none">
+          <div className="absolute inset-0 rounded-[100%] border border-sky-500/40" style={{ transform: "rotateX(73deg)", boxShadow: active ? "0 0 34px rgba(56,189,248,0.4)" : "none" }} />
+          <div className="absolute inset-x-12 inset-y-3 rounded-[100%] border border-blue-400/50" style={{ transform: "rotateX(73deg)" }} />
+          <div className={`absolute inset-x-24 inset-y-5 rounded-[100%] ${active ? "bg-sky-500/25" : "bg-zinc-700/10"}`} style={{ transform: "rotateX(73deg)" }} />
+        </div>
+        {active && (
+          <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-44 h-80 bg-gradient-to-t from-sky-400/15 via-sky-500/5 to-transparent blur-2xl rounded-[100%] pointer-events-none" />
+        )}
+      </div>
+    );
+  }
+
   const line = active ? "#38bdf8" : "#3f3f46";
   const fill = active ? "#0ea5e9" : "#27272a";
 
