@@ -37,3 +37,49 @@ export async function postGenerateModule(compoundId: number): Promise<GenerateMo
   }
   return res.json() as Promise<GenerateModuleResult>;
 }
+
+export type RegistryCompound = {
+  id: number;
+  name: string;
+  aliases?: string[];
+  drug_class?: string | null;
+  fda_status?: string | null;
+  approved?: boolean;
+  summary?: string | null;
+};
+
+export async function fetchCompounds(): Promise<RegistryCompound[]> {
+  const res = await fetch(`${API_BASE}/compounds`);
+  if (!res.ok) throw new Error(`compounds failed (${res.status})`);
+  return res.json() as Promise<RegistryCompound[]>;
+}
+
+export type EvidenceSourceRow = {
+  id: string;
+  label: string;
+  data_tier: string;
+  display_tier: number;
+  count: number;
+  available: boolean;
+};
+
+export type SimulationDataResponse = {
+  compound_id: number;
+  name: string;
+  drug_class: string | null;
+  fda_status: string | null;
+  approved: boolean;
+  summary: string | null;
+  evidence_sources: EvidenceSourceRow[];
+  outcome_names: string[];
+  studied_age_min: number | null;
+  studied_age_max: number | null;
+  cohort_total: number;
+  tables: Record<string, Array<Record<string, unknown>>>;
+};
+
+export async function fetchCompoundData(compoundId: number): Promise<SimulationDataResponse> {
+  const res = await fetch(`${API_BASE}/compounds/${compoundId}/data`);
+  if (!res.ok) throw new Error(`compound data failed (${res.status})`);
+  return res.json() as Promise<SimulationDataResponse>;
+}

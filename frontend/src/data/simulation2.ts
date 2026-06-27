@@ -66,48 +66,10 @@ export const COMPOUND_PROFILES: Record<string, CompoundProfile> = {
     primaryCohortMax: 45,
     baseProfileScore: 80,
     evidenceSources: [
-      {
-        id: "tier4",
-        label: "Clinical RCTs (Published)",
-        tier: 4,
-        defaultEnabled: false,
-        summary: "No published Phase II/III human RCT for BPC-157 to date.",
-        studies: [
-          { title: "No registered Phase II/III RCT", meta: "ClinicalTrials.gov · null" },
-          { title: "Phase I oral pilot (Croatia)", meta: "N=12 · 2018 · unpublished" },
-        ],
-      },
-      {
-        id: "tier3",
-        label: "Observational Cohorts",
-        tier: 3,
-        defaultEnabled: false,
-        summary: "Sparse — no published large-cohort observational data.",
-        studies: [{ title: "No cohort registry data matched", meta: "—" }],
-      },
-      {
-        id: "tier2",
-        label: "In-vivo Animal Studies",
-        tier: 2,
-        defaultEnabled: true,
-        summary: "Rodent tendon, ligament, and GI healing models — the bulk of mechanistic evidence.",
-        studies: [
-          { title: "Sikiric et al. — rat Achilles tendon transection", meta: "N=40 · 2010" },
-          { title: "Chang et al. — rat MCL injury model", meta: "N=24 · 2014" },
-          { title: "Vukojević et al. — rat colocutaneous fistula", meta: "N=30 · 2018" },
-        ],
-      },
-      {
-        id: "tier1",
-        label: "Anecdotal / Forums",
-        tier: 1,
-        defaultEnabled: true,
-        summary: "Reddit r/Peptides and forums — self-reported recovery and adverse effects.",
-        studies: [
-          { title: "r/Peptides — tendinopathy threads", meta: "~120 self-reports" },
-          { title: "r/Peptides — GI adverse events", meta: "~37 self-reports" },
-        ],
-      },
+      { id: "tier4", label: "Clinical RCTs (Published)", tier: 4, defaultEnabled: true },
+      { id: "tier3", label: "Observational / Papers", tier: 3, defaultEnabled: true },
+      { id: "tier2", label: "Verified Real-world / Lab Data", tier: 2, defaultEnabled: false },
+      { id: "tier1", label: "Anecdotal / Forums", tier: 1, defaultEnabled: true },
     ],
     benefits: [
       { label: "Tendon / joint pain relief", percent: 54, probabilityLabel: "High Prob." },
@@ -156,51 +118,10 @@ export const COMPOUND_PROFILES: Record<string, CompoundProfile> = {
     primaryCohortMax: 65,
     baseProfileScore: 86,
     evidenceSources: [
-      {
-        id: "tier4",
-        label: "Clinical RCTs (Published)",
-        tier: 4,
-        defaultEnabled: true,
-        summary: "STEP and SUSTAIN programs — large pivotal RCTs supporting weight and glycemic indications.",
-        studies: [
-          { title: "STEP 1 — Wilding et al., NEJM 2021", meta: "N=1,961 · 68 wks · −14.9% weight" },
-          { title: "STEP 4 — Rubino et al., JAMA 2021", meta: "N=803 · maintenance" },
-          { title: "SUSTAIN-6 — Marso et al., NEJM 2016", meta: "N=3,297 · CV outcomes" },
-        ],
-      },
-      {
-        id: "tier3",
-        label: "Observational Cohorts",
-        tier: 3,
-        defaultEnabled: true,
-        summary: "Post-marketing registries and EHR-based cohort analyses across multiple health systems.",
-        studies: [
-          { title: "Epic Cosmos cohort — semaglutide weight outcomes", meta: "N≈45k" },
-          { title: "VA / Optum claims — adherence + outcomes", meta: "N≈22k" },
-        ],
-      },
-      {
-        id: "tier2",
-        label: "Verified Real-world Data",
-        tier: 2,
-        defaultEnabled: true,
-        summary: "Telehealth and specialty-clinic real-world cohorts with verified prescriptions.",
-        studies: [
-          { title: "Calibrate 12-mo cohort", meta: "N≈1,300" },
-          { title: "Found Health 6-mo cohort", meta: "N≈800" },
-        ],
-      },
-      {
-        id: "tier1",
-        label: "Anecdotal / Forums",
-        tier: 1,
-        defaultEnabled: false,
-        summary: "Reddit r/Semaglutide and r/Ozempic — dosing, side-effect timelines, plateau reports.",
-        studies: [
-          { title: "r/Semaglutide — side-effect threads", meta: "~3.2k posts" },
-          { title: "r/Ozempic — plateau / titration", meta: "~1.8k posts" },
-        ],
-      },
+      { id: "tier4", label: "Clinical RCTs (Published)", tier: 4, defaultEnabled: true },
+      { id: "tier3", label: "Observational / Papers", tier: 3, defaultEnabled: true },
+      { id: "tier2", label: "Verified Real-world / Lab Data", tier: 2, defaultEnabled: true },
+      { id: "tier1", label: "Anecdotal / Forums", tier: 1, defaultEnabled: false },
     ],
     benefits: [
       { label: "Meaningful weight loss", percent: 86, probabilityLabel: "High Prob." },

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@iconify/react";
 import {
-  COMPOUND_LIST,
   PENALTIES,
   sourceTier,
   studyKey,
@@ -10,6 +9,7 @@ import {
   type CompoundProfile,
   type Sex,
   type SimulationSnapshot,
+  type StudyRef,
 } from "../../data/simulation2";
 import { cn } from "../../lib/cn";
 import { TierBadge } from "./Sim2Primitives";
@@ -62,6 +62,7 @@ type BuilderCanvasProps = {
   onMoveNode: (id: string, direction: -1 | 1) => void;
   onRun: () => void;
   compounds: CompoundProfile[];
+  compoundList: CompoundProfile[];
   primaryCompound: CompoundProfile;
   compoundIds: string[];
   onToggleCompound: (id: string) => void;
@@ -79,6 +80,8 @@ type BuilderCanvasProps = {
   excludedStudies: Record<string, boolean>;
   onToggleStudy: (compoundId: string, tier: 1 | 2 | 3 | 4, title: string) => void;
   sourceFractions: Record<string, number>;
+  studiesByCompoundTier: Record<string, StudyRef[]>;
+  studiesLoadingByCompound: Record<string, boolean>;
 };
 
 function nodeContribution(
@@ -202,7 +205,7 @@ function NodeShell({
             <div className="w-5 h-5 rounded border border-zinc-800 flex items-center justify-center bg-zinc-900 shrink-0">
               <Icon icon={icon} className="text-zinc-400 text-xs" />
             </div>
-            <h2 className="text-sm font-medium tracking-tight text-zinc-100 truncate">{title}</h2>
+            <h2 className="text-sm font-medium tracking-tight text-zinc-100 leading-tight line-clamp-2">{title}</h2>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {collapsible && (
@@ -219,7 +222,7 @@ function NodeShell({
               </button>
             )}
             {hasControls && (
-              <div className="hidden group-hover:flex items-center gap-0.5">
+              <div className="flex items-center gap-0.5 invisible group-hover:visible">
                 {canMoveUp && (
                   <button
                     type="button"
@@ -271,6 +274,7 @@ function NodeShell({
 
 type CompoundBodyProps = {
   compoundIds: string[];
+  compoundList: CompoundProfile[];
   searchQuery: string;
   onSearchQueryChange: (q: string) => void;
   onToggleCompound: (id: string) => void;
@@ -279,6 +283,7 @@ type CompoundBodyProps = {
 
 function CompoundBody({
   compoundIds,
+  compoundList,
   searchQuery,
   onSearchQueryChange,
   onToggleCompound,
@@ -307,10 +312,9 @@ function CompoundBody({
       <div className="text-[10px] uppercase tracking-widest text-zinc-500 pb-0.5">
         {compoundIds.length} in scope · click to add or remove
       </div>
-      <div className="space-y-1">
-        {COMPOUND_LIST.map((c) => {
+      <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+        {compoundList.map((c) => {
           const selected = compoundIds.includes(c.id);
-          const isPrimary = compoundIds[0] === c.id;
           const index = compoundIndexById[c.id] ?? 0;
           const accentText = compoundAccent(index).split(" ")[3];
           return (
@@ -340,15 +344,8 @@ function CompoundBody({
                 )}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1.5 flex-wrap">
-                  <span className={cn("text-xs font-medium", selected ? accentText : "text-zinc-300")}>
-                    {c.name}
-                  </span>
-                  {isPrimary && (
-                    <span className="text-[9px] uppercase tracking-widest text-emerald-400/80">
-                      primary
-                    </span>
-                  )}
+                <span className={cn("text-xs font-medium block", selected ? accentText : "text-zinc-300")}>
+                  {c.name}
                 </span>
                 <span className="text-[11px] text-zinc-500 block leading-tight mt-0.5">
                   {c.subtitle}
@@ -365,13 +362,21 @@ function CompoundBody({
 type SourceBodyProps = {
   tier: 1 | 2 | 3 | 4;
   compound: CompoundProfile;
+  studies: StudyRef[];
+  studiesLoading?: boolean;
   excludedStudies: Record<string, boolean>;
   onToggleStudy: (compoundId: string, tier: 1 | 2 | 3 | 4, title: string) => void;
 };
 
-function SourceBody({ tier, compound, excludedStudies, onToggleStudy }: SourceBodyProps) {
+function SourceBody({
+  tier,
+  compound,
+  studies,
+  studiesLoading,
+  excludedStudies,
+  onToggleStudy,
+}: SourceBodyProps) {
   const source = compound.evidenceSources.find((s) => s.tier === tier);
-  const studies = source?.studies ?? [];
   const includedCount = studies.filter(
     (s) => !excludedStudies[studyKey(compound.id, tier, s.title)],
   ).length;
@@ -436,6 +441,11 @@ function SourceBody({ tier, compound, excludedStudies, onToggleStudy }: SourceBo
             })}
           </ul>
         </div>
+      )}
+      {studies.length === 0 && (
+        <p className="text-[11px] text-zinc-600 italic pt-1">
+          {studiesLoading ? "Loading studies…" : "No registry rows for this tier yet."}
+        </p>
       )}
     </div>
   );
@@ -665,6 +675,7 @@ export function BuilderCanvas({
   onMoveNode,
   onRun,
   compounds,
+  compoundList,
   primaryCompound,
   compoundIds,
   onToggleCompound,
@@ -682,6 +693,8 @@ export function BuilderCanvas({
   excludedStudies,
   onToggleStudy,
   sourceFractions,
+  studiesByCompoundTier,
+  studiesLoadingByCompound,
 }: BuilderCanvasProps) {
   const runIdx = nodes.findIndex((n) => n.type === "run");
   const lastMovableIdx = runIdx === -1 ? nodes.length - 1 : runIdx - 1;
@@ -704,6 +717,8 @@ export function BuilderCanvas({
         const type = `source-tier-${tier}` as ChainNodeType;
         const id = `${type}-${c.id}`;
         if (present.has(id)) continue;
+        const studies = studiesByCompoundTier[`${c.id}::tier-${tier}`];
+        if (!studies || studies.length === 0) continue;
         const sourceLabel = c.evidenceSources.find((s) => s.tier === tier)?.label ?? `Tier ${tier}`;
         opts.push({
           key: id,
@@ -721,7 +736,7 @@ export function BuilderCanvas({
       opts.push({ key: "run", type: "run", label: "Run (terminal)", group: "Chain" });
     }
     return opts;
-  }, [nodes, compounds]);
+  }, [nodes, compounds, studiesByCompoundTier]);
 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggleCollapsed = (id: string) =>
@@ -795,6 +810,7 @@ export function BuilderCanvas({
               >
                 <CompoundBody
                   compoundIds={compoundIds}
+                  compoundList={compoundList}
                   searchQuery={searchQuery}
                   onSearchQueryChange={onSearchQueryChange}
                   onToggleCompound={onToggleCompound}
@@ -841,6 +857,8 @@ export function BuilderCanvas({
                 <SourceBody
                   tier={tier}
                   compound={nodeCompound}
+                  studies={studiesByCompoundTier[`${nodeCompound.id}::tier-${tier}`] ?? []}
+                  studiesLoading={studiesLoadingByCompound[nodeCompound.id] === true}
                   excludedStudies={excludedStudies}
                   onToggleStudy={onToggleStudy}
                 />
@@ -909,12 +927,6 @@ export function BuilderCanvas({
         })}
 
         <PaletteButton options={paletteOptions} onAddNode={onAddNode} />
-
-        {!nodes.some((n) => sourceTier(n.type)) && (
-          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-[11px] text-amber-500 bg-amber-500/5 border border-amber-500/20 rounded-md px-3 py-1.5">
-            No evidence sources in chain — confidence will collapse.
-          </div>
-        )}
       </div>
     </div>
   );

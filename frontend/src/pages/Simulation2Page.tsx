@@ -11,13 +11,19 @@ import {
   FIXED_NODE_TYPES,
   sourceFractionsFor,
   sourceNodesFor,
+  sourceTier,
   studyKey,
   type ChainNode,
   type ChainNodeType,
   type CompoundProfile,
   type Sex,
 } from "../data/simulation2";
+import { studiesFromBundle } from "../data/registryStudies";
+import { synthesizeProfile } from "../data/synthesizeProfile";
+import { useCompoundData } from "../hooks/useCompoundData";
+import { useCompoundRegistry } from "../hooks/useCompoundRegistry";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import type { StudyRef } from "../data/simulation2";
 
 const INITIAL_COMPOUND_ID = "bpc-157";
 
@@ -34,39 +40,46 @@ export default function Simulation2Page() {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(true);
 
+  const registry = useCompoundRegistry();
+  const { bundles, loading: bundleLoading, errors: bundleErrors } = useCompoundData(
+    compoundIds,
+    registry,
+  );
+
+  const profileBySlug = useMemo(() => {
+    const out: Record<string, CompoundProfile> = { ...COMPOUND_PROFILES };
+    for (const [slug, entry] of Object.entries(registry.bySlug)) {
+      if (out[slug]) continue;
+      out[slug] = synthesizeProfile(entry, bundles[slug]);
+    }
+    return out;
+  }, [registry.bySlug, bundles]);
+
+  const compoundList = useMemo(
+    () => Object.values(profileBySlug).sort((a, b) => a.name.localeCompare(b.name)),
+    [profileBySlug],
+  );
+
   const compounds = useMemo(
     () =>
       compoundIds
-        .map((id) => COMPOUND_PROFILES[id])
+        .map((id) => profileBySlug[id])
         .filter((c): c is CompoundProfile => Boolean(c)),
-    [compoundIds],
+    [compoundIds, profileBySlug],
   );
-  const primaryCompound = compounds[0] ?? COMPOUND_PROFILES[INITIAL_COMPOUND_ID];
+  const primaryCompound = compounds[0] ?? profileBySlug[INITIAL_COMPOUND_ID];
   const extraCompounds = compounds.slice(1);
 
   const [nodes, setNodes] = useState<ChainNode[]>(() =>
     defaultChain(COMPOUND_PROFILES[INITIAL_COMPOUND_ID]),
   );
 
-  const toggleCompound = useCallback((id: string) => {
-    setCompoundIds((prev) => {
-      if (prev.includes(id)) {
-        const next = prev.filter((c) => c !== id);
-        setNodes((n) => n.filter((node) => node.compoundId !== id));
-        return next;
-      }
-      const compound = COMPOUND_PROFILES[id];
-      if (!compound) return prev;
-      setNodes((n) => {
-        const runIdx = n.findIndex((node) => node.type === "run");
-        const demoIdx = n.findIndex((node) => node.type === "demographics");
-        const insertAt = demoIdx !== -1 ? demoIdx : runIdx !== -1 ? runIdx : n.length;
-        const newSourceNodes = sourceNodesFor(compound);
-        return [...n.slice(0, insertAt), ...newSourceNodes, ...n.slice(insertAt)];
-      });
-      return [...prev, id];
-    });
-  }, []);
+  const toggleCompound = useCallback(
+    (id: string) => {
+      setCompoundIds((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
+    },
+    [],
+  );
 
   const [excludedStudies, setExcludedStudies] = useState<Record<string, boolean>>({});
 
@@ -136,10 +149,67 @@ export default function Simulation2Page() {
     setHasRun(true);
   };
 
+  const studiesByCompoundTier = useMemo(() => {
+    const out: Record<string, StudyRef[]> = {};
+    for (const c of compounds) {
+      const bundle = bundles[c.id];
+      for (const tier of [1, 2, 3, 4] as const) {
+        out[`${c.id}::tier-${tier}`] = studiesFromBundle(bundle, tier);
+      }
+    }
+    return out;
+  }, [compounds, bundles]);
+
+  const studiesLoadingByCompound = useMemo(() => {
+    const out: Record<string, boolean> = {};
+    for (const id of compoundIds) {
+      out[id] = !registry.loaded || (!bundles[id] && !bundleErrors[id]);
+    }
+    return out;
+  }, [compoundIds, bundles, bundleErrors, bundleLoading, registry.loaded]);
+
+  if (registry.error) console.warn("[Sim2] registry failed:", registry.error);
+  for (const id of compoundIds) {
+    if (bundleErrors[id]) console.warn(`[Sim2] bundle for ${id} failed:`, bundleErrors[id]);
+  }
+
+  useEffect(() => {
+    setNodes((prev) => {
+      const next = prev.filter((node) => {
+        const tier = sourceTier(node.type);
+        if (!tier || !node.compoundId) return true;
+        const bundle = bundles[node.compoundId];
+        if (!bundle) return true;
+        return studiesFromBundle(bundle, tier).length > 0;
+      });
+      // Same-length guard prevents an infinite loop now that nodes is in deps.
+      return next.length === prev.length ? prev : next;
+    });
+  }, [bundles, nodes]);
+
+  useEffect(() => {
+    setNodes((prev) => {
+      let next = prev.filter((n) => !n.compoundId || compoundIds.includes(n.compoundId));
+      for (const id of compoundIds) {
+        const hasSourceNodes = next.some((n) => n.compoundId === id && sourceTier(n.type));
+        if (hasSourceNodes) continue;
+        const profile = profileBySlug[id];
+        if (!profile) continue;
+        const newSources = sourceNodesFor(profile);
+        if (newSources.length === 0) continue;
+        const runIdx = next.findIndex((n) => n.type === "run");
+        const demoIdx = next.findIndex((n) => n.type === "demographics");
+        const insertAt = demoIdx !== -1 ? demoIdx : runIdx !== -1 ? runIdx : next.length;
+        next = [...next.slice(0, insertAt), ...newSources, ...next.slice(insertAt)];
+      }
+      return next.length === prev.length && next.every((n, i) => n === prev[i]) ? prev : next;
+    });
+  }, [compoundIds, profileBySlug]);
+
   useEffect(() => {
     if (!searchQuery.trim()) return;
     const q = searchQuery.trim().toLowerCase();
-    const match = Object.values(COMPOUND_PROFILES).find(
+    const match = compoundList.find(
       (c) =>
         c.id === q ||
         c.name.toLowerCase().includes(q) ||
@@ -149,7 +219,7 @@ export default function Simulation2Page() {
       toggleCompound(match.id);
       setSearchQuery("");
     }
-  }, [searchQuery, compoundIds, toggleCompound]);
+  }, [searchQuery, compoundIds, compoundList, toggleCompound]);
 
   return (
     <AppShell>
@@ -163,6 +233,7 @@ export default function Simulation2Page() {
           onMoveNode={moveNode}
           onRun={handleRun}
           compounds={compounds}
+          compoundList={compoundList}
           primaryCompound={primaryCompound}
           compoundIds={compoundIds}
           onToggleCompound={toggleCompound}
@@ -180,6 +251,8 @@ export default function Simulation2Page() {
           excludedStudies={excludedStudies}
           onToggleStudy={toggleStudy}
           sourceFractions={sourceFractions}
+          studiesByCompoundTier={studiesByCompoundTier}
+          studiesLoadingByCompound={studiesLoadingByCompound}
         />
 
         <ReportPanel
