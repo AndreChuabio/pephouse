@@ -377,6 +377,106 @@ type SourceBodyProps = {
   onToggleStudy: (compoundId: string, tier: 1 | 2 | 3 | 4, title: string) => void;
 };
 
+const SYNTHEA_FLOW: { name: string; type: string; fill: string }[] = [
+  { name: "Initial", type: "Initial", fill: "#10b981" },
+  { name: "Eligibility", type: "Guard", fill: "#f59e0b" },
+  { name: "Encounter", type: "Encounter", fill: "#3b82f6" },
+  { name: "Apply_Effect", type: "Observation", fill: "#8b5cf6" },
+  { name: "Terminal", type: "Terminal", fill: "#ef4444" },
+];
+
+function StudioMiniFlow({ studyTitle, studyMeta }: { studyTitle: string; studyMeta?: string }) {
+  const w = 52;
+  const h = 38;
+  const gap = 18;
+  const totalW = SYNTHEA_FLOW.length * w + (SYNTHEA_FLOW.length - 1) * gap;
+  return (
+    <div className="bg-[#0a0a0a] border border-zinc-800/60 rounded-md p-2.5 mt-1 space-y-2">
+      <div className="text-[9px] uppercase tracking-widest text-zinc-500">Synthea module preview</div>
+      <svg
+        viewBox={`0 0 ${totalW} ${h}`}
+        width="100%"
+        preserveAspectRatio="xMinYMid meet"
+        className="block"
+        aria-hidden
+      >
+        {SYNTHEA_FLOW.map((node, i) => {
+          const x = i * (w + gap);
+          const cx = x + w / 2;
+          const cy = h / 2;
+          const nextX = (i + 1) * (w + gap);
+          return (
+            <g key={node.name}>
+              {i < SYNTHEA_FLOW.length - 1 && (
+                <line
+                  x1={x + w}
+                  y1={cy}
+                  x2={nextX}
+                  y2={cy}
+                  stroke="#52525b"
+                  strokeWidth={1}
+                  markerEnd="url(#mini-arrow)"
+                />
+              )}
+              <rect
+                x={x}
+                y={cy - 10}
+                width={w}
+                height={20}
+                rx={4}
+                fill={node.fill}
+                opacity={0.85}
+              />
+              <text
+                x={cx}
+                y={cy + 1}
+                textAnchor="middle"
+                fontSize={8}
+                fill="white"
+                fontWeight={600}
+              >
+                {node.type}
+              </text>
+              <text
+                x={cx}
+                y={cy + 18}
+                textAnchor="middle"
+                fontSize={7}
+                fill="#a1a1aa"
+              >
+                {node.name}
+              </text>
+            </g>
+          );
+        })}
+        <defs>
+          <marker id="mini-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#71717a" />
+          </marker>
+        </defs>
+      </svg>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[10px]">
+        <dt className="text-zinc-500 uppercase tracking-wider">Source</dt>
+        <dd className="text-zinc-300 font-mono truncate">{studyMeta ?? studyTitle}</dd>
+        <dt className="text-zinc-500 uppercase tracking-wider">Effect at</dt>
+        <dd className="text-zinc-300">
+          <span className="inline-block px-1 rounded-sm bg-violet-500/20 text-violet-300 font-mono">
+            Apply_Effect
+          </span>{" "}
+          <span className="text-zinc-500">observation</span>
+        </dd>
+        <dt className="text-zinc-500 uppercase tracking-wider">Gated by</dt>
+        <dd className="text-zinc-300">
+          <span className="inline-block px-1 rounded-sm bg-amber-500/20 text-amber-300 font-mono">
+            Eligibility
+          </span>{" "}
+          <span className="text-zinc-500">Guard (age 18–99)</span>
+        </dd>
+      </dl>
+    </div>
+  );
+}
+
 function SourceBody({
   tier,
   compound,
@@ -385,6 +485,9 @@ function SourceBody({
   excludedStudies,
   onToggleStudy,
 }: SourceBodyProps) {
+  const [expandedStudies, setExpandedStudies] = useState<Record<string, boolean>>({});
+  const toggleExpand = (key: string) =>
+    setExpandedStudies((prev) => ({ ...prev, [key]: !prev[key] }));
   const source = compound.evidenceSources.find((s) => s.tier === tier);
   const includedCount = studies.filter(
     (s) => !excludedStudies[studyKey(compound.id, tier, s.title)],
@@ -405,46 +508,66 @@ function SourceBody({
             {studies.map((s) => {
               const key = studyKey(compound.id, tier, s.title);
               const excluded = !!excludedStudies[key];
+              const expanded = !!expandedStudies[key];
               return (
-                <li key={s.title} className="flex items-start gap-2 text-[11px] group/study">
-                  <button
-                    type="button"
-                    onClick={() => onToggleStudy(compound.id, tier, s.title)}
-                    className={cn(
-                      "mt-[2px] w-3.5 h-3.5 rounded-[3px] border flex items-center justify-center shrink-0 transition-colors",
-                      excluded
-                        ? "border-zinc-700 bg-transparent hover:border-zinc-500"
-                        : "border-emerald-500/60 bg-emerald-500/20 hover:bg-emerald-500/30",
-                    )}
-                    title={excluded ? "Include study" : "Exclude study"}
-                    aria-pressed={!excluded}
-                  >
-                    {!excluded && (
-                      <Icon icon="solar:check-read-linear" className="text-emerald-300 text-[10px]" />
-                    )}
-                  </button>
-                  <div className="min-w-0 flex-1">
-                    <div className={cn("leading-snug", excluded ? "text-zinc-600 line-through" : "text-zinc-300")}>
-                      {s.url ? (
-                        <a
-                          href={s.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="hover:text-blue-400 inline-flex items-center gap-1"
-                        >
-                          {s.title}
-                          <Icon icon="solar:arrow-right-up-linear" className="text-[9px] opacity-70" />
-                        </a>
-                      ) : (
-                        s.title
+                <li key={s.title} className="text-[11px] group/study">
+                  <div className="flex items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onToggleStudy(compound.id, tier, s.title)}
+                      className={cn(
+                        "mt-[2px] w-3.5 h-3.5 rounded-[3px] border flex items-center justify-center shrink-0 transition-colors",
+                        excluded
+                          ? "border-zinc-700 bg-transparent hover:border-zinc-500"
+                          : "border-emerald-500/60 bg-emerald-500/20 hover:bg-emerald-500/30",
+                      )}
+                      title={excluded ? "Include study" : "Exclude study"}
+                      aria-pressed={!excluded}
+                    >
+                      {!excluded && (
+                        <Icon icon="solar:check-read-linear" className="text-emerald-300 text-[10px]" />
+                      )}
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <div className={cn("leading-snug", excluded ? "text-zinc-600 line-through" : "text-zinc-300")}>
+                        {s.url ? (
+                          <a
+                            href={s.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="hover:text-blue-400 inline-flex items-center gap-1"
+                          >
+                            {s.title}
+                            <Icon icon="solar:arrow-right-up-linear" className="text-[9px] opacity-70" />
+                          </a>
+                        ) : (
+                          s.title
+                        )}
+                      </div>
+                      {s.meta && (
+                        <div className={cn("text-[10px] font-mono", excluded ? "text-zinc-700" : "text-zinc-500")}>
+                          {s.meta}
+                        </div>
                       )}
                     </div>
-                    {s.meta && (
-                      <div className={cn("text-[10px] font-mono", excluded ? "text-zinc-700" : "text-zinc-500")}>
-                        {s.meta}
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => toggleExpand(key)}
+                      className="mt-[2px] w-4 h-4 rounded hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-200 shrink-0"
+                      title={expanded ? "Hide module preview" : "Show module preview"}
+                      aria-expanded={expanded}
+                    >
+                      <Icon
+                        icon={expanded ? "solar:alt-arrow-up-linear" : "solar:alt-arrow-down-linear"}
+                        className="text-[10px]"
+                      />
+                    </button>
                   </div>
+                  {expanded && (
+                    <div className="ml-5 mt-1">
+                      <StudioMiniFlow studyTitle={s.title} studyMeta={s.meta} />
+                    </div>
+                  )}
                 </li>
               );
             })}
