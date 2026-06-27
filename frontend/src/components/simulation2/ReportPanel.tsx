@@ -6,6 +6,7 @@ import {
   type SimulationSnapshot,
 } from "../../data/simulation2";
 import type { InteractionPair } from "../../lib/api";
+import type { ProjectedBand } from "../../hooks/useSim2Backend";
 import { cn } from "../../lib/cn";
 
 type ReportPanelProps = {
@@ -20,6 +21,8 @@ type ReportPanelProps = {
   chainReady: boolean;
   interactionPairs: InteractionPair[];
   interactionsRequested: boolean;
+  band?: ProjectedBand | null;
+  running?: boolean;
 };
 
 function confidenceColor(level: SimulationSnapshot["confidenceLevel"]) {
@@ -96,6 +99,8 @@ export function ReportPanel({
   chainReady,
   interactionPairs,
   interactionsRequested,
+  band,
+  running,
 }: ReportPanelProps) {
   if (!open) {
     return (
@@ -290,6 +295,43 @@ export function ReportPanel({
                 <Icon icon="solar:chart-square-linear" className="text-zinc-500" />
                 {audience === "individual" ? "What you might notice" : "Projected Outcomes"}
               </h3>
+
+              {running ? (
+                <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 text-xs text-zinc-400">
+                  Computing projection…
+                </div>
+              ) : band ? (
+                <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 space-y-2">
+                  {band.isVoid ? (
+                    <p className="text-xs text-orange-400">
+                      No trial-backed distribution for {band.outcomeName.replace(/_/g, " ")} — community reports only,
+                      not a prediction.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-xs text-zinc-400">
+                          {band.outcomeName.replace(/_/g, " ")}
+                          {band.illustrative ? " (anecdotal · illustrative)" : ""}
+                        </span>
+                        <span className="font-mono text-base text-emerald-400">
+                          {band.p50 != null ? `${band.p50}${band.unit ?? "%"}` : "—"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500">
+                        <span>p10 {band.p10 != null ? `${band.p10}${band.unit ?? "%"}` : "—"}</span>
+                        <span>mean {band.mean != null ? `${band.mean}${band.unit ?? "%"}` : "—"}</span>
+                        <span>p90 {band.p90 != null ? `${band.p90}${band.unit ?? "%"}` : "—"}</span>
+                      </div>
+                      {band.dudPct ? (
+                        <p className="text-[11px] text-orange-400">
+                          ~{band.dudPct}% chance of a near-inert (under-dosed) source.
+                        </p>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              ) : null}
 
               <div className="space-y-3">
                 <h4 className="text-xs font-medium text-zinc-400">

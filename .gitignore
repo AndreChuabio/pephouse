@@ -21,6 +21,9 @@ dist/
 # Worktrees
 .worktrees/
 
+# Generated visualizer output (from synthea/visualize_modules.py)
+synthea/visualizer_out/
+
 # OS / editor
 .DS_Store
 .idea/

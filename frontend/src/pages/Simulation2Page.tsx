@@ -24,7 +24,7 @@ import { useCompoundData } from "../hooks/useCompoundData";
 import { useCompoundRegistry } from "../hooks/useCompoundRegistry";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useInteractions } from "../hooks/useInteractions";
-import { useSim2Backend, mergeBackendSnapshot } from "../hooks/useSim2Backend";
+import { useSim2Backend, mergeBackendSnapshot, projectedBand } from "../hooks/useSim2Backend";
 import type { InteractionLedgerInput, InteractionSeverityKey } from "../data/simulation2";
 import type { StudyRef } from "../data/simulation2";
 
@@ -135,11 +135,28 @@ export default function Simulation2Page() {
     [primaryCompound, extraCompounds, sourceFractions, age, interactionsLedger],
   );
 
-  // Real backend: Run Execution calls POST /simulate and merges the live Monte-Carlo
-  // confidence/ledger into the report snapshot. BuilderCanvas keeps the client snapshot
-  // (the live preview); the report shows the real result once a run completes.
+  // Real backend: Run Execution calls POST /simulate for the whole stack and merges the
+  // live Monte-Carlo confidence/ledger + projected band into the report. Confidence is the
+  // weakest link across the stack, headlined by the primary compound's outcome.
   const backend = useSim2Backend();
-  const reportSnapshot = mergeBackendSnapshot(snapshot, backend.result);
+  const primaryBackendId = compoundBackendIds[0];
+  const reportSnapshot = mergeBackendSnapshot(snapshot, backend.result, primaryBackendId);
+  const band = projectedBand(backend.result, primaryBackendId);
+
+  // Each compound's real outcome names (so a non-weight compound stops pinning at 30%).
+  const outcomeNames = useMemo(() => {
+    const set = new Set<string>();
+    for (const slug of compoundIds) {
+      for (const name of bundles[slug]?.outcome_names ?? []) set.add(name);
+    }
+    return set.size ? [...set] : ["weight_change_pct"];
+  }, [compoundIds, bundles]);
+
+  // Editing the stack/patient after a run reverts to the live client estimate, so the
+  // canvas and report stay reconciled (and responsive) until the next Run Execution.
+  useEffect(() => {
+    backend.reset();
+  }, [compoundIds, age, sex, weight, sourceFractions, backend.reset]);
 
   const toggleInteraction = useCallback((pairKey: string) => {
     setExcludedInteractions((prev) => {
@@ -197,8 +214,9 @@ export default function Simulation2Page() {
 
   const handleRun = () => {
     setHasRun(true);
-    const backendId = compoundBackendIds[0];
-    if (backendId) backend.run(backendId, { age, sex, weightKg: weight }, sourceFractions);
+    if (compoundBackendIds.length) {
+      backend.run(compoundBackendIds, { age, sex, weightKg: weight }, sourceFractions, outcomeNames);
+    }
   };
 
   const studiesByCompoundTier = useMemo(() => {
@@ -329,7 +347,7 @@ export default function Simulation2Page() {
           onWeightChange={setWeight}
           dose={dose}
           onDoseChange={setDose}
-          snapshot={snapshot}
+          snapshot={reportSnapshot}
           excludedStudies={excludedStudies}
           onToggleStudy={toggleStudy}
           sourceFractions={sourceFractions}
@@ -354,6 +372,8 @@ export default function Simulation2Page() {
           chainReady={chainReady}
           interactionPairs={interactions.pairs}
           interactionsRequested={compoundIds.length >= 2}
+          band={band}
+          running={backend.loading}
         />
       </div>
 

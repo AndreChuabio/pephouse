@@ -17,6 +17,7 @@ type Compound = {
 type Detail = {
   trials: any[];
   anecdotes: any[];
+  tweets: any[];
   papers: any[];
   sourcePriors: any[];
   labResults: any[];
@@ -92,7 +93,7 @@ export default function DataExplorerPage() {
     const id = selected.id;
     Promise.all([
       supabase.from("trials").select("nct_id,phase,indication,status,n_enrolled,source_url,matched_intervention").eq("compound_id", id).limit(25),
-      supabase.from("anecdotes").select("body,claimed_effect,sentiment,permalink,dose_mentioned").eq("compound_id", id),
+      supabase.from("anecdotes").select("body,claimed_effect,sentiment,permalink,dose_mentioned,source").eq("compound_id", id),
       supabase.from("research_papers").select("title,journal,year,is_narrative,url").eq("compound_id", id),
       supabase.from("source_potency_priors").select("source_type,potency_mean,potency_sd,p_fail,p_contam,quantity_variance_p95,compound_id,basis").or(`compound_id.eq.${id},compound_id.is.null`),
       supabase.from("vendor_lab_results").select("vendor_name,purity_pct,label_mg,tested_mg,quantity_variance_pct,potency_factor,test_lab,failed").eq("compound_id", id),
@@ -105,9 +106,15 @@ export default function DataExplorerPage() {
         if (!cur || (row.compound_id && !cur.compound_id)) bySource[row.source_type] = row;
       }
       const order = ["compounding_pharmacy", "vendor_tested", "gray_market", "research_chem", "brand"];
+      const anecdotes = a.data ?? [];
+      const isTweet = (s: string | null | undefined) => {
+        const k = (s ?? "").toLowerCase();
+        return k === "x" || k === "twitter";
+      };
       setDetail({
         trials: t.data ?? [],
-        anecdotes: a.data ?? [],
+        anecdotes: anecdotes.filter((row) => !isTweet(row.source)),
+        tweets: anecdotes.filter((row) => isTweet(row.source)),
         papers: rp.data ?? [],
         sourcePriors: order.map((k) => bySource[k]).filter(Boolean),
         labResults: lr.data ?? [],
@@ -192,6 +199,26 @@ export default function DataExplorerPage() {
                             {a.dose_mentioned && <span className="text-xs font-mono text-zinc-600">{a.dose_mentioned}</span>}
                           </div>
                           <p className="text-xs text-zinc-600 mt-0.5 truncate group-hover:text-zinc-500">{a.body}</p>
+                        </a>
+                        );
+                      })}
+                    </div>
+                  </Section>
+
+                  <Section icon="ri:twitter-x-line" title="X (Tweets)" count={detail.tweets.length}>
+                    <div className="space-y-2">
+                      {detail.tweets.map((t, i) => {
+                        const s = (t.sentiment ?? "").toLowerCase();
+                        const tone: "green" | "yellow" | "orange" | "zinc" =
+                          s === "positive" ? "green" : s === "mixed" ? "yellow" : s === "negative" ? "orange" : "zinc";
+                        return (
+                        <a key={i} href={t.permalink} target="_blank" rel="noreferrer" className="block text-sm hover:bg-zinc-950/60 rounded px-2 py-1.5 group">
+                          <div className="flex items-center gap-2">
+                            <Badge tone={tone}>{t.sentiment}</Badge>
+                            <span className="text-zinc-300">{t.claimed_effect}</span>
+                            {t.dose_mentioned && <span className="text-xs font-mono text-zinc-600">{t.dose_mentioned}</span>}
+                          </div>
+                          <p className="text-xs text-zinc-600 mt-0.5 truncate group-hover:text-zinc-500">{t.body}</p>
                         </a>
                         );
                       })}
