@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 import db
+import modules
 import runs
 from evidence import build_simulation_data
 from models import SimulateRequest, SimulateResponse, SimulationDataResponse
@@ -105,6 +106,42 @@ def get_run(run_id: int) -> dict:
     record = runs.get_run(run_id)
     if record is None:
         raise HTTPException(status_code=404, detail="run not found")
+    return record
+
+
+@app.post("/compounds/{compound_id}/module")
+def generate_module(compound_id: int) -> dict:
+    """Build + persist a Synthea Generic Module per outcome prior for this compound.
+
+    Returns the saved modules. The most recent active module is auto-loaded by
+    live cohort generation (live_cohort=true) so the run is compound-specific.
+    """
+    if db.get_compound(compound_id) is None:
+        raise HTTPException(status_code=404, detail="compound not found")
+    saved = modules.generate_and_save(compound_id)
+    if not saved:
+        raise HTTPException(status_code=400, detail="no outcome_priors to build a module from")
+    return {"compound_id": compound_id, "generated": len(saved), "modules": saved}
+
+
+@app.get("/compounds/{compound_id}/modules")
+def list_compound_modules(compound_id: int) -> list[dict]:
+    """Recent Synthea modules for one compound."""
+    return modules.get_recent_modules(compound_id)
+
+
+@app.get("/modules")
+def list_modules(limit: int = 20) -> list[dict]:
+    """Most-recent Synthea modules across all compounds."""
+    return modules.get_recent_modules(limit=limit)
+
+
+@app.get("/modules/{module_id}")
+def get_module(module_id: int) -> dict:
+    """One module by id, including the full Generic Module JSON."""
+    record = modules.get_module(module_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="module not found")
     return record
 
 

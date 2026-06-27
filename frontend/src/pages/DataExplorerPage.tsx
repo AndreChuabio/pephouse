@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "@iconify/react";
 import { AppShell } from "../components/layout/AppShell";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { postGenerateModule } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
 type Compound = {
@@ -24,6 +25,7 @@ type Detail = {
   labResults: any[];
   vendors: any[];
   runs: any[];
+  modules: any[];
 };
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -74,6 +76,20 @@ export default function DataExplorerPage() {
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const toggle = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [genState, setGenState] = useState<"idle" | "loading" | "error">("idle");
+
+  const handleGenerateModule = async () => {
+    if (!selected) return;
+    setGenState("loading");
+    try {
+      await postGenerateModule(selected.id);
+      setGenState("idle");
+      setRefreshKey((k) => k + 1);
+    } catch {
+      setGenState("error");
+    }
+  };
 
   useEffect(() => {
     supabase
@@ -102,7 +118,8 @@ export default function DataExplorerPage() {
       supabase.from("vendor_lab_results").select("vendor_name,purity_pct,label_mg,tested_mg,quantity_variance_pct,potency_factor,test_lab,failed").eq("compound_id", id),
       supabase.from("vendors").select("*").order("reliability_score", { ascending: false }),
       supabase.from("simulation_runs").select("id,created_at,source_type,live_cohort,cohort_source,cohort_n,cohort_gen_ms,data_confidence,outcomes").eq("compound_id", id).order("created_at", { ascending: false }).limit(10),
-    ]).then(([p, cs, t, a, rp, s, sp, lr, v, runs]) => {
+      supabase.from("synthea_modules").select("id,created_at,name,outcome_name,eligibility,source").eq("compound_id", id).order("created_at", { ascending: false }).limit(10),
+    ]).then(([p, cs, t, a, rp, s, sp, lr, v, runs, mods]) => {
       // prefer compound-specific prior over the NULL default, per source_type
       const bySource: Record<string, any> = {};
       for (const row of (sp.data ?? [])) {
@@ -121,10 +138,11 @@ export default function DataExplorerPage() {
         labResults: lr.data ?? [],
         vendors: v.data ?? [],
         runs: runs.data ?? [],
+        modules: mods.data ?? [],
       });
       setLoading(false);
     });
-  }, [selected]);
+  }, [selected, refreshKey]);
 
   return (
     <AppShell>
@@ -214,6 +232,49 @@ export default function DataExplorerPage() {
                       </div>
                     )}
                   </Section>
+
+                  <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-lg p-4">
+                    <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-widest mb-3 flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        <Icon icon="solar:box-minimalistic-linear" className="text-zinc-500" /> Synthea Modules
+                        <span className="text-zinc-600">({detail.modules.length})</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleGenerateModule}
+                        disabled={genState === "loading"}
+                        className="text-[10px] normal-case px-2.5 py-1 rounded border border-blue-500/40 text-blue-300 hover:bg-blue-500/10 disabled:opacity-50"
+                      >
+                        {genState === "loading" ? "Generating…" : "Generate module"}
+                      </button>
+                    </h3>
+                    <p className="text-xs text-zinc-500 mb-2">
+                      Generic Modules built from this compound&apos;s priors; the newest is loaded into live cohort generation.
+                    </p>
+                    {genState === "error" && (
+                      <p className="text-xs text-orange-400 mb-2">Generation failed &mdash; is the backend reachable?</p>
+                    )}
+                    {detail.modules.length === 0 ? (
+                      <p className="text-xs text-zinc-600">No modules yet &mdash; click Generate to build one from the priors.</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {detail.modules.map((m) => (
+                          <div key={m.id} className="flex items-center justify-between text-sm bg-zinc-950/50 rounded px-3 py-2">
+                            <span className="flex items-center gap-2 min-w-0">
+                              <span className="text-zinc-600 text-xs font-mono">#{m.id}</span>
+                              <span className="text-zinc-300 truncate">{m.outcome_name}</span>
+                              <Badge tone="zinc">{m.source}</Badge>
+                            </span>
+                            <span className="font-mono text-xs text-zinc-500 shrink-0">
+                              {m.eligibility?.min_age != null || m.eligibility?.max_age != null
+                                ? `age ${m.eligibility?.min_age ?? "*"}-${m.eligibility?.max_age ?? "*"}`
+                                : "age 18+"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
                   <Section icon="solar:graph-new-linear" title="Seed Distribution (Monte Carlo priors)" count={detail.priors.length}>
                     <div className="space-y-2">

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import os
 import subprocess
 import tarfile
@@ -82,10 +83,21 @@ def _synthea_args(lo: int, hi: int, gender: str, n: int, out_dir: str) -> list[s
     ]
 
 
-def _run_java(lo: int, hi: int, gender: str, n: int, timeout_s: int) -> list[dict] | None:
-    """Hosted path: run Synthea via java -cp against the exploded jar dir."""
+def _run_java(lo: int, hi: int, gender: str, n: int, timeout_s: int, module: dict | None = None) -> list[dict] | None:
+    """Hosted path: run Synthea via java -cp against the exploded jar dir.
+
+    If a compound module is supplied, drop it on a modules/ dir prepended to the
+    classpath so Synthea loads it alongside the built-ins (compound-specific run).
+    """
     with tempfile.TemporaryDirectory() as out:
-        cmd = ["java", "-cp", SYNTHEA_CP, "App", *_synthea_args(lo, hi, gender, n, out)]
+        classpath = SYNTHEA_CP
+        if module:
+            mod_dir = os.path.join(out, "cp", "modules")
+            os.makedirs(mod_dir, exist_ok=True)
+            with open(os.path.join(mod_dir, "pephouse_module.json"), "w") as fh:
+                json.dump(module, fh)
+            classpath = os.path.join(out, "cp") + os.pathsep + SYNTHEA_CP
+        cmd = ["java", "-cp", classpath, "App", *_synthea_args(lo, hi, gender, n, out)]
         try:
             subprocess.run(cmd, capture_output=True, timeout=timeout_s, check=False)
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
@@ -104,8 +116,11 @@ def _run_java(lo: int, hi: int, gender: str, n: int, timeout_s: int) -> list[dic
         return _map_bodies(rows("patients.csv"), rows("observations.csv"), rows("conditions.csv"))
 
 
-def _run_docker(lo: int, hi: int, gender: str, n: int, timeout_s: int) -> list[dict] | None:
-    """Local-dev path: run the synthea-local image and stream CSV out as a tar."""
+def _run_docker(lo: int, hi: int, gender: str, n: int, timeout_s: int, module: dict | None = None) -> list[dict] | None:
+    """Local-dev path: run the synthea-local image and stream CSV out as a tar.
+
+    Module loading is hosted-only (the Railway image); local docker runs vanilla.
+    """
     args = " ".join(_synthea_args(lo, hi, gender, n, "/out"))
     inner = f"mkdir -p /out && java -cp /app App {args} >/dev/null 2>&1; tar -C /out -cf - csv"
     try:
@@ -131,12 +146,15 @@ def _run_docker(lo: int, hi: int, gender: str, n: int, timeout_s: int) -> list[d
         return None
 
 
-def generate_cohort(age: int, sex: str, n: int = 10, span: int = 5, timeout_s: int = 150) -> list[dict] | None:
-    """Run Synthea live for a cohort near (age, sex). None on failure/timeout."""
+def generate_cohort(age: int, sex: str, n: int = 10, span: int = 5, timeout_s: int = 150, module: dict | None = None) -> list[dict] | None:
+    """Run Synthea live for a cohort near (age, sex). None on failure/timeout.
+
+    module: an optional compound-specific Synthea Generic Module to load (hosted).
+    """
     lo, hi = max(0, age - span), age + span
     gender = "M" if str(sex).upper().startswith("M") else "F"
     runner = _run_java if SYNTHEA_CP else _run_docker
-    bodies = runner(lo, hi, gender, n, timeout_s)
+    bodies = runner(lo, hi, gender, n, timeout_s, module)
     if not bodies:
         return None
     bodies = [b for b in bodies if b["age"] is not None]

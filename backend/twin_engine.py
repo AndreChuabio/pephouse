@@ -7,6 +7,7 @@ import time
 import numpy as np
 
 import db
+import modules
 import runs
 import synthea_live
 from models import (
@@ -82,13 +83,13 @@ def match_cohort(patient: PatientProfile) -> list[dict]:
     return _filter_cohort(patient, db.get_synthetic_patients())
 
 
-def resolve_cohort(patient: PatientProfile, live: bool) -> tuple[list[dict], str, int | None]:
-    """Return (cohort, source, gen_ms). live=True runs Synthea per request, with
-    fallback to the pre-loaded cohort so the endpoint degrades instead of hanging."""
+def resolve_cohort(patient: PatientProfile, live: bool, module: dict | None = None) -> tuple[list[dict], str, int | None]:
+    """Return (cohort, source, gen_ms). live=True runs Synthea per request (loading
+    the compound module if given), falling back to the pre-loaded cohort on failure."""
     if not live:
         return match_cohort(patient), "preloaded", None
     t0 = time.time()
-    bodies = synthea_live.generate_cohort(patient.age, patient.sex)
+    bodies = synthea_live.generate_cohort(patient.age, patient.sex, module=module)
     gen_ms = int((time.time() - t0) * 1000)
     if bodies:
         return _filter_cohort(patient, bodies), "synthea_live", gen_ms
@@ -223,7 +224,8 @@ def run_simulation(
     source_type: str | None = None,
     live_cohort: bool = False,
 ) -> SimulateResponse:
-    cohort, cohort_source, cohort_gen_ms = resolve_cohort(patient, live_cohort)
+    active_module = modules.get_active_module(compounds[0].compound_id) if (live_cohort and compounds) else None
+    cohort, cohort_source, cohort_gen_ms = resolve_cohort(patient, live_cohort, active_module)
     cohort_n = len(cohort)
     substrate_missing = cohort_n < MIN_COHORT
 

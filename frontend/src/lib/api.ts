@@ -16,3 +16,18 @@ export async function postSimulate(body: SimulateRequest): Promise<SimulateRespo
   }
   return res.json() as Promise<SimulateResponse>;
 }
+
+export type GenerateModuleResult = {
+  compound_id: number;
+  generated: number;
+  modules: { id: number; name: string; outcome_name: string }[];
+};
+
+export async function postGenerateModule(compoundId: number): Promise<GenerateModuleResult> {
+  const res = await fetch(`${API_BASE}/compounds/${compoundId}/module`, { method: "POST" });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(detail || `module generation failed (${res.status})`);
+  }
+  return res.json() as Promise<GenerateModuleResult>;
+}
