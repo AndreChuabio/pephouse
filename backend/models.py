@@ -91,6 +91,9 @@ class LabValue(BaseModel):
     value: float | str | None = None
     unit: str | None = None
     flag: str | None = None
+    status: str | None = None  # optimal | high | low | abnormal
+    ref_low: float | None = None
+    ref_high: float | None = None
 
 
 class ProfilePatch(BaseModel):

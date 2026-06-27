@@ -47,7 +47,43 @@ export type Demographics = {
   weightKg: number;
 };
 
-export type PatientInput = Demographics;
+// ---- Patient data import (Junction wearable + bloodwork) ----
+
+export type ImportKind = "device" | "bloodwork" | "upload";
+
+export type ImportSource = {
+  kind: ImportKind;
+  label: string;
+  at: string; // ISO timestamp
+};
+
+export type LabStatus = "optimal" | "high" | "low" | "abnormal";
+
+export type LabValue = {
+  name: string;
+  value: number | string | null;
+  unit?: string | null;
+  flag?: string | null;
+  status?: LabStatus | null;
+  ref_low?: number | null;
+  ref_high?: number | null;
+};
+
+/** Normalized (camelCase) patch every import path returns; merged into PatientInput. */
+export type ImportPatch = {
+  age?: number;
+  sex?: "M" | "F";
+  weightKg?: number;
+  conditions?: string[];
+  labs?: LabValue[];
+  source: ImportSource;
+};
+
+export type PatientInput = Demographics & {
+  conditions?: string[];
+  labs?: LabValue[];
+  importSource?: ImportSource;
+};
 
 export type SimulateRequest = {
   compounds: { compound_id: number; dose_label?: string }[];

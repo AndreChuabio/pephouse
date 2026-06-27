@@ -143,3 +143,36 @@ def test_parse_labs_tolerates_flat_results_list():
 
 def test_parse_labs_empty():
     assert junction.parse_labs({"results": {"biomarkers": []}}) == {"labs": [], "conditions": []}
+
+
+# --------------------------------------------------------------------- status
+
+def test_status_range_flags_win_over_interpretation():
+    # interpretation says normal, but the value is above the max range -> high
+    b = {"interpretation": "normal", "is_above_max_range": True}
+    assert junction._status(b) == "high"
+
+
+def test_status_optimal_and_low():
+    assert junction._status({"interpretation": "normal"}) == "optimal"
+    assert junction._status({"is_below_min_range": True}) == "low"
+    assert junction._status({"interpretation": "abnormal"}) == "abnormal"
+
+
+def test_parse_labs_includes_status_and_range():
+    result_json = {
+        "results": [
+            {
+                "name": "LDL Cholesterol",
+                "slug": "ldl",
+                "value": 165,
+                "unit": "mg/dL",
+                "is_above_max_range": True,
+                "min_range_value": 0,
+                "max_range_value": 100,
+            }
+        ]
+    }
+    lab = junction.parse_labs(result_json)["labs"][0]
+    assert lab["status"] == "high"
+    assert lab["ref_high"] == 100

@@ -178,6 +178,27 @@ def _biomarker_list(result: dict) -> list[dict]:
     return []
 
 
+def _status(b: dict) -> str:
+    """Normalize a biomarker into one of: optimal | high | low | abnormal.
+
+    Honesty note: range flags win over the free-text interpretation, so an
+    out-of-range value is never shown as "optimal" just because the lab left
+    the interpretation blank.
+    """
+    if b.get("is_above_max_range"):
+        return "high"
+    if b.get("is_below_min_range"):
+        return "low"
+    interp = str(b.get("interpretation") or b.get("flag") or "").strip().lower()
+    if interp in ("normal", "optimal", ""):
+        return "optimal"
+    if interp in ("high", "above"):
+        return "high"
+    if interp in ("low", "below"):
+        return "low"
+    return "abnormal"
+
+
 def parse_labs(result: dict) -> dict:
     """Turn a lab-result payload into ``{labs: [...], conditions: [...]}``."""
     labs: list[dict] = []
@@ -190,6 +211,9 @@ def parse_labs(result: dict) -> dict:
                 "value": value,
                 "unit": b.get("unit"),
                 "flag": b.get("interpretation") or b.get("flag"),
+                "status": _status(b),
+                "ref_low": b.get("min_range_value"),
+                "ref_high": b.get("max_range_value"),
             }
         )
     return {"labs": labs, "conditions": derive_conditions(labs)}
@@ -197,7 +221,7 @@ def parse_labs(result: dict) -> dict:
 
 def _public_lab(lab: dict) -> dict:
     """Drop the internal slug before sending labs to the frontend."""
-    return {k: lab.get(k) for k in ("name", "value", "unit", "flag")}
+    return {k: lab.get(k) for k in ("name", "value", "unit", "flag", "status", "ref_low", "ref_high")}
 
 
 # ============================================================ network (httpx)

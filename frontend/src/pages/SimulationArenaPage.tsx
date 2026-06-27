@@ -9,7 +9,12 @@ import { ProjectedOutcomesChart } from "../components/simulation/ProjectedOutcom
 import { COMPOUNDS, DEMOGRAPHICS } from "../data/mockSimulation";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useSimulation } from "../hooks/useSimulation";
-import type { MetricCard, OutcomeResult, SimulateResponse } from "../types/simulation";
+import type {
+  MetricCard,
+  OutcomeResult,
+  PatientInput,
+  SimulateResponse,
+} from "../types/simulation";
 
 function buildMetrics(result: SimulateResponse | null, weightOutcome: OutcomeResult | null): MetricCard[] {
   if (!result || !weightOutcome) {
@@ -81,7 +86,7 @@ function buildMetrics(result: SimulateResponse | null, weightOutcome: OutcomeRes
 export default function SimulationArenaPage() {
   useDocumentTitle("PepHouse | Simulation Arena");
 
-  const [patient, setPatient] = useState(DEMOGRAPHICS);
+  const [patient, setPatient] = useState<PatientInput>(DEMOGRAPHICS);
   const [selectedCompoundId, setSelectedCompoundId] = useState(COMPOUNDS[1].id);
   const { result, loading, error, run } = useSimulation();
 
