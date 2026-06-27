@@ -14,10 +14,12 @@ type ReportPanelProps = {
   compound: CompoundProfile;
   snapshot: SimulationSnapshot;
   onOpenBreakdown: () => void;
+  onRun: () => void;
   open: boolean;
   onToggleOpen: () => void;
   chainReady: boolean;
   interactionPairs: InteractionPair[];
+  interactionsRequested: boolean;
 };
 
 function confidenceColor(level: SimulationSnapshot["confidenceLevel"]) {
@@ -88,10 +90,12 @@ export function ReportPanel({
   compound,
   snapshot,
   onOpenBreakdown,
+  onRun,
   open,
   onToggleOpen,
   chainReady,
   interactionPairs,
+  interactionsRequested,
 }: ReportPanelProps) {
   if (!open) {
     return (
@@ -175,7 +179,7 @@ export function ReportPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8 min-h-0">
-        <InteractionsCallout pairs={interactionPairs} />
+        {interactionsRequested && <InteractionsCallout pairs={interactionPairs} />}
         {!hasRun ? (
           <div className="space-y-4">
             <div className="text-xs text-zinc-500 border border-dashed border-zinc-700 rounded-lg p-4 text-center leading-relaxed">
@@ -368,19 +372,20 @@ export function ReportPanel({
       <div className="p-4 border-t border-zinc-800/50 bg-[#121212] shrink-0">
         <button
           type="button"
-          onClick={onOpenBreakdown}
-          disabled={!hasRun}
-          className="w-full py-2 mb-2 bg-zinc-100 border border-transparent rounded-md text-xs font-medium text-zinc-900 hover:bg-white disabled:opacity-40 transition-colors shadow-sm flex items-center justify-center gap-2"
+          onClick={onRun}
+          className="w-full py-2 mb-2 bg-zinc-100 border border-transparent rounded-md text-xs font-medium text-zinc-900 hover:bg-white transition-colors shadow-sm flex items-center justify-center gap-2"
         >
-          <Icon icon="solar:chart-2-linear" className="text-sm" />
-          View Full Breakdown
+          <Icon icon="solar:play-linear" className="text-sm" />
+          Run Simulation
         </button>
         <button
           type="button"
+          onClick={onOpenBreakdown}
           disabled={!hasRun}
-          className="w-full py-2 bg-[#0A0A0A] border border-zinc-700 rounded-md text-xs font-medium text-zinc-100 hover:bg-zinc-800 disabled:opacity-40 transition-colors shadow-sm"
+          className="w-full py-2 bg-[#0A0A0A] border border-zinc-700 rounded-md text-xs font-medium text-zinc-100 hover:bg-zinc-800 disabled:opacity-40 transition-colors shadow-sm flex items-center justify-center gap-2"
         >
-          Export Clinical PDF
+          <Icon icon="solar:chart-2-linear" className="text-sm" />
+          View Full Breakdown
         </button>
       </div>
     </div>

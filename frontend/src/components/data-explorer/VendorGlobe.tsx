@@ -16,6 +16,38 @@ type Vendor = {
   gmp_certified?: boolean;
 };
 
+const SOURCE_LABEL: Record<string, string> = {
+  compounding_pharmacy: "Compounding pharmacy",
+  vendor_tested: "Gray-market, lab-tested",
+  gray_market: "Gray-market, untested",
+  research_chem: "Research chemical",
+  brand: "Brand / pharma-grade",
+};
+
+const SOURCE_TONE: Record<string, "green" | "orange" | "zinc"> = {
+  compounding_pharmacy: "green",
+  brand: "green",
+  vendor_tested: "orange",
+  gray_market: "orange",
+  research_chem: "zinc",
+};
+
+const TONE_CLASS: Record<"green" | "orange" | "zinc", string> = {
+  green: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  orange: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+  zinc: "bg-zinc-800 text-zinc-400 border-zinc-700",
+};
+
+function Badge({ tone, children }: { tone: "green" | "orange" | "zinc"; children: React.ReactNode }) {
+  return (
+    <span
+      className={`px-1.5 py-0.5 rounded text-[10px] font-medium border uppercase tracking-wider whitespace-nowrap shrink-0 ${TONE_CLASS[tone]}`}
+    >
+      {children}
+    </span>
+  );
+}
+
 const EARTH_TEXTURE_URL = "https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg";
 
 const COUNTRY_COORDS: Record<string, [number, number]> = {
@@ -226,6 +258,12 @@ export function VendorGlobe({ vendors, compoundName }: { vendors: Vendor[]; comp
   const vendorTotal = vendors.length;
   const countryTotal = byCountry.length;
 
+  const activeVendors = useMemo(() => {
+    if (!activeCountry) return [];
+    const key = normalize(activeCountry);
+    return vendors.filter((v) => v.country && normalize(v.country) === key);
+  }, [activeCountry, vendors]);
+
   return (
     <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-lg overflow-hidden">
       <div className="px-4 py-3 border-b border-zinc-800/60 flex items-center gap-2 flex-wrap">
@@ -277,6 +315,41 @@ export function VendorGlobe({ vendors, compoundName }: { vendors: Vendor[]; comp
               <p className="text-xs text-zinc-500 italic bg-zinc-950/60 px-2 py-1 rounded">
                 no mapped vendor origins
               </p>
+            </div>
+          )}
+
+          {activeCountry && (
+            <div className="absolute bottom-3 left-3 right-3 md:right-auto md:max-w-xs z-10 bg-zinc-950/95 border border-zinc-800 rounded-lg shadow-2xl backdrop-blur-md p-3 animate-in fade-in duration-150">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Icon icon="solar:map-point-linear" className="text-emerald-400/80 shrink-0" />
+                  <h4 className="text-sm font-semibold text-zinc-100 truncate">{activeCountry}</h4>
+                  <span className="text-[10px] text-zinc-500 font-mono shrink-0">
+                    {activeVendors.length} vendor{activeVendors.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveCountry(null)}
+                  className="text-zinc-500 hover:text-zinc-200 shrink-0 -m-1 p-1"
+                  aria-label="Close"
+                >
+                  <Icon icon="solar:close-circle-linear" className="text-base" />
+                </button>
+              </div>
+              <ul className="space-y-1.5 max-h-48 overflow-y-auto">
+                {activeVendors.map((v) => (
+                  <li key={v.id ?? v.name} className="flex items-center gap-2 text-xs">
+                    <Badge tone={SOURCE_TONE[v.source_type ?? ""] ?? "zinc"}>
+                      {SOURCE_LABEL[v.source_type ?? ""] ?? v.source_type ?? "unknown"}
+                    </Badge>
+                    <span className="text-zinc-200 truncate flex-1">{v.name}</span>
+                    {v.reliability_score != null && (
+                      <span className="font-mono text-zinc-500 shrink-0">{v.reliability_score}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </div>

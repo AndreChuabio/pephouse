@@ -296,7 +296,7 @@ export default function Simulation2Page() {
 
   return (
     <AppShell>
-      <Simulation2Header onRun={handleRun} />
+      <Simulation2Header />
 
       <div className="flex-1 flex overflow-hidden bg-[#0A0A0A] min-h-0">
         <BuilderCanvas
@@ -339,10 +339,12 @@ export default function Simulation2Page() {
           compound={primaryCompound}
           snapshot={snapshot}
           onOpenBreakdown={() => setBreakdownOpen(true)}
+          onRun={handleRun}
           open={reportOpen}
           onToggleOpen={() => setReportOpen((v) => !v)}
           chainReady={chainReady}
           interactionPairs={interactions.pairs}
+          interactionsRequested={compoundIds.length >= 2}
         />
       </div>
 
