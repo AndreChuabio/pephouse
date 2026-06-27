@@ -23,6 +23,8 @@ import { synthesizeProfile } from "../data/synthesizeProfile";
 import { useCompoundData } from "../hooks/useCompoundData";
 import { useCompoundRegistry } from "../hooks/useCompoundRegistry";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useInteractions } from "../hooks/useInteractions";
+import type { InteractionLedgerInput, InteractionSeverityKey } from "../data/simulation2";
 import type { StudyRef } from "../data/simulation2";
 
 const INITIAL_COMPOUND_ID = "bpc-157";
@@ -82,6 +84,37 @@ export default function Simulation2Page() {
   );
 
   const [excludedStudies, setExcludedStudies] = useState<Record<string, boolean>>({});
+  const [excludedInteractions, setExcludedInteractions] = useState<Record<string, boolean>>({});
+
+  const compoundBackendIds = useMemo(
+    () =>
+      compoundIds
+        .map((slug) => registry.bySlug[slug]?.id)
+        .filter((id): id is number => typeof id === "number"),
+    [compoundIds, registry.bySlug],
+  );
+  const interactions = useInteractions(compoundBackendIds);
+
+  const interactionsLedger = useMemo<InteractionLedgerInput[]>(() => {
+    return interactions.pairs
+      .filter((p) => {
+        const lo = Math.min(p.compound_a_id, p.compound_b_id);
+        const hi = Math.max(p.compound_a_id, p.compound_b_id);
+        return !excludedInteractions[`${lo}::${hi}::${p.source_kind}`];
+      })
+      .map((p) => {
+        const lo = Math.min(p.compound_a_id, p.compound_b_id);
+        const hi = Math.max(p.compound_a_id, p.compound_b_id);
+        const primaryBackendId = compoundBackendIds[0];
+        const partnerId = p.compound_a_id === primaryBackendId ? p.compound_b_id : p.compound_a_id;
+        const partnerName = p.compound_a_id === primaryBackendId ? p.compound_b_name : p.compound_a_name;
+        return {
+          pairId: `${lo}::${hi}::${p.source_kind}`,
+          partnerName: partnerId === primaryBackendId ? p.compound_a_name : partnerName,
+          severity: p.severity as InteractionSeverityKey,
+        };
+      });
+  }, [interactions.pairs, excludedInteractions, compoundBackendIds]);
 
   const sourceFractions = useMemo(
     () => sourceFractionsFor(nodes, primaryCompound, excludedStudies),
@@ -96,9 +129,19 @@ export default function Simulation2Page() {
         extraCompounds,
         sourceFractions,
         age,
+        interactions: interactionsLedger,
       }),
-    [primaryCompound, extraCompounds, sourceFractions, age],
+    [primaryCompound, extraCompounds, sourceFractions, age, interactionsLedger],
   );
+
+  const toggleInteraction = useCallback((pairKey: string) => {
+    setExcludedInteractions((prev) => {
+      const next = { ...prev };
+      if (next[pairKey]) delete next[pairKey];
+      else next[pairKey] = true;
+      return next;
+    });
+  }, []);
 
   const toggleStudy = useCallback((compoundId: string, tier: 1 | 2 | 3 | 4, title: string) => {
     setExcludedStudies((prev) => {
@@ -207,9 +250,34 @@ export default function Simulation2Page() {
         const insertAt = demoIdx !== -1 ? demoIdx : runIdx !== -1 ? runIdx : next.length;
         next = [...next.slice(0, insertAt), ...newSources, ...next.slice(insertAt)];
       }
+
       return next.length === prev.length && next.every((n, i) => n === prev[i]) ? prev : next;
     });
   }, [compoundIds, profileBySlug]);
+
+  // Interactions node only appears when we have at least one DOCUMENTED pair
+  // (i.e. the backend returned a row that isn't a no_data placeholder). With
+  // <2 compounds, or while the fetch is still in flight, or when every pair
+  // is no_data, the node stays out of the chain.
+  useEffect(() => {
+    const hasDocumented = interactions.pairs.some((p) => p.source_kind !== "no_data");
+    setNodes((prev) => {
+      const hasNode = prev.some((n) => n.type === "interactions");
+      if (hasDocumented && !hasNode) {
+        const compoundIdx = prev.findIndex((n) => n.type === "compound");
+        const insertAt = compoundIdx === -1 ? 0 : compoundIdx + 1;
+        return [
+          ...prev.slice(0, insertAt),
+          { id: "interactions", type: "interactions" },
+          ...prev.slice(insertAt),
+        ];
+      }
+      if (!hasDocumented && hasNode) {
+        return prev.filter((n) => n.type !== "interactions");
+      }
+      return prev;
+    });
+  }, [interactions.pairs]);
 
   useEffect(() => {
     if (!searchQuery.trim()) return;
@@ -258,6 +326,11 @@ export default function Simulation2Page() {
           sourceFractions={sourceFractions}
           studiesByCompoundTier={studiesByCompoundTier}
           studiesLoadingByCompound={studiesLoadingByCompound}
+          interactionPairs={interactions.pairs}
+          interactionsLoading={interactions.loading}
+          interactionsError={interactions.error}
+          excludedInteractions={excludedInteractions}
+          onToggleInteraction={toggleInteraction}
         />
 
         <ReportPanel

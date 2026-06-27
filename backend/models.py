@@ -125,25 +125,42 @@ class SimulationDataResponse(BaseModel):
     tables: dict[str, list[dict]] = Field(default_factory=dict)
 
 
-# ----------------------------------------------------------------- import API
-# Patient-data import (Junction wearable + bloodwork). Every import path returns
-# the same ImportSource-stamped patch that the frontend merges into `patient`.
+# --------------------------------------------------------- import / user data
+# Persisted patient data a user connected (wearable / bloodwork) or reported.
+# Mirrors the Junction ProfilePatch shape so a live import and a mock are
+# interchangeable. ImportSource/LabValue are shared by the Junction import API
+# (/import/*) and the user-data store (GET/POST /users/{user_ref}/data).
 
 
 class ImportSource(BaseModel):
-    kind: str  # device | bloodwork | upload
-    label: str
-    at: str  # ISO timestamp
+    kind: str | None = None  # device | bloodwork | upload
+    label: str | None = None
+    at: str | None = None  # ISO timestamp
 
 
 class LabValue(BaseModel):
     name: str
+    slug: str | None = None
     value: float | str | None = None
     unit: str | None = None
     flag: str | None = None
     status: str | None = None  # optimal | high | low | abnormal
     ref_low: float | None = None
     ref_high: float | None = None
+
+
+class WearableMetric(BaseModel):
+    calendar_date: str
+    steps: int | None = None
+    resting_hr: int | None = None
+    hrv_ms: float | None = None
+    sleep_hours: float | None = None
+    calories: int | None = None
+    weight_kg: float | None = None
+    provider: str | None = None
+
+
+# ---- Junction import API (/import/*) ----
 
 
 class ProfilePatch(BaseModel):
@@ -167,3 +184,48 @@ class LinkResponse(BaseModel):
 class ProfileResponse(BaseModel):
     connected: bool
     patch: ProfilePatch | None = None
+
+
+# ---- User-data store (GET/POST /users/{user_ref}/data) ----
+
+
+class UserDataPatch(BaseModel):
+    """Body for POST /users/{user_ref}/data — a connected/reported patch."""
+
+    age: int | None = None
+    sex: str | None = None  # M | F
+    weight_kg: float | None = None
+    conditions: list[str] = Field(default_factory=list)
+    labs: list[LabValue] | None = None
+    wearable: list[WearableMetric] | None = None
+    source: ImportSource | None = None
+
+
+class UserDataBundle(BaseModel):
+    """Response for GET/POST /users/{user_ref}/data — the full stored bundle."""
+
+    user_ref: str
+    connected: bool = False
+    age: int | None = None
+    sex: str | None = None
+    weight_kg: float | None = None
+    conditions: list[str] = Field(default_factory=list)
+    source: ImportSource | None = None
+    labs: list[LabValue] = Field(default_factory=list)
+    wearable: list[WearableMetric] = Field(default_factory=list)
+
+
+class InteractionPair(BaseModel):
+    compound_a_id: int
+    compound_a_name: str
+    compound_b_id: int
+    compound_b_name: str
+    severity: str  # 'major' | 'moderate' | 'minor' | 'unknown'
+    mechanism: str | None = None
+    management: str | None = None
+    source_url: str | None = None
+    source_kind: str  # 'fda_label' | 'curated' | 'mechanistic' | 'no_data'
+
+
+class InteractionsResponse(BaseModel):
+    pairs: list[InteractionPair] = Field(default_factory=list)

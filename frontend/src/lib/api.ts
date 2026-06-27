@@ -88,6 +88,38 @@ export async function fetchCompoundData(compoundId: number): Promise<SimulationD
   return res.json() as Promise<SimulationDataResponse>;
 }
 
+export type InteractionSeverity = "major" | "moderate" | "minor" | "unknown";
+
+export type InteractionPair = {
+  compound_a_id: number;
+  compound_a_name: string;
+  compound_b_id: number;
+  compound_b_name: string;
+  severity: InteractionSeverity;
+  mechanism: string | null;
+  management: string | null;
+  source_url: string | null;
+  source_kind:
+    | "fda_label"
+    | "fda_label_live"
+    | "drugbank_pubchem"
+    | "curated"
+    | "mechanistic"
+    | "no_data";
+};
+
+export type InteractionsResponse = {
+  pairs: InteractionPair[];
+};
+
+export async function fetchInteractions(compoundIds: number[]): Promise<InteractionsResponse> {
+  if (compoundIds.length < 2) return { pairs: [] };
+  const qs = compoundIds.join(",");
+  const res = await fetch(`${API_BASE}/interactions?ids=${qs}`);
+  if (!res.ok) throw new Error(`interactions failed (${res.status})`);
+  return res.json() as Promise<InteractionsResponse>;
+}
+
 // ---- Patient data import (Junction) ----
 
 // The backend ProfilePatch is snake_case; the frontend uses camelCase weightKg.
@@ -144,4 +176,48 @@ export async function importLabs(userRef: string): Promise<ImportPatch> {
     `/import/labs?user_ref=${encodeURIComponent(userRef)}`,
   );
   return toPatch(raw);
+}
+
+// ---- User-data store (GET/POST /users/{user_ref}/data) ----
+
+export type UserDataBundle = {
+  user_ref: string;
+  connected: boolean;
+  age?: number | null;
+  sex?: "M" | "F" | null;
+  weight_kg?: number | null;
+  conditions: string[];
+  source?: ImportPatch["source"] | null;
+  labs: ImportPatch["labs"];
+  wearable: Array<Record<string, unknown>>;
+};
+
+/** Fetch the stored bundle for a user, or null if nothing saved yet (404). */
+export async function fetchUserData(userRef: string): Promise<UserDataBundle | null> {
+  const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userRef)}/data`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error((await res.text()) || `user data failed (${res.status})`);
+  return res.json() as Promise<UserDataBundle>;
+}
+
+/** Persist a connected/reported patch (camelCase weightKg -> snake weight_kg). */
+export async function saveUserData(
+  userRef: string,
+  patch: ImportPatch,
+): Promise<UserDataBundle> {
+  const body = {
+    ...(patch.age != null ? { age: patch.age } : {}),
+    ...(patch.sex ? { sex: patch.sex } : {}),
+    ...(patch.weightKg != null ? { weight_kg: patch.weightKg } : {}),
+    conditions: patch.conditions ?? [],
+    labs: patch.labs ?? [],
+    source: patch.source,
+  };
+  const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userRef)}/data`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error((await res.text()) || `save user data failed (${res.status})`);
+  return res.json() as Promise<UserDataBundle>;
 }

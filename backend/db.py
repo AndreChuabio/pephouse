@@ -148,6 +148,44 @@ def get_compound_tables(compound_id: int) -> dict[str, list[dict]]:
     return {t: fetch_table_for_compound(t, compound_id) for t in COMPOUND_TABLES}
 
 
+def fetch_drug_interactions(compound_ids: list[int]) -> list[dict]:
+    """Return drug_interactions rows touching any of compound_ids.
+
+    Defensive: empty list if the table doesn't exist yet. The caller is
+    responsible for filtering to the specific pair set it cares about.
+    """
+    if not compound_ids:
+        return []
+    try:
+        ids_csv = ",".join(str(i) for i in compound_ids)
+        return (
+            supabase.table("drug_interactions")
+            .select("*")
+            .or_(f"compound_a_id.in.({ids_csv}),compound_b_id.in.({ids_csv})")
+            .execute()
+            .data
+        )
+    except Exception:
+        return []
+
+
+def get_compounds_by_ids(compound_ids: list[int]) -> dict[int, dict]:
+    """Return {id: compound_row} for the given ids. Used to resolve names for the interactions response."""
+    if not compound_ids:
+        return {}
+    try:
+        rows = (
+            supabase.table("compounds")
+            .select("id,name")
+            .in_("id", compound_ids)
+            .execute()
+            .data
+        )
+        return {r["id"]: r for r in rows}
+    except Exception:
+        return {}
+
+
 def get_vendors() -> list[dict]:
     """Vendor catalog (not compound-specific). Defensive: [] if table is absent."""
     try:

@@ -16,8 +16,11 @@ import junction
 import modules
 import runs
 import tiers
+import user_data
 from evidence import build_simulation_data
+from interactions import build_interactions
 from models import (
+    InteractionsResponse,
     LinkRequest,
     LinkResponse,
     ProfilePatch,
@@ -25,6 +28,8 @@ from models import (
     SimulateRequest,
     SimulateResponse,
     SimulationDataResponse,
+    UserDataBundle,
+    UserDataPatch,
 )
 from twin_engine import run_simulation
 
@@ -61,6 +66,27 @@ def get_compound(compound_id: int) -> dict:
 def get_evidence(compound_id: int) -> dict:
     """Tier-1 evidence bundle the grader is allowed to cite."""
     return db.get_evidence(compound_id)
+
+
+@app.get("/interactions", response_model=InteractionsResponse)
+def get_interactions(ids: str = "") -> InteractionsResponse:
+    """Pairwise drug-interaction warnings for a set of compound ids.
+
+    Query: `?ids=1,2,3`. Returns a row per unordered pair; pairs without
+    documented rows in `drug_interactions` come back with severity='unknown'
+    and source_kind='no_data' so the UI can surface the honest gap rather
+    than show silence.
+    """
+    parsed: list[int] = []
+    for token in ids.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            parsed.append(int(token))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"bad id: {token}")
+    return build_interactions(parsed)
 
 
 @app.get("/compounds/{compound_id}/data", response_model=SimulationDataResponse)
@@ -201,6 +227,29 @@ async def import_labs(user_ref: str, order_id: str | None = None) -> ProfilePatc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"junction labs failed: {exc}")
     return ProfilePatch(**patch)
+
+
+# ------------------------------------------------------------------- user data
+# Persisted patient data a user connected (wearable / bloodwork) or reported.
+# Mirrors the Junction import shape; mock today, live-Junction-swappable later.
+
+
+@app.get("/users/{user_ref}/data", response_model=UserDataBundle)
+def get_user_data(user_ref: str) -> UserDataBundle:
+    """getUserData — the full stored bundle (profile + wearable + labs) for a user."""
+    bundle = user_data.get_user_data(user_ref)
+    if bundle is None:
+        raise HTTPException(status_code=404, detail="no data for this user")
+    return UserDataBundle(**bundle)
+
+
+@app.post("/users/{user_ref}/data", response_model=UserDataBundle)
+def save_user_data(user_ref: str, body: UserDataPatch) -> UserDataBundle:
+    """Save a connected/reported patch (upsert profile; replace labs/wearable)."""
+    if not user_ref:
+        raise HTTPException(status_code=400, detail="user_ref required")
+    merged = user_data.save_user_data(user_ref, body.model_dump(exclude_none=True))
+    return UserDataBundle(**merged)
 
 
 # TODO(grader): POST /grade -> score a clinician transcript against get_evidence()

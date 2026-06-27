@@ -18,6 +18,9 @@ dist/
 .vite/
 *.local
 
+# Worktrees
+.worktrees/
+
 # OS / editor
 .DS_Store
 .idea/
