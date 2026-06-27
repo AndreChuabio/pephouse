@@ -29,8 +29,29 @@ function confidenceColor(level: SimulationSnapshot["confidenceLevel"]) {
 const SEVERITY_RANK: Record<string, number> = { major: 3, moderate: 2, minor: 1, unknown: 0 };
 
 function InteractionsCallout({ pairs }: { pairs: InteractionPair[] }) {
+  if (pairs.length === 0) return null;
+
   const documented = pairs.filter((p) => p.source_kind !== "no_data");
-  if (documented.length === 0) return null;
+
+  if (documented.length === 0) {
+    return (
+      <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2.5 space-y-1.5 text-zinc-400">
+        <div className="flex items-center gap-1.5 font-medium text-xs text-amber-400">
+          <Icon icon="solar:danger-triangle-linear" className="text-sm" />
+          No documented interactions for this stack.
+        </div>
+        <p className="text-[11px] leading-snug">
+          Searched <span className="text-zinc-300">~2.85M DrugBank rows</span> (via PubChem)
+          — none cite this combination.
+        </p>
+        <p className="text-[11px] text-zinc-500">
+          For research peptides, this usually means absence of public evidence, not absence
+          of risk. Curate cautiously.
+        </p>
+      </div>
+    );
+  }
+
   const counts: Record<string, number> = {};
   let worst = "unknown";
   for (const p of documented) {
