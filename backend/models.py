@@ -24,6 +24,12 @@ class SimulateRequest(BaseModel):
     n_draws: int = 5000
     horizon_months: int = 12
     seed: int = 42
+    # SOURCE variance axis: where the peptide was made. None = label-dose (no source modeling).
+    # compounding_pharmacy | vendor_tested | gray_market | research_chem | brand
+    source_type: str | None = None
+    # Run Synthea LIVE for a patient-matched cohort (falls back to the pre-loaded
+    # synthetic_patients table on timeout/failure). Default uses the offline cohort.
+    live_cohort: bool = False
 
 
 class QuarterBand(BaseModel):
@@ -42,13 +48,17 @@ class OutcomeResult(BaseModel):
     trial_backed: bool
     confidence: float
     distribution_void: bool = False
-    mean: float | None = None
+    mean: float | None = None  # delivered-effect mean (source-adjusted when source_type set)
     sd: float | None = None
     n: int | None = None
     p10: float | None = None
     p50: float | None = None
     p90: float | None = None
     prob_threshold: float | None = None
+    # SOURCE axis outputs (null when source_type not supplied)
+    biological_mean: float | None = None  # label-dose mean, before source adjustment
+    source_type: str | None = None
+    source_dud_pct: float | None = None  # P(near-inert "sugar water" lot), as a %
     quarters: list[QuarterBand] = Field(default_factory=list)
 
 
@@ -66,6 +76,8 @@ class AnecdoteSnippet(BaseModel):
 
 class SimulateResponse(BaseModel):
     cohort_n: int
+    cohort_source: str = "preloaded"  # preloaded | synthea_live | synthea_live_failed_fallback
+    cohort_gen_ms: int | None = None  # Synthea live generation time (ms) when used
     cohort_fallback: str | None = None
     cohort_callout: str | None = None
     substrate_missing: bool = False
@@ -73,3 +85,34 @@ class SimulateResponse(BaseModel):
     excluded_priors: list[ExcludedPrior] = Field(default_factory=list)
     anecdotes: list[AnecdoteSnippet] = Field(default_factory=list)
     data_confidence: str
+    run_id: int | None = None  # persisted simulation_runs row, for recall / recent list
+
+
+class EvidenceSource(BaseModel):
+    """One toggleable evidence layer for the Arena 2 evidence map.
+
+    display_tier follows the Arena 2 UI convention (4 = strongest / RCT,
+    1 = weakest / anecdote), independent of the DB's data_tier enum name.
+    """
+
+    id: str
+    label: str
+    data_tier: str
+    display_tier: int
+    count: int
+    available: bool
+
+
+class SimulationDataResponse(BaseModel):
+    compound_id: int
+    name: str
+    drug_class: str | None = None
+    fda_status: str | None = None
+    approved: bool = False
+    summary: str | None = None
+    evidence_sources: list[EvidenceSource] = Field(default_factory=list)
+    outcome_names: list[str] = Field(default_factory=list)
+    studied_age_min: int | None = None
+    studied_age_max: int | None = None
+    cohort_total: int = 0
+    tables: dict[str, list[dict]] = Field(default_factory=dict)

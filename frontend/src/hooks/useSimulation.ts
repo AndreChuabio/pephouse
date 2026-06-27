@@ -8,7 +8,11 @@ export function useSimulation() {
   const [error, setError] = useState<string | null>(null);
 
   const run = useCallback(
-    async (compoundId: number, patient: { age: number; sex: "M" | "F"; weightKg: number }) => {
+    async (
+      compoundId: number,
+      patient: { age: number; sex: "M" | "F"; weightKg: number },
+      options?: { sourceType?: string; liveCohort?: boolean; nDraws?: number },
+    ) => {
       setLoading(true);
       setError(null);
       try {
@@ -20,8 +24,10 @@ export function useSimulation() {
             weight_kg: patient.weightKg,
           },
           outcomes: ["weight_change_pct"],
-          n_draws: 5000,
+          n_draws: options?.nDraws ?? 5000,
           seed: 42,
+          source_type: options?.sourceType || undefined,
+          live_cohort: options?.liveCohort ?? false,
         });
         setResult(data);
       } catch (e) {

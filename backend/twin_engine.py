@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import time
+
 import numpy as np
 
 import db
+import modules
+import runs
+import synthea_live
 from models import (
     AnecdoteSnippet,
     CompoundInput,
@@ -61,8 +66,7 @@ def check_eligibility(patient: PatientProfile, prior: dict) -> str | None:
     return None
 
 
-def match_cohort(patient: PatientProfile) -> list[dict]:
-    rows = db.get_synthetic_patients()
+def _filter_cohort(patient: PatientProfile, rows: list[dict]) -> list[dict]:
     matched = []
     for row in rows:
         age = row.get("age")
@@ -72,6 +76,24 @@ def match_cohort(patient: PatientProfile) -> list[dict]:
             continue
         matched.append(row)
     return matched
+
+
+def match_cohort(patient: PatientProfile) -> list[dict]:
+    """Pre-loaded Tier-4 cohort filtered to the patient (age +/-5, sex)."""
+    return _filter_cohort(patient, db.get_synthetic_patients())
+
+
+def resolve_cohort(patient: PatientProfile, live: bool, module: dict | None = None) -> tuple[list[dict], str, int | None]:
+    """Return (cohort, source, gen_ms). live=True runs Synthea per request (loading
+    the compound module if given), falling back to the pre-loaded cohort on failure."""
+    if not live:
+        return match_cohort(patient), "preloaded", None
+    t0 = time.time()
+    bodies = synthea_live.generate_cohort(patient.age, patient.sex, module=module)
+    gen_ms = int((time.time() - t0) * 1000)
+    if bodies:
+        return _filter_cohort(patient, bodies), "synthea_live", gen_ms
+    return match_cohort(patient), "synthea_live_failed_fallback", gen_ms
 
 
 def _pick_cluster(clusters: list[dict], outcome_name: str) -> dict | None:
@@ -87,6 +109,24 @@ def _pick_cluster(clusters: list[dict], outcome_name: str) -> dict | None:
 
 def _percentiles(draws: np.ndarray) -> tuple[float, float, float]:
     return float(np.percentile(draws, 10)), float(np.percentile(draws, 50)), float(np.percentile(draws, 90))
+
+
+def _draw_potency(sp: dict, n_draws: int, rng: np.random.Generator) -> np.ndarray:
+    """The SOURCE axis: delivered/label potency as a mixture.
+
+    Most lots ~ N(potency_mean, potency_sd); a p_fail fraction are near-inert
+    "sugar water" lots ~ N(fail_mean, fail_sd). This is what makes a gray-market
+    twin's curve widen AND grow a fat left tail vs a compounding pharmacy.
+    """
+    mean = float(sp.get("potency_mean") or 1.0)
+    sd = float(sp.get("potency_sd") or 0.0)
+    p_fail = float(sp.get("p_fail") or 0.0)
+    fail_mean = 0.5 if sp.get("fail_mean") is None else float(sp.get("fail_mean"))
+    fail_sd = 0.15 if sp.get("fail_sd") is None else float(sp.get("fail_sd"))
+    good = rng.normal(mean, sd, n_draws)
+    bad = rng.normal(fail_mean, fail_sd, n_draws)
+    is_fail = rng.random(n_draws) < p_fail
+    return np.clip(np.where(is_fail, bad, good), 0.0, None)
 
 
 def _quarter_bands(terminal: np.ndarray) -> list[QuarterBand]:
@@ -108,21 +148,35 @@ def _simulate_trial_outcome(
     seed: int,
     cohort_n: int,
     substrate_missing: bool,
+    source_prior: dict | None = None,
 ) -> OutcomeResult:
-    mean = float(prior["effect_mean"])
+    bio_mean = float(prior["effect_mean"])
     sd = float(prior["effect_sd"] or 0)
     if substrate_missing:
         sd *= SUBSTRATE_SD_INFLATE
 
     rng = np.random.default_rng(seed)
-    terminal = rng.normal(mean, sd, n_draws)
+    terminal = rng.normal(bio_mean, sd, n_draws)
+
+    # SOURCE axis: delivered_effect = biological_effect x potency_factor.
+    source_type = None
+    source_dud_pct = None
+    if source_prior:
+        terminal = terminal * _draw_potency(source_prior, n_draws, rng)
+        source_type = source_prior.get("source_type")
+        p_fail = float(source_prior.get("p_fail") or 0.0)
+        p_contam = float(source_prior.get("p_contam") or 0.0)
+        source_dud_pct = round(p_fail * 100, 1)
 
     p10, p50, p90 = _percentiles(terminal)
     confidence = float(cluster["confidence"]) if cluster else 0.65
     if substrate_missing:
         confidence = min(confidence, 0.52)
+    if source_prior:
+        # a sketchy source is itself uncertainty -> penalize confidence
+        confidence *= max(0.4, 1.0 - (p_fail + p_contam))
 
-    threshold = WEIGHT_LOSS_THRESHOLD if "weight" in outcome_name else mean - abs(sd)
+    threshold = WEIGHT_LOSS_THRESHOLD if "weight" in outcome_name else bio_mean - abs(sd)
     prob = float(np.mean(terminal <= threshold))
 
     return OutcomeResult(
@@ -133,13 +187,16 @@ def _simulate_trial_outcome(
         trial_backed=bool(cluster.get("trial_backed")) if cluster else True,
         confidence=round(confidence, 2),
         distribution_void=False,
-        mean=round(mean, 2),
-        sd=round(sd, 2),
+        mean=round(float(np.mean(terminal)), 2),
+        sd=round(float(np.std(terminal)), 2),
         n=int(prior.get("population_n") or n_draws),
         p10=round(p10, 2),
         p50=round(p50, 2),
         p90=round(p90, 2),
         prob_threshold=round(prob, 3),
+        biological_mean=round(bio_mean, 2),
+        source_type=source_type,
+        source_dud_pct=source_dud_pct,
         quarters=_quarter_bands(terminal),
     )
 
@@ -164,8 +221,11 @@ def run_simulation(
     outcomes: list[str],
     n_draws: int,
     seed: int,
+    source_type: str | None = None,
+    live_cohort: bool = False,
 ) -> SimulateResponse:
-    cohort = match_cohort(patient)
+    active_module = modules.get_active_module(compounds[0].compound_id) if (live_cohort and compounds) else None
+    cohort, cohort_source, cohort_gen_ms = resolve_cohort(patient, live_cohort, active_module)
     cohort_n = len(cohort)
     substrate_missing = cohort_n < MIN_COHORT
 
@@ -173,10 +233,13 @@ def run_simulation(
     cohort_callout = None
     anecdotes: list[AnecdoteSnippet] = []
 
+    if cohort_source == "synthea_live":
+        cohort_callout = f"Generated {cohort_n} patient-matched Synthea bodies live in {cohort_gen_ms} ms."
+
     if substrate_missing:
         cohort_fallback = "anecdote"
         cohort_callout = (
-            f"Only {cohort_n} Tier-4 patient(s) matched age±5 and sex in synthetic_patients — "
+            f"Only {cohort_n} Tier-4 patient(s) matched age±5 and sex — "
             "Reddit anecdotes below are context only, not evidence."
         )
 
@@ -187,6 +250,11 @@ def run_simulation(
         clusters = db.get_case_studies(compound.compound_id)
         priors = db.get_outcome_priors(compound.compound_id)
         priors_by_name = {p["outcome_name"]: p for p in priors}
+        source_prior = (
+            db.get_source_potency_prior(source_type, compound.compound_id)
+            if source_type
+            else None
+        )
 
         for outcome_name in outcomes:
             cluster = _pick_cluster(clusters, outcome_name)
@@ -220,6 +288,7 @@ def run_simulation(
                     seed + compound.compound_id,
                     cohort_n,
                     substrate_missing,
+                    source_prior,
                 )
             )
 
@@ -229,8 +298,10 @@ def run_simulation(
     has_trial = any(o.trial_backed and not o.distribution_void for o in result_outcomes)
     data_confidence = "High" if has_trial and not substrate_missing else "Low"
 
-    return SimulateResponse(
+    response = SimulateResponse(
         cohort_n=cohort_n,
+        cohort_source=cohort_source,
+        cohort_gen_ms=cohort_gen_ms,
         cohort_fallback=cohort_fallback,
         cohort_callout=cohort_callout,
         substrate_missing=substrate_missing,
@@ -239,6 +310,22 @@ def run_simulation(
         anecdotes=anecdotes,
         data_confidence=data_confidence,
     )
+
+    # Persist the run (best-effort). Save the live-generated bodies only.
+    response.run_id = runs.save_run(
+        compound_id=compounds[0].compound_id if compounds else None,
+        patient=patient.model_dump(),
+        source_type=source_type,
+        n_draws=n_draws,
+        live_cohort=live_cohort,
+        cohort_source=cohort_source,
+        cohort_n=cohort_n,
+        cohort_gen_ms=cohort_gen_ms,
+        data_confidence=data_confidence,
+        outcomes=[o.model_dump() for o in result_outcomes],
+        cohort=cohort if cohort_source == "synthea_live" else None,
+    )
+    return response
 
 
 def _anecdote_snippets(compound_id: int, limit: int = 5) -> list[AnecdoteSnippet]:

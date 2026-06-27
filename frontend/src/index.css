@@ -6,6 +6,55 @@ body {
   color: #d4d4d8;
 }
 
+/* Simulation 2 builder */
+.sim2-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  background: transparent;
+}
+
+.sim2-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 12px;
+  width: 12px;
+  border-radius: 50%;
+  background: #f4f4f5;
+  cursor: pointer;
+  margin-top: -5px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.sim2-range::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 2px;
+  cursor: pointer;
+  background: #3f3f46;
+  border-radius: 2px;
+}
+
+.sim2-node-connector::after {
+  content: "";
+  position: absolute;
+  top: 24px;
+  right: -4rem;
+  width: 4rem;
+  height: 1px;
+  background-color: #3f3f46;
+  transform: translateY(-50%);
+  z-index: 0;
+}
+
+.sim2-node-connector-active::after {
+  background-color: #f4f4f5;
+}
+
+.sim2-dash-line {
+  background-image: linear-gradient(to right, #3f3f46 50%, transparent 50%);
+  background-size: 8px 1px;
+  background-repeat: repeat-x;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
