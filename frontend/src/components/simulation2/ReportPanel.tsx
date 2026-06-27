@@ -13,6 +13,8 @@ type ReportPanelProps = {
   compound: CompoundProfile;
   snapshot: SimulationSnapshot;
   onOpenBreakdown: () => void;
+  open: boolean;
+  onToggleOpen: () => void;
 };
 
 function confidenceColor(level: SimulationSnapshot["confidenceLevel"]) {
@@ -27,16 +29,59 @@ export function ReportPanel({
   compound,
   snapshot,
   onOpenBreakdown,
+  open,
+  onToggleOpen,
 }: ReportPanelProps) {
+  if (!open) {
+    return (
+      <aside className="w-10 bg-[#121212] border-l border-zinc-800 flex flex-col items-center py-3 shrink-0 z-20">
+        <button
+          type="button"
+          onClick={onToggleOpen}
+          className="w-7 h-7 rounded hover:bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-zinc-100"
+          title="Open report"
+        >
+          <Icon icon="solar:alt-arrow-left-linear" className="text-sm" />
+        </button>
+        <div className="mt-4 flex flex-col items-center gap-2">
+          <Icon icon="solar:chart-2-linear" className="text-zinc-500 text-base" />
+          <span
+            className={cn(
+              "text-[10px] font-mono font-medium",
+              confidenceColor(snapshot.confidenceLevel),
+            )}
+          >
+            {snapshot.confidenceScore}%
+          </span>
+        </div>
+        <div
+          className="mt-3 text-[10px] uppercase tracking-widest text-zinc-600"
+          style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+        >
+          Projection Report
+        </div>
+      </aside>
+    );
+  }
   const opacity = barOpacity(snapshot.confidenceScore);
   const topBenefits = compound.benefits.slice(0, audience === "individual" ? 2 : 3);
   const topRisks = compound.sideEffects.slice(0, audience === "individual" ? 3 : 2);
 
   return (
     <div className="w-96 bg-[#121212] border-l border-zinc-800 flex flex-col shrink-0 z-20 min-h-0">
-      <div className="p-6 border-b border-zinc-800/50 shrink-0">
-        <h3 className="text-xs text-zinc-500 uppercase tracking-widest font-medium mb-1">Generated Output</h3>
-        <h2 className="text-lg font-medium tracking-tight text-zinc-100">Projection Report</h2>
+      <div className="p-6 border-b border-zinc-800/50 shrink-0 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-xs text-zinc-500 uppercase tracking-widest font-medium mb-1">Generated Output</h3>
+          <h2 className="text-lg font-medium tracking-tight text-zinc-100">Projection Report</h2>
+        </div>
+        <button
+          type="button"
+          onClick={onToggleOpen}
+          className="w-7 h-7 rounded hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-100 shrink-0"
+          title="Collapse report"
+        >
+          <Icon icon="solar:alt-arrow-right-linear" className="text-sm" />
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8 min-h-0">

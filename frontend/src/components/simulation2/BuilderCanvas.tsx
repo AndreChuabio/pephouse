@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@iconify/react";
 import {
   COMPOUND_LIST,
-  FIXED_NODE_TYPES,
-  nodeLabel,
+  PENALTIES,
   sourceTier,
+  studyKey,
   type ChainNode,
   type ChainNodeType,
   type CompoundProfile,
@@ -14,18 +14,59 @@ import {
 import { cn } from "../../lib/cn";
 import { TierBadge } from "./Sim2Primitives";
 
+const COMPOUND_HUES = [
+  "ring-blue-500/40 border-blue-500/30 bg-blue-500/5 text-blue-300",
+  "ring-purple-500/40 border-purple-500/30 bg-purple-500/5 text-purple-300",
+  "ring-amber-500/40 border-amber-500/30 bg-amber-500/5 text-amber-300",
+  "ring-emerald-500/40 border-emerald-500/30 bg-emerald-500/5 text-emerald-300",
+];
+
+function compoundAccent(index: number) {
+  return COMPOUND_HUES[index % COMPOUND_HUES.length];
+}
+
+type ChipTone = "positive" | "negative" | "neutral";
+
+type Contribution = {
+  value: number;
+  tone: ChipTone;
+  suffix?: string;
+};
+
+function chipClasses(tone: ChipTone) {
+  if (tone === "positive") return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+  if (tone === "negative") return "bg-amber-500/10 text-amber-500 border-amber-500/20";
+  return "bg-zinc-800/60 text-zinc-400 border-zinc-700/60";
+}
+
+function ContributionChip({ contribution }: { contribution: Contribution }) {
+  const sign = contribution.value > 0 ? "+" : contribution.value < 0 ? "" : "";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center text-[10px] font-medium font-mono px-1.5 py-0.5 rounded-sm border whitespace-nowrap",
+        chipClasses(contribution.tone),
+      )}
+    >
+      {sign}
+      {contribution.value}
+      {contribution.suffix ? <span className="ml-0.5 opacity-70 whitespace-nowrap">{contribution.suffix}</span> : null}
+    </span>
+  );
+}
+
 type BuilderCanvasProps = {
   nodes: ChainNode[];
-  onAddNode: (type: ChainNodeType) => void;
+  onAddNode: (type: ChainNodeType, compoundId?: string) => void;
   onRemoveNode: (id: string) => void;
   onMoveNode: (id: string, direction: -1 | 1) => void;
   onRun: () => void;
-  compound: CompoundProfile;
-  stackCompound: CompoundProfile | null;
-  onStackCompoundChange: (id: string | null) => void;
+  compounds: CompoundProfile[];
+  primaryCompound: CompoundProfile;
+  compoundIds: string[];
+  onToggleCompound: (id: string) => void;
   searchQuery: string;
   onSearchQueryChange: (q: string) => void;
-  onCompoundSelect: (id: string) => void;
   sex: Sex;
   onSexChange: (sex: Sex) => void;
   age: number;
@@ -35,14 +76,62 @@ type BuilderCanvasProps = {
   dose: number;
   onDoseChange: (dose: number) => void;
   snapshot: SimulationSnapshot;
+  excludedStudies: Record<string, boolean>;
+  onToggleStudy: (compoundId: string, tier: 1 | 2 | 3 | 4, title: string) => void;
+  sourceFractions: Record<string, number>;
 };
+
+function nodeContribution(
+  node: ChainNode,
+  compound: CompoundProfile,
+  snapshot: SimulationSnapshot,
+  isPrimary: boolean,
+  fraction: number,
+): Contribution | null {
+  const pct = Math.round(fraction * 100);
+  switch (node.type) {
+    case "compound":
+      return { value: compound.baseProfileScore, tone: "positive", suffix: "base" };
+    case "demographics":
+      if (snapshot.ageExtrapolated)
+        return { value: -PENALTIES.ageExtrapolated, tone: "negative", suffix: "age" };
+      if (snapshot.outsideStudiedRange)
+        return { value: -PENALTIES.outsideStudiedRange, tone: "negative", suffix: "age" };
+      return { value: 0, tone: "neutral", suffix: "in cohort" };
+    case "run":
+      return { value: snapshot.confidenceScore, tone: "positive", suffix: "%" };
+    case "source-tier-4": {
+      if (!isPrimary) return { value: pct, tone: "neutral", suffix: "%" };
+      const held = Math.round(PENALTIES.tier4Excluded * fraction);
+      return { value: held, tone: fraction > 0 ? "positive" : "negative", suffix: "held" };
+    }
+    case "source-tier-2": {
+      if (!isPrimary) return { value: pct, tone: "neutral", suffix: "%" };
+      const held = Math.round(PENALTIES.tier2Off * fraction);
+      return { value: held, tone: fraction > 0 ? "positive" : "negative", suffix: "held" };
+    }
+    case "source-tier-1": {
+      if (isPrimary && compound.id === "bpc-157") {
+        const held = Math.round(PENALTIES.tier1OffBpc * fraction);
+        return { value: held, tone: fraction > 0 ? "positive" : "negative", suffix: "held" };
+      }
+      return { value: pct, tone: "neutral", suffix: "%" };
+    }
+    case "source-tier-3":
+      return { value: pct, tone: "neutral", suffix: "%" };
+    default:
+      return null;
+  }
+}
 
 type NodeShellProps = {
   title: string;
+  subtitle?: React.ReactNode;
   icon: string;
   badge?: React.ReactNode;
   active?: boolean;
   warn?: boolean;
+  accentClass?: string;
   canRemove?: boolean;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
@@ -51,6 +140,10 @@ type NodeShellProps = {
   onMoveDown?: () => void;
   showInputPort?: boolean;
   showOutputPort?: boolean;
+  collapsible?: boolean;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
+  summary?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
 };
@@ -69,10 +162,12 @@ function PortDot({ side }: { side: "left" | "right" }) {
 
 function NodeShell({
   title,
+  subtitle,
   icon,
   badge,
   active = true,
   warn = false,
+  accentClass,
   canRemove = false,
   canMoveUp = false,
   canMoveDown = false,
@@ -81,79 +176,114 @@ function NodeShell({
   onMoveDown,
   showInputPort = true,
   showOutputPort = true,
+  collapsible = false,
+  collapsed = false,
+  onToggleCollapse,
+  summary,
   children,
   footer,
 }: NodeShellProps) {
   const hasControls = canRemove || canMoveUp || canMoveDown;
+  const showBody = !collapsible || !collapsed;
   return (
     <div
       className={cn(
         "group w-72 bg-[#121212] border border-zinc-800 rounded-xl relative sim2-node-connector shrink-0",
         active && "sim2-node-connector-active",
         warn && "border-amber-500/30 ring-1 ring-amber-500/10",
+        accentClass,
       )}
     >
       {showInputPort && <PortDot side="left" />}
       {showOutputPort && <PortDot side="right" />}
-      <div className="px-4 py-3 border-b border-zinc-800/50 flex items-center justify-between">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-5 h-5 rounded border border-zinc-800 flex items-center justify-center bg-zinc-900 shrink-0">
-            <Icon icon={icon} className="text-zinc-400 text-xs" />
-          </div>
-          <h2 className="text-sm font-medium tracking-tight text-zinc-100 truncate">{title}</h2>
-        </div>
-        <div className="flex items-center gap-1.5">
-          {badge}
-          {hasControls && (
-            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-              {canMoveUp && (
-                <button
-                  type="button"
-                  onClick={onMoveUp}
-                  className="w-5 h-5 rounded hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-200"
-                  title="Move earlier in chain"
-                >
-                  <Icon icon="solar:alt-arrow-left-linear" className="text-xs" />
-                </button>
-              )}
-              {canMoveDown && (
-                <button
-                  type="button"
-                  onClick={onMoveDown}
-                  className="w-5 h-5 rounded hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-200"
-                  title="Move later in chain"
-                >
-                  <Icon icon="solar:alt-arrow-right-linear" className="text-xs" />
-                </button>
-              )}
-              {canRemove && (
-                <button
-                  type="button"
-                  onClick={onRemove}
-                  className="w-5 h-5 rounded hover:bg-red-500/20 hover:text-red-400 flex items-center justify-center text-zinc-500"
-                  title="Remove node"
-                >
-                  <Icon icon="solar:close-circle-linear" className="text-xs" />
-                </button>
-              )}
+      <div className="border-b border-zinc-800/50">
+        <div className="px-4 pt-3 pb-1.5 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="w-5 h-5 rounded border border-zinc-800 flex items-center justify-center bg-zinc-900 shrink-0">
+              <Icon icon={icon} className="text-zinc-400 text-xs" />
             </div>
-          )}
+            <h2 className="text-sm font-medium tracking-tight text-zinc-100 truncate">{title}</h2>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {collapsible && (
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                className="w-5 h-5 rounded hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-200"
+                title={collapsed ? "Expand" : "Collapse"}
+              >
+                <Icon
+                  icon={collapsed ? "solar:alt-arrow-down-linear" : "solar:alt-arrow-up-linear"}
+                  className="text-xs"
+                />
+              </button>
+            )}
+            {hasControls && (
+              <div className="hidden group-hover:flex items-center gap-0.5">
+                {canMoveUp && (
+                  <button
+                    type="button"
+                    onClick={onMoveUp}
+                    className="w-5 h-5 rounded hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-200"
+                    title="Move earlier in chain"
+                  >
+                    <Icon icon="solar:alt-arrow-left-linear" className="text-xs" />
+                  </button>
+                )}
+                {canMoveDown && (
+                  <button
+                    type="button"
+                    onClick={onMoveDown}
+                    className="w-5 h-5 rounded hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-200"
+                    title="Move later in chain"
+                  >
+                    <Icon icon="solar:alt-arrow-right-linear" className="text-xs" />
+                  </button>
+                )}
+                {canRemove && (
+                  <button
+                    type="button"
+                    onClick={onRemove}
+                    className="w-5 h-5 rounded hover:bg-red-500/20 hover:text-red-400 flex items-center justify-center text-zinc-500"
+                    title="Remove node"
+                  >
+                    <Icon icon="solar:close-circle-linear" className="text-xs" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
+        {(subtitle || badge) && (
+          <div className="pl-11 pr-4 pb-3 pt-0 flex items-center justify-between gap-2">
+            <div className="min-w-0 text-[10px] text-zinc-500 truncate">{subtitle}</div>
+            <div className="flex items-center gap-1.5 shrink-0">{badge}</div>
+          </div>
+        )}
       </div>
-      <div className="p-4">{children}</div>
-      {footer}
+      {showBody ? <div className="p-4">{children}</div> : summary ? (
+        <div className="px-4 py-2.5 text-[11px] text-zinc-500">{summary}</div>
+      ) : null}
+      {showBody && footer}
     </div>
   );
 }
 
 type CompoundBodyProps = {
-  compound: CompoundProfile;
+  compoundIds: string[];
   searchQuery: string;
   onSearchQueryChange: (q: string) => void;
-  onCompoundSelect: (id: string) => void;
+  onToggleCompound: (id: string) => void;
+  compoundIndexById: Record<string, number>;
 };
 
-function CompoundBody({ compound, searchQuery, onSearchQueryChange, onCompoundSelect }: CompoundBodyProps) {
+function CompoundBody({
+  compoundIds,
+  searchQuery,
+  onSearchQueryChange,
+  onToggleCompound,
+  compoundIndexById,
+}: CompoundBodyProps) {
   return (
     <div className="space-y-3">
       <div className="relative">
@@ -169,26 +299,60 @@ function CompoundBody({ compound, searchQuery, onSearchQueryChange, onCompoundSe
           className="w-full pl-8 pr-3 py-1.5 bg-[#0A0A0A] border border-zinc-800 rounded-md text-xs text-zinc-100 focus:outline-none focus:border-zinc-600 focus:bg-[#121212] transition-colors placeholder-zinc-600"
         />
       </div>
+      {compoundIds.length === 0 && (
+        <div className="text-[11px] text-amber-500 bg-amber-500/5 border border-amber-500/20 rounded-md px-2.5 py-2">
+          No compound selected — chain has no subject. Pick one below.
+        </div>
+      )}
+      <div className="text-[10px] uppercase tracking-widest text-zinc-500 pb-0.5">
+        {compoundIds.length} in scope · click to add or remove
+      </div>
       <div className="space-y-1">
         {COMPOUND_LIST.map((c) => {
-          const selected = compound.id === c.id;
+          const selected = compoundIds.includes(c.id);
+          const isPrimary = compoundIds[0] === c.id;
+          const index = compoundIndexById[c.id] ?? 0;
+          const accentText = compoundAccent(index).split(" ")[3];
           return (
             <button
               key={c.id}
               type="button"
-              onClick={() => onCompoundSelect(c.id)}
+              onClick={() => onToggleCompound(c.id)}
               className={cn(
-                "w-full text-left px-2.5 py-1.5 rounded-md border transition-colors",
+                "w-full text-left px-2.5 py-1.5 rounded-md border transition-colors flex items-start gap-2",
                 selected
                   ? "bg-zinc-800/70 border-zinc-700"
                   : "border-transparent hover:bg-zinc-900/70 hover:border-zinc-800",
               )}
+              title={selected ? "Click to remove from chain" : "Click to add to chain"}
             >
-              <span className={cn("text-xs block font-medium", selected ? "text-zinc-50" : "text-zinc-200")}>
-                {c.name}
+              <span
+                className={cn(
+                  "mt-[3px] w-3.5 h-3.5 rounded-[3px] border flex items-center justify-center shrink-0 transition-colors",
+                  selected
+                    ? "border-emerald-500/60 bg-emerald-500/20"
+                    : "border-zinc-700 bg-transparent",
+                )}
+                aria-hidden
+              >
+                {selected && (
+                  <Icon icon="solar:check-read-linear" className="text-emerald-300 text-[10px]" />
+                )}
               </span>
-              <span className="text-[11px] text-zinc-500 block leading-tight mt-0.5">
-                {c.subtitle}
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5 flex-wrap">
+                  <span className={cn("text-xs font-medium", selected ? accentText : "text-zinc-300")}>
+                    {c.name}
+                  </span>
+                  {isPrimary && (
+                    <span className="text-[9px] uppercase tracking-widest text-emerald-400/80">
+                      primary
+                    </span>
+                  )}
+                </span>
+                <span className="text-[11px] text-zinc-500 block leading-tight mt-0.5">
+                  {c.subtitle}
+                </span>
               </span>
             </button>
           );
@@ -198,51 +362,81 @@ function CompoundBody({ compound, searchQuery, onSearchQueryChange, onCompoundSe
   );
 }
 
-type StackBodyProps = {
-  compound: CompoundProfile;
-  stackCompound: CompoundProfile | null;
-  onStackCompoundChange: (id: string | null) => void;
-};
-
-function StackBody({ compound, stackCompound, onStackCompoundChange }: StackBodyProps) {
-  const options = COMPOUND_LIST.filter((c) => c.id !== compound.id);
-  return (
-    <div className="space-y-2">
-      <p className="text-[11px] text-zinc-500 leading-snug">
-        Second compound stacked with the primary. Confidence is penalized for interaction uncertainty.
-      </p>
-      <select
-        value={stackCompound?.id ?? ""}
-        onChange={(e) => onStackCompoundChange(e.target.value || null)}
-        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-md px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-zinc-600"
-      >
-        <option value="">Select stack compound…</option>
-        {options.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
 type SourceBodyProps = {
   tier: 1 | 2 | 3 | 4;
   compound: CompoundProfile;
+  excludedStudies: Record<string, boolean>;
+  onToggleStudy: (compoundId: string, tier: 1 | 2 | 3 | 4, title: string) => void;
 };
 
-function SourceBody({ tier, compound }: SourceBodyProps) {
+function SourceBody({ tier, compound, excludedStudies, onToggleStudy }: SourceBodyProps) {
   const source = compound.evidenceSources.find((s) => s.tier === tier);
+  const studies = source?.studies ?? [];
+  const includedCount = studies.filter(
+    (s) => !excludedStudies[studyKey(compound.id, tier, s.title)],
+  ).length;
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-zinc-200">{source?.label ?? `Tier ${tier} Source`}</span>
-        <TierBadge tier={tier} />
-      </div>
-      <p className="text-[11px] text-zinc-500 leading-snug">
-        Present in chain — contributes to confidence. Remove this card to exclude this tier.
-      </p>
+    <div className="space-y-3">
+      {source?.summary && (
+        <p className="text-[11px] text-zinc-500 leading-snug">{source.summary}</p>
+      )}
+      {studies.length > 0 && (
+        <div className="space-y-1.5 pt-2 border-t border-zinc-800/40">
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] uppercase tracking-widest text-zinc-500">
+              {includedCount} of {studies.length} included
+            </div>
+          </div>
+          <ul className="space-y-1">
+            {studies.map((s) => {
+              const key = studyKey(compound.id, tier, s.title);
+              const excluded = !!excludedStudies[key];
+              return (
+                <li key={s.title} className="flex items-start gap-2 text-[11px] group/study">
+                  <button
+                    type="button"
+                    onClick={() => onToggleStudy(compound.id, tier, s.title)}
+                    className={cn(
+                      "mt-[2px] w-3.5 h-3.5 rounded-[3px] border flex items-center justify-center shrink-0 transition-colors",
+                      excluded
+                        ? "border-zinc-700 bg-transparent hover:border-zinc-500"
+                        : "border-emerald-500/60 bg-emerald-500/20 hover:bg-emerald-500/30",
+                    )}
+                    title={excluded ? "Include study" : "Exclude study"}
+                    aria-pressed={!excluded}
+                  >
+                    {!excluded && (
+                      <Icon icon="solar:check-read-linear" className="text-emerald-300 text-[10px]" />
+                    )}
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <div className={cn("leading-snug", excluded ? "text-zinc-600 line-through" : "text-zinc-300")}>
+                      {s.url ? (
+                        <a
+                          href={s.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="hover:text-blue-400 inline-flex items-center gap-1"
+                        >
+                          {s.title}
+                          <Icon icon="solar:arrow-right-up-linear" className="text-[9px] opacity-70" />
+                        </a>
+                      ) : (
+                        s.title
+                      )}
+                    </div>
+                    {s.meta && (
+                      <div className={cn("text-[10px] font-mono", excluded ? "text-zinc-700" : "text-zinc-500")}>
+                        {s.meta}
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -385,9 +579,11 @@ function RunBody({ onRun, snapshot }: { onRun: () => void; snapshot: SimulationS
   );
 }
 
+type PaletteOption = { key: string; type: ChainNodeType; compoundId?: string; label: string; group?: string };
+
 type PaletteButtonProps = {
-  options: { type: ChainNodeType; label: string }[];
-  onAddNode: (type: ChainNodeType) => void;
+  options: PaletteOption[];
+  onAddNode: (type: ChainNodeType, compoundId?: string) => void;
 };
 
 function PaletteButton({ options, onAddNode }: PaletteButtonProps) {
@@ -404,6 +600,15 @@ function PaletteButton({ options, onAddNode }: PaletteButtonProps) {
   }, [open]);
 
   const disabled = options.length === 0;
+  const grouped = useMemo(() => {
+    const map = new Map<string, PaletteOption[]>();
+    for (const opt of options) {
+      const k = opt.group ?? "Add to chain";
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(opt);
+    }
+    return Array.from(map.entries());
+  }, [options]);
 
   return (
     <div ref={wrapRef} className="relative shrink-0 self-start">
@@ -422,27 +627,31 @@ function PaletteButton({ options, onAddNode }: PaletteButtonProps) {
         <Icon icon="solar:add-circle-linear" className="text-xl" />
       </button>
       {open && options.length > 0 && (
-        <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-56 bg-[#121212] border border-zinc-800 rounded-lg shadow-xl z-20 overflow-hidden">
-          <div className="px-3 py-2 text-[10px] uppercase tracking-widest text-zinc-500 border-b border-zinc-800">
-            Add to chain
-          </div>
-          <ul>
-            {options.map((opt) => (
-              <li key={opt.type}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onAddNode(opt.type);
-                    setOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-2 text-xs text-zinc-200 hover:bg-zinc-800/60 flex items-center gap-2"
-                >
-                  <Icon icon="solar:add-square-linear" className="text-zinc-500" />
-                  {opt.label}
-                </button>
-              </li>
-            ))}
-          </ul>
+        <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-64 bg-[#121212] border border-zinc-800 rounded-lg shadow-xl z-20 overflow-hidden max-h-96 overflow-y-auto">
+          {grouped.map(([group, opts]) => (
+            <div key={group}>
+              <div className="px-3 py-2 text-[10px] uppercase tracking-widest text-zinc-500 border-b border-zinc-800 bg-zinc-950/60">
+                {group}
+              </div>
+              <ul>
+                {opts.map((opt) => (
+                  <li key={opt.key}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onAddNode(opt.type, opt.compoundId);
+                        setOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs text-zinc-200 hover:bg-zinc-800/60 flex items-center gap-2"
+                    >
+                      <Icon icon="solar:add-square-linear" className="text-zinc-500" />
+                      {opt.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -455,12 +664,12 @@ export function BuilderCanvas({
   onRemoveNode,
   onMoveNode,
   onRun,
-  compound,
-  stackCompound,
-  onStackCompoundChange,
+  compounds,
+  primaryCompound,
+  compoundIds,
+  onToggleCompound,
   searchQuery,
   onSearchQueryChange,
-  onCompoundSelect,
   sex,
   onSexChange,
   age,
@@ -470,24 +679,55 @@ export function BuilderCanvas({
   dose,
   onDoseChange,
   snapshot,
+  excludedStudies,
+  onToggleStudy,
+  sourceFractions,
 }: BuilderCanvasProps) {
   const runIdx = nodes.findIndex((n) => n.type === "run");
   const lastMovableIdx = runIdx === -1 ? nodes.length - 1 : runIdx - 1;
+  const compoundById = useMemo(() => {
+    const map: Record<string, CompoundProfile> = {};
+    for (const c of compounds) map[c.id] = c;
+    return map;
+  }, [compounds]);
+  const compoundIndexById = useMemo(() => {
+    const map: Record<string, number> = {};
+    compoundIds.forEach((id, i) => (map[id] = i));
+    return map;
+  }, [compoundIds]);
 
-  const presentTypes = useMemo(() => new Set(nodes.map((n) => n.type)), [nodes]);
-  const paletteOptions = useMemo(() => {
-    const candidates: ChainNodeType[] = [
-      "stack",
-      "source-tier-4",
-      "source-tier-3",
-      "source-tier-2",
-      "source-tier-1",
-      "run",
-    ];
-    return candidates
-      .filter((t) => !presentTypes.has(t))
-      .map((type) => ({ type, label: nodeLabel(type, compound) }));
-  }, [presentTypes, compound]);
+  const paletteOptions = useMemo<PaletteOption[]>(() => {
+    const present = new Set(nodes.map((n) => n.id));
+    const opts: PaletteOption[] = [];
+    for (const c of compounds) {
+      for (const tier of [4, 3, 2, 1] as const) {
+        const type = `source-tier-${tier}` as ChainNodeType;
+        const id = `${type}-${c.id}`;
+        if (present.has(id)) continue;
+        const sourceLabel = c.evidenceSources.find((s) => s.tier === tier)?.label ?? `Tier ${tier}`;
+        opts.push({
+          key: id,
+          type,
+          compoundId: c.id,
+          label: `Tier ${tier} · ${sourceLabel}`,
+          group: c.name,
+        });
+      }
+    }
+    if (!nodes.some((n) => n.type === "demographics")) {
+      opts.push({ key: "demographics", type: "demographics", label: "Demographics", group: "Chain" });
+    }
+    if (!nodes.some((n) => n.type === "run")) {
+      opts.push({ key: "run", type: "run", label: "Run (terminal)", group: "Chain" });
+    }
+    return opts;
+  }, [nodes, compounds]);
+
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const toggleCollapsed = (id: string) =>
+    setCollapsed((prev) => ({ ...prev, [id]: !(prev[id] ?? false) }));
+
+  const demoSummary = `${sex === "M" ? "Male" : "Female"} · ${age} yrs · ${weight} kg · ${dose} mcg`;
 
   return (
     <div className="flex-1 overflow-x-auto relative pl-12 pr-24 py-12 flex items-center h-full min-h-0">
@@ -501,13 +741,23 @@ export function BuilderCanvas({
 
       <div className="flex items-start gap-16 relative z-10 mx-auto min-w-max">
         {nodes.map((node, i) => {
-          const isFixed = FIXED_NODE_TYPES.has(node.type);
           const isRun = node.type === "run";
-          const canRemove = !isFixed;
-          const canMoveUp = !isFixed && !isRun && i > 1;
-          const canMoveDown = !isFixed && !isRun && i < lastMovableIdx;
+          const canRemove = true;
+          const canMoveUp = !isRun && i > 0;
+          const canMoveDown = !isRun && i < lastMovableIdx;
           const showInputPort = i > 0;
           const showOutputPort = i < nodes.length - 1;
+
+          const nodeCompound = node.compoundId
+            ? compoundById[node.compoundId] ?? primaryCompound
+            : primaryCompound;
+          const compoundIndex = node.compoundId ? compoundIndexById[node.compoundId] ?? 0 : 0;
+          const isPrimary = nodeCompound.id === primaryCompound.id;
+
+          const nodeTier = sourceTier(node.type);
+          const fraction = nodeTier && isPrimary ? sourceFractions[`tier${nodeTier}`] ?? 0 : 1;
+          const contribution = nodeContribution(node, nodeCompound, snapshot, isPrimary, fraction);
+          const badge = contribution ? <ContributionChip contribution={contribution} /> : undefined;
 
           const shared = {
             canRemove,
@@ -518,38 +768,37 @@ export function BuilderCanvas({
             onMoveDown: () => onMoveNode(node.id, 1),
             showInputPort,
             showOutputPort,
+            badge,
           };
 
           if (node.type === "compound") {
-            return (
-              <NodeShell key={node.id} title="Compound" icon="solar:test-tube-linear" {...shared}>
-                <CompoundBody
-                  compound={compound}
-                  searchQuery={searchQuery}
-                  onSearchQueryChange={onSearchQueryChange}
-                  onCompoundSelect={onCompoundSelect}
-                />
-              </NodeShell>
-            );
-          }
-
-          if (node.type === "stack") {
+            const compoundSummary =
+              compoundIds.length === 0
+                ? "none selected"
+                : compoundIds.length === 1
+                  ? compounds[0]?.name ?? compoundIds[0]
+                  : `${compounds[0]?.name ?? compoundIds[0]} +${compoundIds.length - 1} stack`;
             return (
               <NodeShell
                 key={node.id}
-                title="Stack Compound"
-                icon="solar:layers-linear"
-                badge={
-                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-sm bg-zinc-800 text-zinc-400 border border-zinc-700">
-                    optional
-                  </span>
-                }
+                title="Compounds"
+                subtitle={`${compoundIds.length} in scope`}
+                icon="solar:test-tube-linear"
+                collapsible
+                collapsed={collapsed[node.id] ?? false}
+                onToggleCollapse={() => toggleCollapsed(node.id)}
+                summary={compoundSummary}
                 {...shared}
+                canRemove={false}
+                canMoveUp={false}
+                canMoveDown={false}
               >
-                <StackBody
-                  compound={compound}
-                  stackCompound={stackCompound}
-                  onStackCompoundChange={onStackCompoundChange}
+                <CompoundBody
+                  compoundIds={compoundIds}
+                  searchQuery={searchQuery}
+                  onSearchQueryChange={onSearchQueryChange}
+                  onToggleCompound={onToggleCompound}
+                  compoundIndexById={compoundIndexById}
                 />
               </NodeShell>
             );
@@ -558,15 +807,43 @@ export function BuilderCanvas({
           const tier = sourceTier(node.type);
           if (tier) {
             const tier4Warn = tier === 4 && snapshot.tier4Excluded === false && snapshot.degraded;
+            const accent = compoundAccent(compoundIndex);
+            const source = nodeCompound.evidenceSources.find((s) => s.tier === tier);
+            const sourceTitle = source?.label ?? `Tier ${tier} Source`;
+            const headerBadge = (
+              <span className="flex items-center gap-1.5">
+                <TierBadge tier={tier} />
+                {badge}
+              </span>
+            );
             return (
               <NodeShell
                 key={node.id}
-                title={`Source · Tier ${tier}`}
+                title={sourceTitle}
+                subtitle={
+                  <span className="flex items-center gap-1.5">
+                    <span className={cn(accent.split(" ")[3], !isPrimary && "opacity-80")}>
+                      {nodeCompound.name}
+                    </span>
+                    {!isPrimary && (
+                      <span className="text-[9px] uppercase tracking-widest text-zinc-600">stack</span>
+                    )}
+                  </span>
+                }
                 icon="solar:database-linear"
                 warn={tier4Warn}
+                collapsible
+                collapsed={collapsed[node.id] ?? false}
+                onToggleCollapse={() => toggleCollapsed(node.id)}
                 {...shared}
+                badge={headerBadge}
               >
-                <SourceBody tier={tier} compound={compound} />
+                <SourceBody
+                  tier={tier}
+                  compound={nodeCompound}
+                  excludedStudies={excludedStudies}
+                  onToggleStudy={onToggleStudy}
+                />
               </NodeShell>
             );
           }
@@ -578,6 +855,10 @@ export function BuilderCanvas({
                 title="Demographics"
                 icon="solar:user-linear"
                 warn={snapshot.ageExtrapolated}
+                collapsible
+                collapsed={collapsed[node.id] ?? false}
+                onToggleCollapse={() => toggleCollapsed(node.id)}
+                summary={demoSummary}
                 {...shared}
                 footer={
                   snapshot.ageExtrapolated ? (
@@ -585,7 +866,7 @@ export function BuilderCanvas({
                       <Icon icon="solar:target-linear" className="text-amber-500 text-sm mt-0.5 shrink-0" />
                       <p className="text-[11px] text-amber-500 leading-snug">
                         <span className="font-medium text-amber-400">Extrapolated:</span> Age {age} exceeds
-                        primary study cohort ({compound.primaryCohortMin}–{compound.primaryCohortMax}).
+                        primary study cohort ({primaryCompound.primaryCohortMin}–{primaryCompound.primaryCohortMax}).
                         Confidence penalty applied.
                       </p>
                     </div>
@@ -602,7 +883,7 @@ export function BuilderCanvas({
                   dose={dose}
                   onDoseChange={onDoseChange}
                   snapshot={snapshot}
-                  compound={compound}
+                  compound={primaryCompound}
                 />
               </NodeShell>
             );
@@ -614,11 +895,6 @@ export function BuilderCanvas({
                 key={node.id}
                 title="Run"
                 icon="solar:play-circle-linear"
-                badge={
-                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-sm bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    terminal
-                  </span>
-                }
                 {...shared}
                 canMoveUp={false}
                 canMoveDown={false}
