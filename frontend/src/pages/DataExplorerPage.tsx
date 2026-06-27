@@ -168,6 +168,98 @@ export default function DataExplorerPage() {
                 <>
                   <VendorGlobe vendors={detail.vendors} compoundName={selected.name} />
 
+                  {(() => {
+                    const xTweets = tweetsForCompound(selected.name);
+                    type DoseReport = {
+                      mcg: number;
+                      raw: string;
+                      source: "x" | "reddit";
+                      permalink: string;
+                      label: string;
+                      sentiment: string;
+                    };
+                    const parseDose = (s: string | null | undefined): { mcg: number; raw: string } | null => {
+                      if (!s) return null;
+                      const m = s.match(/(\d+(?:\.\d+)?)\s*(mg|mcg|μg|ug)\b/i);
+                      if (!m) return null;
+                      const v = parseFloat(m[1]);
+                      const u = m[2].toLowerCase();
+                      return { mcg: u === "mg" ? v * 1000 : v, raw: `${m[1]}${u}` };
+                    };
+                    const reports: DoseReport[] = [];
+                    for (const t of xTweets) {
+                      const p = parseDose(t.dose_mentioned);
+                      if (p) reports.push({ ...p, source: "x", permalink: t.permalink, label: t.claimed_effect, sentiment: t.sentiment });
+                    }
+                    for (const a of detail.anecdotes) {
+                      const p = parseDose(a.dose_mentioned);
+                      if (p) reports.push({ ...p, source: "reddit", permalink: a.permalink, label: a.claimed_effect, sentiment: a.sentiment ?? "" });
+                    }
+                    reports.sort((a, b) => a.mcg - b.mcg);
+                    const fmt = (mcg: number) => (mcg >= 1000 ? `${mcg / 1000}mg` : `${mcg}mcg`);
+                    const min = reports[0]?.mcg;
+                    const max = reports[reports.length - 1]?.mcg;
+                    const sentColor = (s: string) => {
+                      const k = (s ?? "").toLowerCase();
+                      if (k === "positive") return "bg-emerald-400";
+                      if (k === "negative") return "bg-orange-400";
+                      if (k === "mixed") return "bg-amber-400";
+                      return "bg-zinc-400";
+                    };
+                    return (
+                      <Section icon="solar:pills-linear" title="Reported Dosing" count={reports.length}>
+                        {reports.length > 0 && (
+                          <div className="mb-4 pt-2">
+                            <div className="relative h-1 bg-zinc-800 rounded-full mx-2">
+                              {reports.map((r, i) => {
+                                const pct = max === min ? 50 : ((r.mcg - min!) / (max! - min!)) * 100;
+                                return (
+                                  <div
+                                    key={i}
+                                    className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full ring-2 ring-zinc-950 ${sentColor(r.sentiment)}`}
+                                    style={{ left: `${pct}%` }}
+                                    title={`${r.raw} · ${r.source === "x" ? "X" : "Reddit"} · ${r.sentiment}`}
+                                  />
+                                );
+                              })}
+                            </div>
+                            <div className="flex justify-between mt-2 px-1 text-[10px] font-mono text-zinc-500">
+                              <span>{fmt(min!)}</span>
+                              {min !== max && <span>{fmt(max!)}</span>}
+                            </div>
+                          </div>
+                        )}
+                        <div className="space-y-1">
+                          {reports.map((r, i) => (
+                            <a
+                              key={i}
+                              href={r.permalink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center justify-between gap-3 text-sm hover:bg-zinc-950/60 rounded px-2 py-1.5 group"
+                            >
+                              <span className="flex items-center gap-2 min-w-0">
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${sentColor(r.sentiment)}`}
+                                  aria-hidden
+                                />
+                                <span className="font-mono text-zinc-200 shrink-0">{r.raw}</span>
+                                <span className="text-[10px] uppercase tracking-wider text-zinc-500 shrink-0">
+                                  {r.source === "x" ? "X" : "Reddit"}
+                                </span>
+                                <span className="text-zinc-500 truncate">&middot; {r.label}</span>
+                              </span>
+                              <Icon
+                                icon="solar:arrow-right-up-linear"
+                                className="text-zinc-600 opacity-0 group-hover:opacity-100 shrink-0"
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      </Section>
+                    );
+                  })()}
+
                   <Section icon="solar:document-text-linear" title="Clinical Trials" count={detail.trials.length}>
                     <div className="space-y-1.5">
                       {detail.trials.map((t, i) => (
