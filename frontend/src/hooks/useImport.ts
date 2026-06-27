@@ -16,6 +16,12 @@ export type FlowState = "idle" | "working" | "done" | "error";
 const POLL_INTERVAL_MS = 2_500;
 const MAX_POLLS = 16;
 
+// New users start with these conditions (persisted to the DB).
+const DEFAULT_CONDITIONS = ["High cholesterol", "Obesity"];
+// Connection state persisted device-side so a refresh doesn't disconnect.
+const BLOOD_KEY = "pephouse_blood";
+const WEARABLE_KEY = "pephouse_wearable";
+
 /** Junction import for the Digital Twin. Two independent data sources — a blood
  * panel and a wearable — each connectable / disconnectable this session. The
  * twin is `connected` once EITHER source is linked. Saved data hydrates the
@@ -64,19 +70,55 @@ export function useImport() {
     [applyState],
   );
 
-  // On mount, hydrate the editable PROFILE only (not labs / not connected).
+  // On mount: restore the connection (blood / wearable) from localStorage so a
+  // refresh doesn't disconnect, and hydrate the profile + conditions from the DB
+  // (defaulting conditions to High cholesterol + Obesity, persisted).
   useEffect(() => {
     let alive = true;
+    // restore connection state (device-local, survives refresh)
+    try {
+      const b = localStorage.getItem(BLOOD_KEY);
+      if (b) {
+        const saved = JSON.parse(b) as { labs: LabValue[]; label?: string };
+        if (saved.labs?.length) {
+          setLabs(saved.labs);
+          setBloodworkConnected(true);
+          setBloodwork("done");
+          if (saved.label) setBloodworkLabel(saved.label);
+        }
+      }
+      const w = localStorage.getItem(WEARABLE_KEY);
+      if (w) {
+        const saved = JSON.parse(w) as { metrics: WearableMetrics; mocked: boolean };
+        if (saved.metrics) {
+          setWearableMetrics(saved.metrics);
+          setWearableMocked(saved.mocked);
+          setWearableConnected(true);
+          setWearableState("done");
+        }
+      }
+    } catch {
+      /* ignore corrupt local state */
+    }
+    // profile + conditions/goals from the DB
     fetchUserData(getUserRef())
       .then((bundle) => {
-        if (!alive || !bundle) return;
-        if (bundle.age != null) setAge(bundle.age);
-        if (bundle.sex) setSex(bundle.sex);
-        if (bundle.weight_kg != null) setWeightKg(bundle.weight_kg);
-        if (bundle.conditions?.length) setConditions(bundle.conditions);
-        if (bundle.goals?.length) setGoals(bundle.goals);
+        if (!alive) return;
+        if (bundle?.age != null) setAge(bundle.age);
+        if (bundle?.sex) setSex(bundle.sex);
+        if (bundle?.weight_kg != null) setWeightKg(bundle.weight_kg);
+        if (bundle?.goals?.length) setGoals(bundle.goals);
+        if (bundle?.conditions?.length) {
+          setConditions(bundle.conditions);
+        } else {
+          // default + persist to the DB
+          setConditions(DEFAULT_CONDITIONS);
+          saveUserData(getUserRef(), { conditions: DEFAULT_CONDITIONS }).catch(() => {});
+        }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (alive) setConditions(DEFAULT_CONDITIONS);
+      });
     return () => {
       alive = false;
     };
@@ -132,9 +174,15 @@ export function useImport() {
     setError(null);
     setBloodwork("working");
     try {
-      apply(await importLabs(getUserRef()));
+      const patch = await importLabs(getUserRef());
+      apply(patch);
       setBloodwork("done");
       setBloodworkConnected(true);
+      try {
+        localStorage.setItem(BLOOD_KEY, JSON.stringify({ labs: patch.labs ?? [], label: patch.source?.label }));
+      } catch {
+        /* storage full / disabled */
+      }
     } catch (e) {
       setBloodwork("error");
       setError(e instanceof Error ? e.message : "Could not pull bloodwork.");
@@ -188,6 +236,11 @@ export function useImport() {
       setWearableMocked(res.mocked);
       setWearableState("done");
       setWearableConnected(true);
+      try {
+        localStorage.setItem(WEARABLE_KEY, JSON.stringify({ metrics: res.metrics, mocked: res.mocked }));
+      } catch {
+        /* storage full / disabled */
+      }
     } catch (e) {
       setWearableState("error");
       setError(e instanceof Error ? e.message : "Could not pull wearable data.");
@@ -199,6 +252,11 @@ export function useImport() {
     setLabs([]);
     setBloodwork("idle");
     setBloodworkLabel(null);
+    try {
+      localStorage.removeItem(BLOOD_KEY);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const disconnectWearable = useCallback(() => {
@@ -208,6 +266,11 @@ export function useImport() {
     setWearableState("idle");
     setDevice("idle");
     setDeviceLabel(null);
+    try {
+      localStorage.removeItem(WEARABLE_KEY);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const disconnect = useCallback(() => {

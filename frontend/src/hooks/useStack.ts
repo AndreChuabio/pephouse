@@ -2,17 +2,39 @@ import { useCallback, useEffect, useState } from "react";
 import { addStackItem, fetchStack, removeStackItem, type StackItem } from "../lib/api";
 import { getUserRef } from "../lib/userRef";
 
-/** The user's compound stack. Local-first: edits apply immediately and are
- * synced to user_stack (Supabase) best-effort, so the UI works before the
- * table exists. When the table is present, the server stack wins. */
-export function useStack() {
-  const [stack, setStack] = useState<StackItem[]>([]);
+const STACK_KEY = "pephouse_stack";
 
+function loadLocal(): StackItem[] {
+  try {
+    const raw = localStorage.getItem(STACK_KEY);
+    return raw ? (JSON.parse(raw) as StackItem[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocal(stack: StackItem[]) {
+  try {
+    localStorage.setItem(STACK_KEY, JSON.stringify(stack));
+  } catch {
+    /* storage full / disabled */
+  }
+}
+
+/** The user's compound stack. Persisted to localStorage (survives refresh) and
+ * synced to the user_stack table (Supabase) best-effort. */
+export function useStack() {
+  const [stack, setStack] = useState<StackItem[]>(() => loadLocal());
+
+  // On mount, prefer the server stack if the table exists; else keep local.
   useEffect(() => {
     let alive = true;
     fetchStack(getUserRef())
       .then((rows) => {
-        if (alive && rows.length) setStack(rows);
+        if (alive && rows.length) {
+          setStack(rows);
+          saveLocal(rows);
+        }
       })
       .catch(() => {});
     return () => {
@@ -22,12 +44,18 @@ export function useStack() {
 
   const add = useCallback(
     async (item: { compound_id: number; compound_name?: string; dose?: string; source_type?: string }) => {
-      // optimistic local add
       const optimistic: StackItem = { id: Date.now(), ...item };
-      setStack((prev) => [...prev.filter((s) => s.compound_id !== item.compound_id), optimistic]);
+      setStack((prev) => {
+        const next = [...prev.filter((s) => s.compound_id !== item.compound_id), optimistic];
+        saveLocal(next);
+        return next;
+      });
       try {
         const rows = await addStackItem(getUserRef(), item);
-        if (rows.length) setStack(rows);
+        if (rows.length) {
+          setStack(rows);
+          saveLocal(rows);
+        }
       } catch {
         /* keep optimistic local state */
       }
@@ -36,10 +64,15 @@ export function useStack() {
   );
 
   const remove = useCallback(async (id: number) => {
-    setStack((prev) => prev.filter((s) => s.id !== id));
+    setStack((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+      saveLocal(next);
+      return next;
+    });
     try {
       const rows = await removeStackItem(getUserRef(), id);
-      if (rows.length) setStack(rows);
+      setStack(rows);
+      saveLocal(rows);
     } catch {
       /* keep local */
     }
