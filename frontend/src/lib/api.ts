@@ -1,4 +1,8 @@
-import type { SimulateRequest, SimulateResponse } from "../types/simulation";
+import type {
+  ImportPatch,
+  SimulateRequest,
+  SimulateResponse,
+} from "../types/simulation";
 
 // Hosted backend (Railway) is the default so the deployed app works for everyone.
 // For local dev against your own backend, set VITE_API_URL=http://localhost:8001 in frontend/.env.local
@@ -114,4 +118,108 @@ export async function fetchInteractions(compoundIds: number[]): Promise<Interact
   const res = await fetch(`${API_BASE}/interactions?ids=${qs}`);
   if (!res.ok) throw new Error(`interactions failed (${res.status})`);
   return res.json() as Promise<InteractionsResponse>;
+}
+
+// ---- Patient data import (Junction) ----
+
+// The backend ProfilePatch is snake_case; the frontend uses camelCase weightKg.
+type RawPatch = {
+  age?: number | null;
+  sex?: "M" | "F" | null;
+  weight_kg?: number | null;
+  conditions?: string[];
+  labs?: ImportPatch["labs"];
+  source: ImportPatch["source"];
+};
+
+function toPatch(raw: RawPatch): ImportPatch {
+  return {
+    ...(raw.age != null ? { age: raw.age } : {}),
+    ...(raw.sex ? { sex: raw.sex } : {}),
+    ...(raw.weight_kg != null ? { weightKg: raw.weight_kg } : {}),
+    conditions: raw.conditions ?? [],
+    labs: raw.labs ?? [],
+    source: raw.source,
+  };
+}
+
+async function getJson<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`);
+  if (!res.ok) throw new Error((await res.text()) || `${path} failed (${res.status})`);
+  return res.json() as Promise<T>;
+}
+
+/** Start a Junction Link session; returns the hosted URL to open. */
+export async function importLink(userRef: string): Promise<{ link_url: string }> {
+  const res = await fetch(`${API_BASE}/import/link`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_ref: userRef }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || `link failed (${res.status})`);
+  return res.json() as Promise<{ link_url: string }>;
+}
+
+/** Poll target: once a provider is linked, returns the profile/body patch. */
+export async function importProfile(
+  userRef: string,
+): Promise<{ connected: boolean; patch: ImportPatch | null }> {
+  const data = await getJson<{ connected: boolean; patch: RawPatch | null }>(
+    `/import/profile?user_ref=${encodeURIComponent(userRef)}`,
+  );
+  return { connected: data.connected, patch: data.patch ? toPatch(data.patch) : null };
+}
+
+/** Pull the demo lab order's biomarkers + derived conditions. */
+export async function importLabs(userRef: string): Promise<ImportPatch> {
+  const raw = await getJson<RawPatch>(
+    `/import/labs?user_ref=${encodeURIComponent(userRef)}`,
+  );
+  return toPatch(raw);
+}
+
+// ---- User-data store (GET/POST /users/{user_ref}/data) ----
+
+export type UserDataBundle = {
+  user_ref: string;
+  connected: boolean;
+  age?: number | null;
+  sex?: "M" | "F" | null;
+  weight_kg?: number | null;
+  conditions: string[];
+  source?: ImportPatch["source"] | null;
+  labs: ImportPatch["labs"];
+  wearable: Array<Record<string, unknown>>;
+};
+
+/** Fetch the stored bundle for a user, or null if nothing saved yet (404). */
+export async function fetchUserData(userRef: string): Promise<UserDataBundle | null> {
+  const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userRef)}/data`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error((await res.text()) || `user data failed (${res.status})`);
+  return res.json() as Promise<UserDataBundle>;
+}
+
+/** Persist a connected/reported patch (camelCase weightKg -> snake weight_kg).
+ *
+ * `labs` is only sent when explicitly provided — the backend fully replaces
+ * stored labs when the key is present, so a profile-only edit (age/sex/weight)
+ * must omit it or it would wipe the user's biomarkers. */
+export async function saveUserData(
+  userRef: string,
+  patch: Partial<ImportPatch>,
+): Promise<UserDataBundle> {
+  const body: Record<string, unknown> = { conditions: patch.conditions ?? [] };
+  if (patch.age != null) body.age = patch.age;
+  if (patch.sex) body.sex = patch.sex;
+  if (patch.weightKg != null) body.weight_kg = patch.weightKg;
+  if (patch.labs !== undefined) body.labs = patch.labs;
+  if (patch.source) body.source = patch.source;
+  const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userRef)}/data`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error((await res.text()) || `save user data failed (${res.status})`);
+  return res.json() as Promise<UserDataBundle>;
 }

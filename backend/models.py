@@ -125,10 +125,11 @@ class SimulationDataResponse(BaseModel):
     tables: dict[str, list[dict]] = Field(default_factory=dict)
 
 
-# ----------------------------------------------------------------- user data
+# --------------------------------------------------------- import / user data
 # Persisted patient data a user connected (wearable / bloodwork) or reported.
 # Mirrors the Junction ProfilePatch shape so a live import and a mock are
-# interchangeable. Used by GET/POST /users/{user_ref}/data.
+# interchangeable. ImportSource/LabValue are shared by the Junction import API
+# (/import/*) and the user-data store (GET/POST /users/{user_ref}/data).
 
 
 class ImportSource(BaseModel):
@@ -157,6 +158,35 @@ class WearableMetric(BaseModel):
     calories: int | None = None
     weight_kg: float | None = None
     provider: str | None = None
+
+
+# ---- Junction import API (/import/*) ----
+
+
+class ProfilePatch(BaseModel):
+    age: int | None = None
+    sex: str | None = None  # M | F
+    weight_kg: float | None = None
+    conditions: list[str] = Field(default_factory=list)
+    labs: list[LabValue] = Field(default_factory=list)
+    source: ImportSource
+
+
+class LinkRequest(BaseModel):
+    user_ref: str
+
+
+class LinkResponse(BaseModel):
+    user_id: str
+    link_url: str
+
+
+class ProfileResponse(BaseModel):
+    connected: bool
+    patch: ProfilePatch | None = None
+
+
+# ---- User-data store (GET/POST /users/{user_ref}/data) ----
 
 
 class UserDataPatch(BaseModel):
