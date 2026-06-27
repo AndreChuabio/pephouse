@@ -142,30 +142,56 @@ export function useImport() {
   }, [apply]);
 
   // Actually use Junction: open the hosted Link flow so a real wearable provider
-  // (Oura / WHOOP / …) can be connected, then poll Junction for real summaries.
-  // Only the metrics Junction doesn't return are mock-filled (sandbox has none
-  // until a provider is linked).
+  // (Garmin / Oura / WHOOP / …) can be connected. Poll Junction for the linked
+  // provider; once linked, close the popup and pull real summaries. Only the
+  // metrics the provider hasn't synced yet are mock-filled.
   const pullWearable = useCallback(async () => {
     setError(null);
     setWearableState("working");
     try {
-      // 1) try real data first (a provider may already be linked)
+      // 1) a provider may already be linked → use real data straight away.
       let res = await importWearable(getUserRef());
-      // 2) if it's all mock, open Junction Link to connect a real provider, then poll
+
       if (res.mocked) {
+        // 2) open Junction Link (keep the handle so we can close it on success).
+        let popup: Window | null = null;
         try {
           const { link_url } = await importLink(getUserRef());
-          window.open(link_url, "_blank", "noopener,noreferrer");
+          popup = window.open(link_url, "junctionLink");
         } catch {
-          /* link unavailable — keep the mock fallback */
+          /* link unavailable — keep the mock fallback below */
         }
         cancelled.current = false;
-        for (let i = 0; i < 8 && res.mocked; i++) {
+        // 3) poll for the provider to finish linking (~2min ceiling).
+        let linked = false;
+        for (let i = 0; i < 48; i++) {
           await sleep(POLL_INTERVAL_MS);
           if (cancelled.current) break;
+          try {
+            const r = await importProfile(getUserRef());
+            if (r.connected) {
+              linked = true;
+              break;
+            }
+          } catch {
+            /* keep polling */
+          }
+        }
+        if (linked) {
+          try {
+            popup?.close();
+          } catch {
+            /* cross-origin close best-effort */
+          }
+          // 4) provider linked — pull; a few retries while data backfills.
           res = await importWearable(getUserRef());
+          for (let i = 0; i < 4 && res.mocked; i++) {
+            await sleep(POLL_INTERVAL_MS);
+            res = await importWearable(getUserRef());
+          }
         }
       }
+
       setWearableMetrics(res.metrics);
       setWearableMocked(res.mocked);
       setWearableState("done");

@@ -609,32 +609,31 @@ export default function DigitalTwinPage() {
               )}
             </div>
 
-            {/* Semi-transparent SUMMARY overlay on the twin (only once connected) */}
-            {connected && (
-              <div className="absolute top-8 right-8 z-20 w-56 rounded-2xl border border-cyan-900/30 bg-black/40 backdrop-blur-md p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">Summary</span>
-                  <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded border ${og.border} ${og.bg} ${og.text}`}>{overallGrade}</span>
-                </div>
-                <div className="space-y-1.5">
-                  {BODY_SYSTEMS.map((sys) => {
-                    const labs = labsForSystem(imp.labs, sys.key);
-                    const grade = gradeFor(labs);
-                    const gm = gradeMeta(grade);
-                    return (
-                      <div key={sys.key} className="flex items-center justify-between text-xs">
-                        <span className="text-zinc-300">{sys.label}</span>
-                        <span className={`text-[10px] font-bold px-1.5 rounded border ${gm.border} ${gm.bg} ${gm.text}`}>{grade}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
             <div className={connected ? "" : "opacity-40 grayscale transition-all"}>
               <BodyVisualization active={connected} />
             </div>
+
+            {/* SUMMARY strip — at the bottom of the twin (only once connected) */}
+            {connected && (
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 rounded-2xl border border-cyan-900/30 bg-black/50 backdrop-blur-md px-4 py-2.5 flex items-center gap-3 flex-wrap justify-center max-w-[90%]">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">Summary</span>
+                  <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded border ${og.border} ${og.bg} ${og.text}`}>{overallGrade}</span>
+                </div>
+                <div className="h-4 w-px bg-zinc-700/60" />
+                {BODY_SYSTEMS.map((sys) => {
+                  const labs = labsForSystem(imp.labs, sys.key);
+                  const grade = gradeFor(labs);
+                  const gm = gradeMeta(grade);
+                  return (
+                    <div key={sys.key} className="flex items-center gap-1.5 text-xs">
+                      <span className="text-zinc-300">{sys.label}</span>
+                      <span className={`text-[10px] font-bold px-1.5 rounded border ${gm.border} ${gm.bg} ${gm.text}`}>{grade}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Link Data gate — on top of the (greyed) twin until data is linked */}
             {!connected && (
