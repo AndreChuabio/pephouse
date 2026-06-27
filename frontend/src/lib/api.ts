@@ -194,6 +194,25 @@ export async function importLabs(userRef: string): Promise<ImportPatch> {
   return toPatch(raw);
 }
 
+export type WearableMetrics = {
+  sleep_hours: number | null;
+  steps: number | null;
+  resting_hr: number | null;
+  hrv_ms: number | null;
+  calories: number | null;
+};
+
+export type WearableResult = {
+  metrics: WearableMetrics;
+  mocked: boolean;
+  source: ImportPatch["source"];
+};
+
+/** Pull recent wearable metrics (sleep / steps / resting HR / HRV). */
+export async function importWearable(userRef: string): Promise<WearableResult> {
+  return getJson<WearableResult>(`/import/wearable?user_ref=${encodeURIComponent(userRef)}`);
+}
+
 // ---- User-data store (GET/POST /users/{user_ref}/data) ----
 
 export type UserDataBundle = {

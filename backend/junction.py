@@ -345,3 +345,70 @@ async def get_lab_results(user_ref: str, order_id: str | None = None) -> dict:
             "at": _now_iso(),
         },
     }
+
+
+# --------------------------------------------------------------- wearable pull
+
+
+def _first_num(records: list[dict], *keys) -> float | None:
+    for r in records:
+        for k in keys:
+            v = r.get(k)
+            if isinstance(v, (int, float)):
+                return float(v)
+    return None
+
+
+async def get_wearable_metrics(user_ref: str) -> dict:
+    """Pull recent wearable summaries (sleep / activity) from Junction.
+
+    Sandbox wearable linking needs the hosted Link flow + a provider, which
+    isn't available in a one-click demo, so any metric Junction doesn't return
+    is filled with a realistic mock. ``mocked`` flags whether real provider data
+    was found, so the UI can be honest about it.
+    """
+    sleep_hours = steps = resting_hr = hrv_ms = None
+    provider = None
+    try:
+        user_id = await get_or_create_user(user_ref)
+        end = datetime.now(timezone.utc).date()
+        start = end.fromordinal(end.toordinal() - 14)
+        rng = f"start_date={start.isoformat()}&end_date={end.isoformat()}"
+        async with httpx.AsyncClient(timeout=20) as client:
+            try:
+                sleep_raw = await _get(client, f"/v2/summary/sleep/{user_id}?{rng}")
+                recs = _records(sleep_raw)
+                secs = _first_num(recs, "total_sleep_seconds", "duration")
+                if secs:
+                    sleep_hours = round(secs / 3600, 1)
+                hrv_ms = _first_num(recs, "hrv_rmssd", "hrv", "average_hrv")
+                resting_hr = _first_num(recs, "resting_heart_rate", "average_hr")
+            except httpx.HTTPStatusError:
+                pass
+            try:
+                act_raw = await _get(client, f"/v2/summary/activity/{user_id}?{rng}")
+                arecs = _records(act_raw)
+                steps = _first_num(arecs, "steps")
+            except httpx.HTTPStatusError:
+                pass
+    except Exception:  # noqa: BLE001 - any failure -> fall back to mock
+        pass
+
+    mocked = sleep_hours is None and steps is None and resting_hr is None and hrv_ms is None
+    # Realistic mock fill for anything the provider didn't return.
+    metrics = {
+        "sleep_hours": sleep_hours if sleep_hours is not None else 7.2,
+        "steps": int(steps) if steps is not None else 8420,
+        "resting_hr": int(resting_hr) if resting_hr is not None else 58,
+        "hrv_ms": hrv_ms if hrv_ms is not None else 42.0,
+        "calories": 2180,
+    }
+    return {
+        "metrics": metrics,
+        "mocked": mocked,
+        "source": {
+            "kind": "device",
+            "label": f"Wearable{' (demo)' if mocked else f' · {provider or 'linked'}'}",
+            "at": _now_iso(),
+        },
+    }

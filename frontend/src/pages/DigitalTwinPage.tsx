@@ -178,6 +178,77 @@ function MetricChip({ icon, label, value }: { icon: string; label: string; value
   );
 }
 
+// A connectable data source (blood panel / wearable): connect when off, green +
+// disconnect when on.
+function SourceCard({
+  title,
+  subtitle,
+  icon,
+  connected,
+  working,
+  onConnect,
+  onDisconnect,
+}: {
+  title: string;
+  subtitle: string;
+  icon: string;
+  connected: boolean;
+  working: boolean;
+  onConnect: () => void;
+  onDisconnect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={connected ? onDisconnect : onConnect}
+      disabled={working}
+      className={`text-xs p-3 rounded-xl flex flex-col gap-2 transition-colors text-left group border disabled:opacity-70 ${
+        connected
+          ? "bg-emerald-950/20 border-emerald-800/40 hover:bg-rose-950/20 hover:border-rose-800/50"
+          : "bg-zinc-900 hover:bg-zinc-800 border-zinc-700/50"
+      }`}
+    >
+      <div className="flex justify-between items-center w-full">
+        <Icon
+          icon={working ? "svg-spinners:180-ring" : connected ? "lucide:check-circle-2" : icon}
+          className={`w-4 h-4 ${connected ? "text-emerald-400" : "text-zinc-500 group-hover:text-zinc-300"}`}
+        />
+        <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-500" : "bg-zinc-600"}`} />
+      </div>
+      <div>
+        <div className="text-zinc-200 font-semibold mb-0.5">{title}</div>
+        <div className="text-[10px] text-zinc-500">
+          {connected ? "Connected · click to disconnect" : working ? "Pulling…" : subtitle}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function WearableStat({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <div className="bg-zinc-900/40 border border-zinc-800 rounded-lg px-3 py-2 flex items-center gap-2.5">
+      <Icon icon={icon} className="w-4 h-4 text-cyan-400 shrink-0" />
+      <div className="min-w-0">
+        <div className="text-[10px] text-zinc-500">{label}</div>
+        <div className="text-sm font-semibold text-zinc-200 truncate">{value}</div>
+      </div>
+    </div>
+  );
+}
+
+// Health score 0–100 from biomarker statuses (penalize out-of-range markers).
+function healthScore(labs: LabValue[]): number | null {
+  if (!labs.length) return null;
+  let penalty = 0;
+  for (const l of labs) {
+    if (l.status === "high") penalty += 12;
+    else if (l.status === "low") penalty += 8;
+    else if (l.status === "abnormal") penalty += 8;
+  }
+  return Math.max(0, Math.min(100, Math.round(100 - penalty)));
+}
+
 export default function DigitalTwinPage() {
   useDocumentTitle("PepHouse | Digital Twin");
   const imp = useImport();
@@ -239,6 +310,7 @@ export default function DigitalTwinPage() {
   const compoundExtras = useCompoundExtras(selectedReal.map((c) => c.realId));
   const overallGrade = useMemo(() => gradeFor(imp.labs), [imp.labs]);
   const og = gradeMeta(overallGrade);
+  const score = useMemo(() => healthScore(imp.labs), [imp.labs]);
 
   const outcomeFor = (realId: number) =>
     result?.outcomes.find((o) => o.compound_id === realId && o.outcome_name === "weight_change_pct") ?? null;
@@ -275,9 +347,6 @@ export default function DigitalTwinPage() {
     }
   };
 
-  // Link Data → pull the blood panel (reliable, populates biomarkers). Wearable
-  // connect is a separate explicit action (it needs the Junction popup).
-  const handleLinkData = () => imp.pullBloodwork();
   const showResult = loading || result !== null;
 
   return (
@@ -548,27 +617,27 @@ export default function DigitalTwinPage() {
                   <Icon icon="lucide:link" className="text-cyan-400 text-2xl mb-3 mx-auto block" />
                   <h3 className="text-base font-semibold text-zinc-100">Link your data</h3>
                   <p className="text-xs text-zinc-500 mt-1.5 mb-4">
-                    Connect a blood panel via Junction to activate your twin and populate your summary.
+                    Connect a blood panel or wearable via Junction to activate your twin.
                   </p>
                   <button
                     type="button"
-                    onClick={handleLinkData}
+                    onClick={imp.pullBloodwork}
                     disabled={imp.bloodwork === "working"}
                     className="w-full rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-60 px-4 py-3 text-sm font-semibold text-white flex items-center justify-center gap-2 transition-colors"
                   >
                     <Icon icon={imp.bloodwork === "working" ? "svg-spinners:180-ring" : "lucide:test-tube"} />
-                    {imp.bloodwork === "working" ? "Pulling your data…" : "Pull blood panel"}
+                    {imp.bloodwork === "working" ? "Pulling your data…" : "Pull Blood Panel"}
                   </button>
                   <button
                     type="button"
-                    onClick={imp.connectDevice}
-                    className="mt-2 text-[11px] text-zinc-500 hover:text-cyan-300"
+                    onClick={imp.pullWearable}
+                    disabled={imp.wearableState === "working"}
+                    className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 hover:border-cyan-700 px-4 py-2.5 text-sm font-medium text-zinc-200 flex items-center justify-center gap-2 transition-colors"
                   >
-                    or connect a wearable (Oura / WHOOP)
+                    <Icon icon={imp.wearableState === "working" ? "svg-spinners:180-ring" : "lucide:watch"} className="text-cyan-400" />
+                    {imp.wearableState === "working" ? "Pulling wearable…" : "Pull Wearable Data"}
                   </button>
-                  {imp.error && imp.device === "error" && (
-                    <p className="mt-2 text-[10px] text-amber-400">{imp.error}</p>
-                  )}
+                  {imp.error && <p className="mt-2 text-[10px] text-amber-400">{imp.error}</p>}
                 </div>
               </div>
             )}
@@ -578,42 +647,41 @@ export default function DigitalTwinPage() {
           <div className="w-[480px] flex-shrink-0 bg-[#121214] h-full overflow-y-auto flex flex-col">
             <div className="p-6 border-b border-zinc-800/50 bg-[#0a0a0a]">
               <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={connected ? imp.disconnect : handleLinkData}
-                  className={`text-xs p-3 rounded-xl flex flex-col gap-2 transition-colors text-left group border ${
-                    connected
-                      ? "bg-zinc-900 hover:bg-rose-950/30 border-zinc-700/50 hover:border-rose-800/60"
-                      : "bg-zinc-900 hover:bg-zinc-800 border-zinc-700/50"
-                  }`}
-                >
-                  <div className="flex justify-between items-center w-full">
-                    <Icon
-                      icon={imp.bloodwork === "working" ? "svg-spinners:180-ring" : connected ? "lucide:unlink" : "lucide:link"}
-                      className={`w-4 h-4 ${connected ? "text-rose-400" : "text-zinc-500 group-hover:text-zinc-300"}`}
-                    />
-                    <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-500" : "bg-zinc-600"}`} />
-                  </div>
-                  <div>
-                    <div className="text-zinc-200 font-semibold mb-0.5">{connected ? "Unlink Data" : "Link Data"}</div>
-                    <div className="text-[10px] text-zinc-500">{connected ? "Disconnect & reset" : "Oura, Labs via Junction"}</div>
-                  </div>
-                </button>
-                <button type="button" className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/50 text-xs p-3 rounded-xl flex flex-col gap-2 transition-colors text-left group">
-                  <div className="flex justify-between items-center w-full">
-                    <Icon icon="lucide:target" className="w-4 h-4 text-zinc-500 group-hover:text-zinc-300" />
-                    <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  </div>
-                  <div>
-                    <div className="text-zinc-200 font-semibold mb-0.5">Goals &amp; Stack</div>
-                    <div className="text-[10px] text-zinc-500">Define target states</div>
-                  </div>
-                </button>
+                <SourceCard
+                  title="Pull Blood Panels"
+                  subtitle="Junction lab results"
+                  icon="lucide:test-tube"
+                  connected={imp.bloodworkConnected}
+                  working={imp.bloodwork === "working"}
+                  onConnect={imp.pullBloodwork}
+                  onDisconnect={imp.disconnectBloodwork}
+                />
+                <SourceCard
+                  title="Pull Wearable Data"
+                  subtitle="Oura / WHOOP via Junction"
+                  icon="lucide:watch"
+                  connected={imp.wearableConnected}
+                  working={imp.wearableState === "working"}
+                  onConnect={imp.pullWearable}
+                  onDisconnect={imp.disconnectWearable}
+                />
               </div>
-              {connected && (imp.deviceLabel || imp.bloodworkLabel) && (
-                <p className="mt-3 text-[10px] text-zinc-500">
-                  {[imp.deviceLabel, imp.bloodworkLabel].filter(Boolean).join(" · ")} — saved to your profile.
-                </p>
+              {imp.error && <p className="mt-3 text-[11px] text-amber-400">{imp.error}</p>}
+
+              {/* Wearable metrics — shown once the wearable is connected */}
+              {imp.wearableConnected && imp.wearableMetrics && (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-semibold tracking-wider text-zinc-500 uppercase">Wearable</span>
+                    {imp.wearableMocked && <span className="text-[9px] text-zinc-600">demo data</span>}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <WearableStat icon="lucide:moon" label="Sleep" value={imp.wearableMetrics.sleep_hours != null ? `${imp.wearableMetrics.sleep_hours} h` : "—"} />
+                    <WearableStat icon="lucide:footprints" label="Steps" value={imp.wearableMetrics.steps != null ? imp.wearableMetrics.steps.toLocaleString() : "—"} />
+                    <WearableStat icon="lucide:heart" label="Resting HR" value={imp.wearableMetrics.resting_hr != null ? `${imp.wearableMetrics.resting_hr} bpm` : "—"} />
+                    <WearableStat icon="lucide:activity" label="HRV" value={imp.wearableMetrics.hrv_ms != null ? `${imp.wearableMetrics.hrv_ms} ms` : "—"} />
+                  </div>
+                </div>
               )}
             </div>
 
@@ -622,14 +690,15 @@ export default function DigitalTwinPage() {
                 <div>
                   <h2 className="text-xl font-semibold text-zinc-100 tracking-tight">Health Summary</h2>
                   <p className="text-xs text-zinc-400 mt-2 leading-relaxed max-w-[280px]">
-                    {connected
+                    {imp.bloodworkConnected
                       ? "Biomarkers pulled from your linked Junction lab panel."
-                      : "Link your data to populate your health summary."}
+                      : "Pull your blood panel to populate biomarkers + health score."}
                   </p>
                 </div>
-                {connected && (
-                  <div className={`w-12 h-12 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${og.border} ${og.bg}`}>
-                    <span className={`text-lg font-bold ${og.text}`}>{overallGrade}</span>
+                {imp.bloodworkConnected && score != null && (
+                  <div className={`flex flex-col items-center justify-center w-16 h-16 rounded-2xl border-2 flex-shrink-0 ${og.border} ${og.bg}`}>
+                    <span className={`text-xl font-bold leading-none ${og.text}`}>{score}</span>
+                    <span className="text-[8px] tracking-widest text-zinc-500 uppercase mt-0.5">Health</span>
                   </div>
                 )}
               </div>
@@ -671,7 +740,7 @@ export default function DigitalTwinPage() {
                     <span>History</span>
                   </div>
                 </div>
-                {connected && imp.labs.length > 0 ? (
+                {imp.bloodworkConnected && imp.labs.length > 0 ? (
                   <div className="space-y-1">
                     {imp.labs.map((lab) => (
                       <BiomarkerRow key={lab.name} lab={lab} />
@@ -680,11 +749,11 @@ export default function DigitalTwinPage() {
                 ) : (
                   <button
                     type="button"
-                    onClick={handleLinkData}
+                    onClick={imp.pullBloodwork}
                     className="w-full rounded-xl border border-dashed border-zinc-700 bg-zinc-950/40 px-4 py-8 text-center text-sm text-zinc-400 hover:border-cyan-700 hover:text-zinc-200 transition-colors"
                   >
                     <Icon icon="lucide:test-tube" className="text-cyan-400 text-lg mb-2 mx-auto block" />
-                    Link your data to populate biomarkers
+                    Pull your blood panel to populate biomarkers
                   </button>
                 )}
               </div>

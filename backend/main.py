@@ -247,6 +247,19 @@ async def import_labs(user_ref: str, order_id: str | None = None) -> ProfilePatc
     return ProfilePatch(**patch)
 
 
+@app.get("/import/wearable")
+async def import_wearable(user_ref: str) -> dict:
+    """Pull recent wearable metrics (sleep / steps / resting HR / HRV).
+
+    Real Junction summary data where a provider is linked; realistic mock fill
+    otherwise (sandbox wearable linking needs the hosted flow). `mocked` says which.
+    """
+    try:
+        return await junction.get_wearable_metrics(user_ref)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"junction wearable failed: {exc}")
+
+
 # ------------------------------------------------------------------- user data
 # Persisted patient data a user connected (wearable / bloodwork) or reported.
 # Mirrors the Junction import shape; mock today, live-Junction-swappable later.

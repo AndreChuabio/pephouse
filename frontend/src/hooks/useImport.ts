@@ -4,7 +4,9 @@ import {
   importLabs,
   importLink,
   importProfile,
+  importWearable,
   saveUserData,
+  type WearableMetrics,
 } from "../lib/api";
 import { getUserRef } from "../lib/userRef";
 import type { ImportPatch, LabValue } from "../types/simulation";
@@ -14,17 +16,18 @@ export type FlowState = "idle" | "working" | "done" | "error";
 const POLL_INTERVAL_MS = 2_500;
 const MAX_POLLS = 16;
 
-/** Junction import state for the Digital Twin page.
- *
- * `connected` is a SESSION flag — it only becomes true once the user actively
- * links data this session (pull bloodwork / connect wearable). Saved data is
- * hydrated into the editable profile form on mount, but does NOT auto-activate
- * the twin, so the "link your data" gate always shows first. */
+/** Junction import for the Digital Twin. Two independent data sources — a blood
+ * panel and a wearable — each connectable / disconnectable this session. The
+ * twin is `connected` once EITHER source is linked. Saved data hydrates the
+ * profile form on mount but does NOT auto-activate (the gate shows first). */
 export function useImport() {
   const [device, setDevice] = useState<FlowState>("idle");
   const [bloodwork, setBloodwork] = useState<FlowState>("idle");
+  const [wearableState, setWearableState] = useState<FlowState>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [connected, setConnected] = useState(false);
+
+  const [bloodworkConnected, setBloodworkConnected] = useState(false);
+  const [wearableConnected, setWearableConnected] = useState(false);
 
   // Accumulated patient picture.
   const [age, setAge] = useState<number | null>(null);
@@ -33,6 +36,8 @@ export function useImport() {
   const [labs, setLabs] = useState<LabValue[]>([]);
   const [conditions, setConditions] = useState<string[]>([]);
   const [goals, setGoals] = useState<string[]>([]);
+  const [wearableMetrics, setWearableMetrics] = useState<WearableMetrics | null>(null);
+  const [wearableMocked, setWearableMocked] = useState(false);
   const [deviceLabel, setDeviceLabel] = useState<string | null>(null);
   const [bloodworkLabel, setBloodworkLabel] = useState<string | null>(null);
 
@@ -51,19 +56,15 @@ export function useImport() {
     if (p.source?.kind === "bloodwork") setBloodworkLabel(p.source.label);
   }, []);
 
-  // Apply an import + persist it (fire-and-forget). Marks the twin connected.
   const apply = useCallback(
     (p: ImportPatch) => {
       applyState(p);
-      setConnected(true);
       saveUserData(getUserRef(), p).catch(() => {});
     },
     [applyState],
   );
 
-  // On mount, hydrate the editable PROFILE (age/sex/weight/conditions/goals)
-  // from saved data — but NOT labs and NOT `connected`, so the link-data gate
-  // always shows until the user links this session.
+  // On mount, hydrate the editable PROFILE only (not labs / not connected).
   useEffect(() => {
     let alive = true;
     fetchUserData(getUserRef())
@@ -133,42 +134,76 @@ export function useImport() {
     try {
       apply(await importLabs(getUserRef()));
       setBloodwork("done");
+      setBloodworkConnected(true);
     } catch (e) {
       setBloodwork("error");
       setError(e instanceof Error ? e.message : "Could not pull bloodwork.");
     }
   }, [apply]);
 
-  // Reset to the pre-connect (gated) state for this session. Keeps the saved
-  // profile fields, but clears the live link so the twin greys out and the
-  // link-data gate shows again.
-  const disconnect = useCallback(() => {
-    cancelled.current = true;
-    setConnected(false);
-    setLabs([]);
-    setDevice("idle");
-    setBloodwork("idle");
+  const pullWearable = useCallback(async () => {
     setError(null);
-    setDeviceLabel(null);
+    setWearableState("working");
+    try {
+      const res = await importWearable(getUserRef());
+      setWearableMetrics(res.metrics);
+      setWearableMocked(res.mocked);
+      setWearableState("done");
+      setWearableConnected(true);
+    } catch (e) {
+      setWearableState("error");
+      setError(e instanceof Error ? e.message : "Could not pull wearable data.");
+    }
+  }, []);
+
+  const disconnectBloodwork = useCallback(() => {
+    setBloodworkConnected(false);
+    setLabs([]);
+    setBloodwork("idle");
     setBloodworkLabel(null);
   }, []);
+
+  const disconnectWearable = useCallback(() => {
+    cancelled.current = true;
+    setWearableConnected(false);
+    setWearableMetrics(null);
+    setWearableState("idle");
+    setDevice("idle");
+    setDeviceLabel(null);
+  }, []);
+
+  const disconnect = useCallback(() => {
+    disconnectBloodwork();
+    disconnectWearable();
+    setError(null);
+  }, [disconnectBloodwork, disconnectWearable]);
+
+  const connected = bloodworkConnected || wearableConnected;
 
   return {
     device,
     bloodwork,
+    wearableState,
     error,
     connected,
+    bloodworkConnected,
+    wearableConnected,
     age,
     sex,
     weightKg,
     labs,
     conditions,
     goals,
+    wearableMetrics,
+    wearableMocked,
     deviceLabel,
     bloodworkLabel,
     connectDevice,
     recheckDevice,
     pullBloodwork,
+    pullWearable,
     disconnect,
+    disconnectBloodwork,
+    disconnectWearable,
   };
 }
