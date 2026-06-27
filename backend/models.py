@@ -27,6 +27,9 @@ class SimulateRequest(BaseModel):
     # SOURCE variance axis: where the peptide was made. None = label-dose (no source modeling).
     # compounding_pharmacy | vendor_tested | gray_market | research_chem | brand
     source_type: str | None = None
+    # Run Synthea LIVE for a patient-matched cohort (falls back to the pre-loaded
+    # synthetic_patients table on timeout/failure). Default uses the offline cohort.
+    live_cohort: bool = False
 
 
 class QuarterBand(BaseModel):
@@ -73,6 +76,8 @@ class AnecdoteSnippet(BaseModel):
 
 class SimulateResponse(BaseModel):
     cohort_n: int
+    cohort_source: str = "preloaded"  # preloaded | synthea_live | synthea_live_failed_fallback
+    cohort_gen_ms: int | None = None  # Synthea live generation time (ms) when used
     cohort_fallback: str | None = None
     cohort_callout: str | None = None
     substrate_missing: bool = False

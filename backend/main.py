@@ -73,6 +73,7 @@ def simulate(body: SimulateRequest) -> SimulateResponse:
         n_draws=body.n_draws,
         seed=body.seed,
         source_type=body.source_type,
+        live_cohort=body.live_cohort,
     )
 
 

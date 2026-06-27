@@ -58,6 +58,8 @@ export type SimulateRequest = {
   seed?: number;
   // SOURCE axis: compounding_pharmacy | vendor_tested | gray_market | research_chem | brand
   source_type?: string;
+  // Run Synthea live for a patient-matched cohort (~7s); falls back to the pre-loaded cohort.
+  live_cohort?: boolean;
 };
 
 export type QuarterBand = {
@@ -90,6 +92,8 @@ export type OutcomeResult = {
 
 export type SimulateResponse = {
   cohort_n: number;
+  cohort_source?: string;
+  cohort_gen_ms?: number | null;
   cohort_fallback?: string | null;
   cohort_callout?: string | null;
   substrate_missing: boolean;

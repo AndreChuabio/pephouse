@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import time
+
 import numpy as np
 
 import db
+import synthea_live
 from models import (
     AnecdoteSnippet,
     CompoundInput,
@@ -61,8 +64,7 @@ def check_eligibility(patient: PatientProfile, prior: dict) -> str | None:
     return None
 
 
-def match_cohort(patient: PatientProfile) -> list[dict]:
-    rows = db.get_synthetic_patients()
+def _filter_cohort(patient: PatientProfile, rows: list[dict]) -> list[dict]:
     matched = []
     for row in rows:
         age = row.get("age")
@@ -72,6 +74,24 @@ def match_cohort(patient: PatientProfile) -> list[dict]:
             continue
         matched.append(row)
     return matched
+
+
+def match_cohort(patient: PatientProfile) -> list[dict]:
+    """Pre-loaded Tier-4 cohort filtered to the patient (age +/-5, sex)."""
+    return _filter_cohort(patient, db.get_synthetic_patients())
+
+
+def resolve_cohort(patient: PatientProfile, live: bool) -> tuple[list[dict], str, int | None]:
+    """Return (cohort, source, gen_ms). live=True runs Synthea per request, with
+    fallback to the pre-loaded cohort so the endpoint degrades instead of hanging."""
+    if not live:
+        return match_cohort(patient), "preloaded", None
+    t0 = time.time()
+    bodies = synthea_live.generate_cohort(patient.age, patient.sex)
+    gen_ms = int((time.time() - t0) * 1000)
+    if bodies:
+        return _filter_cohort(patient, bodies), "synthea_live", gen_ms
+    return match_cohort(patient), "synthea_live_failed_fallback", gen_ms
 
 
 def _pick_cluster(clusters: list[dict], outcome_name: str) -> dict | None:
@@ -200,8 +220,9 @@ def run_simulation(
     n_draws: int,
     seed: int,
     source_type: str | None = None,
+    live_cohort: bool = False,
 ) -> SimulateResponse:
-    cohort = match_cohort(patient)
+    cohort, cohort_source, cohort_gen_ms = resolve_cohort(patient, live_cohort)
     cohort_n = len(cohort)
     substrate_missing = cohort_n < MIN_COHORT
 
@@ -209,10 +230,13 @@ def run_simulation(
     cohort_callout = None
     anecdotes: list[AnecdoteSnippet] = []
 
+    if cohort_source == "synthea_live":
+        cohort_callout = f"Generated {cohort_n} patient-matched Synthea bodies live in {cohort_gen_ms} ms."
+
     if substrate_missing:
         cohort_fallback = "anecdote"
         cohort_callout = (
-            f"Only {cohort_n} Tier-4 patient(s) matched age±5 and sex in synthetic_patients — "
+            f"Only {cohort_n} Tier-4 patient(s) matched age±5 and sex — "
             "Reddit anecdotes below are context only, not evidence."
         )
 
@@ -273,6 +297,8 @@ def run_simulation(
 
     return SimulateResponse(
         cohort_n=cohort_n,
+        cohort_source=cohort_source,
+        cohort_gen_ms=cohort_gen_ms,
         cohort_fallback=cohort_fallback,
         cohort_callout=cohort_callout,
         substrate_missing=substrate_missing,
