@@ -43,6 +43,21 @@ const SOURCE_TONE: Record<string, "green" | "orange" | "zinc"> = {
   research_chem: "zinc",
 };
 
+// Walk a Synthea Generic Module's transitions into logical flow order
+// (jsonb does not preserve key order, so we can't just read Object.keys).
+function moduleFlow(states: Record<string, { direct_transition?: string }> | undefined): string[] {
+  if (!states) return [];
+  const flow: string[] = [];
+  const seen = new Set<string>();
+  let cur: string | undefined = "Initial";
+  while (cur && states[cur] && !seen.has(cur)) {
+    seen.add(cur);
+    flow.push(cur);
+    cur = states[cur].direct_transition;
+  }
+  return flow;
+}
+
 function Badge({ tone, children }: { tone: "green" | "orange" | "zinc"; children: React.ReactNode }) {
   const map = {
     green: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
@@ -122,7 +137,7 @@ export default function DataExplorerPage() {
       supabase.from("vendor_lab_results").select("vendor_name,purity_pct,label_mg,tested_mg,quantity_variance_pct,potency_factor,test_lab,failed").eq("compound_id", id),
       supabase.from("vendors").select("*").order("reliability_score", { ascending: false }),
       supabase.from("simulation_runs").select("id,created_at,source_type,live_cohort,cohort_source,cohort_n,cohort_gen_ms,data_confidence,outcomes").eq("compound_id", id).order("created_at", { ascending: false }).limit(10),
-      supabase.from("synthea_modules").select("id,created_at,name,outcome_name,eligibility,source").eq("compound_id", id).order("created_at", { ascending: false }).limit(10),
+      supabase.from("synthea_modules").select("id,created_at,name,outcome_name,eligibility,source,module").eq("compound_id", id).order("created_at", { ascending: false }).limit(10),
     ]).then(([p, cs, t, a, rp, s, sp, lr, v, runs, mods]) => {
       // prefer compound-specific prior over the NULL default, per source_type
       const bySource: Record<string, any> = {};
@@ -246,41 +261,73 @@ export default function DataExplorerPage() {
                       <button
                         type="button"
                         onClick={handleGenerateModule}
-                        disabled={genState === "loading" || detail.priors.length === 0}
-                        title={detail.priors.length === 0 ? "No trial priors to build a module from" : undefined}
+                        disabled={genState === "loading" || (detail.priors.length === 0 && detail.anecdotes.length === 0)}
+                        title={detail.priors.length === 0 && detail.anecdotes.length === 0 ? "No priors or anecdotes to build from" : undefined}
                         className="text-[10px] normal-case px-2.5 py-1 rounded border border-blue-500/40 text-blue-300 hover:bg-blue-500/10 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {genState === "loading" ? "Generating…" : "Generate module"}
                       </button>
                     </h3>
                     <p className="text-xs text-zinc-500 mb-2">
-                      Generic Modules built from this compound&apos;s priors; the newest is loaded into live cohort generation.
+                      Generic Modules built from this compound&apos;s priors (or anecdotes); the newest is loaded into live cohort generation.
                     </p>
-                    {detail.priors.length === 0 ? (
-                      <p className="text-xs text-amber-500/80 mb-2">Anecdote-only compound &mdash; no trial priors, so there is no module to build.</p>
-                    ) : genError ? (
+                    {genError ? (
                       <p className="text-xs text-orange-400 mb-2">{genError}</p>
+                    ) : detail.priors.length === 0 && detail.anecdotes.length > 0 ? (
+                      <p className="text-xs text-amber-500/80 mb-2">
+                        No trial priors &mdash; Generate builds an <span className="text-amber-400">anecdote-derived</span> module (flagged, low-confidence) from {detail.anecdotes.length} report{detail.anecdotes.length === 1 ? "" : "s"}.
+                      </p>
+                    ) : detail.priors.length === 0 && detail.anecdotes.length === 0 ? (
+                      <p className="text-xs text-zinc-600 mb-2">No priors or anecdotes &mdash; nothing to build a module from.</p>
                     ) : null}
                     {detail.modules.length === 0 ? (
-                      detail.priors.length > 0 ? (
-                        <p className="text-xs text-zinc-600">No modules yet &mdash; click Generate to build one from the priors.</p>
+                      detail.priors.length > 0 || detail.anecdotes.length > 0 ? (
+                        <p className="text-xs text-zinc-600">No modules yet &mdash; click Generate to build one.</p>
                       ) : null
                     ) : (
                       <div className="space-y-1.5">
-                        {detail.modules.map((m) => (
-                          <div key={m.id} className="flex items-center justify-between text-sm bg-zinc-950/50 rounded px-3 py-2">
-                            <span className="flex items-center gap-2 min-w-0">
-                              <span className="text-zinc-600 text-xs font-mono">#{m.id}</span>
-                              <span className="text-zinc-300 truncate">{m.outcome_name}</span>
-                              <Badge tone="zinc">{m.source}</Badge>
-                            </span>
-                            <span className="font-mono text-xs text-zinc-500 shrink-0">
-                              {m.eligibility?.min_age != null || m.eligibility?.max_age != null
-                                ? `age ${m.eligibility?.min_age ?? "*"}-${m.eligibility?.max_age ?? "*"}`
-                                : "age 18+"}
-                            </span>
-                          </div>
-                        ))}
+                        {detail.modules.map((m) => {
+                          const k = `mod-${m.id}`;
+                          const mod = m.module;
+                          const eff = mod?.states?.Apply_Effect?.range;
+                          const unit = mod?.states?.Apply_Effect?.unit ?? "";
+                          return (
+                            <div key={m.id} className="bg-zinc-950/50 rounded">
+                              <button type="button" onClick={() => toggle(k)} className="w-full flex items-center justify-between text-sm px-3 py-2 hover:bg-zinc-900/60 rounded">
+                                <span className="flex items-center gap-2 min-w-0">
+                                  <Icon icon={open[k] ? "solar:alt-arrow-down-linear" : "solar:alt-arrow-right-linear"} className="text-zinc-600 text-xs" />
+                                  <span className="text-zinc-600 text-xs font-mono">#{m.id}</span>
+                                  <span className="text-zinc-300 truncate">{m.outcome_name}</span>
+                                  <Badge tone={m.source === "anecdote" ? "orange" : "green"}>{m.source}</Badge>
+                                </span>
+                                <span className="font-mono text-xs text-zinc-500 shrink-0">
+                                  {m.eligibility?.min_age != null || m.eligibility?.max_age != null
+                                    ? `age ${m.eligibility?.min_age ?? "*"}-${m.eligibility?.max_age ?? "*"}`
+                                    : "age 18+"}
+                                </span>
+                              </button>
+                              {open[k] && mod && (
+                                <div className="px-9 pb-3 pt-1 text-xs space-y-2">
+                                  {Array.isArray(mod.remarks) && (
+                                    <ul className="space-y-0.5 text-zinc-500 list-disc pl-4">
+                                      {mod.remarks.map((r: string, i: number) => <li key={i}>{r}</li>)}
+                                    </ul>
+                                  )}
+                                  <p className="text-zinc-400 font-mono">{moduleFlow(mod.states).join(" → ")}</p>
+                                  {eff && (
+                                    <p className="text-zinc-400">
+                                      Effect band: <span className="font-mono text-emerald-400">{eff.low} to {eff.high}{unit}</span>
+                                    </p>
+                                  )}
+                                  <details>
+                                    <summary className="text-zinc-600 cursor-pointer hover:text-zinc-400">raw module JSON</summary>
+                                    <pre className="mt-1 p-2 bg-zinc-950 rounded text-[10px] text-zinc-400 overflow-x-auto max-h-64">{JSON.stringify(mod, null, 2)}</pre>
+                                  </details>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
