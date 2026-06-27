@@ -203,6 +203,7 @@ export type UserDataBundle = {
   sex?: "M" | "F" | null;
   weight_kg?: number | null;
   conditions: string[];
+  goals: string[];
   source?: ImportPatch["source"] | null;
   labs: ImportPatch["labs"];
   wearable: Array<Record<string, unknown>>;
@@ -223,9 +224,11 @@ export async function fetchUserData(userRef: string): Promise<UserDataBundle | n
  * must omit it or it would wipe the user's biomarkers. */
 export async function saveUserData(
   userRef: string,
-  patch: Partial<ImportPatch>,
+  patch: Partial<ImportPatch> & { goals?: string[] },
 ): Promise<UserDataBundle> {
-  const body: Record<string, unknown> = { conditions: patch.conditions ?? [] };
+  const body: Record<string, unknown> = {};
+  if (patch.conditions !== undefined) body.conditions = patch.conditions;
+  if (patch.goals !== undefined) body.goals = patch.goals;
   if (patch.age != null) body.age = patch.age;
   if (patch.sex) body.sex = patch.sex;
   if (patch.weightKg != null) body.weight_kg = patch.weightKg;

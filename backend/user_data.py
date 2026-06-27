@@ -55,6 +55,7 @@ def get_user_data(user_ref: str) -> dict | None:
         "sex": profile.get("sex"),
         "weight_kg": profile.get("weight_kg"),
         "conditions": profile.get("conditions") or [],
+        "goals": profile.get("goals") or [],
         "source": {
             "kind": profile.get("source_kind"),
             "label": profile.get("source_label"),
@@ -79,8 +80,10 @@ def save_user_data(user_ref: str, patch: dict) -> dict:
     for key in ("age", "sex", "weight_kg"):
         if patch.get(key) is not None:
             profile[key] = patch[key]
-    if patch.get("conditions"):
+    if patch.get("conditions") is not None:
         profile["conditions"] = patch["conditions"]
+    if patch.get("goals") is not None:
+        profile["goals"] = patch["goals"]
     if source.get("kind"):
         profile["source_kind"] = source["kind"]
     if source.get("label"):

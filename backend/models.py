@@ -195,7 +195,8 @@ class UserDataPatch(BaseModel):
     age: int | None = None
     sex: str | None = None  # M | F
     weight_kg: float | None = None
-    conditions: list[str] = Field(default_factory=list)
+    conditions: list[str] | None = None
+    goals: list[str] | None = None
     labs: list[LabValue] | None = None
     wearable: list[WearableMetric] | None = None
     source: ImportSource | None = None
@@ -210,6 +211,7 @@ class UserDataBundle(BaseModel):
     sex: str | None = None
     weight_kg: float | None = None
     conditions: list[str] = Field(default_factory=list)
+    goals: list[str] = Field(default_factory=list)
     source: ImportSource | None = None
     labs: list[LabValue] = Field(default_factory=list)
     wearable: list[WearableMetric] = Field(default_factory=list)

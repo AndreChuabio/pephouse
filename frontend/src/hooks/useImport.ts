@@ -14,18 +14,25 @@ export type FlowState = "idle" | "working" | "done" | "error";
 const POLL_INTERVAL_MS = 2_500;
 const MAX_POLLS = 16;
 
-/** Junction import state for the Digital Twin page: connect a wearable + pull bloodwork. */
+/** Junction import state for the Digital Twin page.
+ *
+ * `connected` is a SESSION flag — it only becomes true once the user actively
+ * links data this session (pull bloodwork / connect wearable). Saved data is
+ * hydrated into the editable profile form on mount, but does NOT auto-activate
+ * the twin, so the "link your data" gate always shows first. */
 export function useImport() {
   const [device, setDevice] = useState<FlowState>("idle");
   const [bloodwork, setBloodwork] = useState<FlowState>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [connected, setConnected] = useState(false);
 
-  // Accumulated patient picture from whatever has been imported so far.
+  // Accumulated patient picture.
   const [age, setAge] = useState<number | null>(null);
   const [sex, setSex] = useState<"M" | "F" | null>(null);
   const [weightKg, setWeightKg] = useState<number | null>(null);
   const [labs, setLabs] = useState<LabValue[]>([]);
   const [conditions, setConditions] = useState<string[]>([]);
+  const [goals, setGoals] = useState<string[]>([]);
   const [deviceLabel, setDeviceLabel] = useState<string | null>(null);
   const [bloodworkLabel, setBloodworkLabel] = useState<string | null>(null);
 
@@ -44,47 +51,41 @@ export function useImport() {
     if (p.source?.kind === "bloodwork") setBloodworkLabel(p.source.label);
   }, []);
 
-  // Apply an import + persist it to the user-data store (fire-and-forget so a
-  // store outage never blocks the live import).
+  // Apply an import + persist it (fire-and-forget). Marks the twin connected.
   const apply = useCallback(
     (p: ImportPatch) => {
       applyState(p);
-      saveUserData(getUserRef(), p).catch(() => {
-        /* user-data store unavailable; UI still works off live import */
-      });
+      setConnected(true);
+      saveUserData(getUserRef(), p).catch(() => {});
     },
     [applyState],
   );
 
-  // On mount, hydrate from anything this browser saved before (no re-save).
+  // On mount, hydrate the editable PROFILE (age/sex/weight/conditions/goals)
+  // from saved data — but NOT labs and NOT `connected`, so the link-data gate
+  // always shows until the user links this session.
   useEffect(() => {
     let alive = true;
     fetchUserData(getUserRef())
       .then((bundle) => {
         if (!alive || !bundle) return;
-        applyState({
-          ...(bundle.age != null ? { age: bundle.age } : {}),
-          ...(bundle.sex ? { sex: bundle.sex } : {}),
-          ...(bundle.weight_kg != null ? { weightKg: bundle.weight_kg } : {}),
-          conditions: bundle.conditions ?? [],
-          labs: bundle.labs ?? [],
-          source: bundle.source ?? { kind: "bloodwork", label: "Restored", at: "" },
-        });
-        if (bundle.labs?.length) setBloodwork("done");
+        if (bundle.age != null) setAge(bundle.age);
+        if (bundle.sex) setSex(bundle.sex);
+        if (bundle.weight_kg != null) setWeightKg(bundle.weight_kg);
+        if (bundle.conditions?.length) setConditions(bundle.conditions);
+        if (bundle.goals?.length) setGoals(bundle.goals);
       })
-      .catch(() => {
-        /* nothing saved yet, or store unavailable */
-      });
+      .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [applyState]);
+  }, []);
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   const checkProfile = useCallback(async (): Promise<boolean> => {
-    const { connected, patch } = await importProfile(getUserRef());
-    if (connected && patch) {
+    const { connected: linked, patch } = await importProfile(getUserRef());
+    if (linked && patch) {
       apply(patch);
       setDevice("done");
       return true;
@@ -138,20 +139,19 @@ export function useImport() {
     }
   }, [apply]);
 
-  const hasData = labs.length > 0 || age != null || weightKg != null;
-
   return {
     device,
     bloodwork,
     error,
+    connected,
     age,
     sex,
     weightKg,
     labs,
     conditions,
+    goals,
     deviceLabel,
     bloodworkLabel,
-    hasData,
     connectDevice,
     recheckDevice,
     pullBloodwork,

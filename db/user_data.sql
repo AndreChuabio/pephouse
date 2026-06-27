@@ -15,6 +15,7 @@ create table if not exists user_profiles (
   sex          text,                  -- M | F
   weight_kg    numeric,
   conditions   text[] default '{}',
+  goals        text[] default '{}',   -- user-selected health goals
   source_kind  text,                  -- device | bloodwork | upload
   source_label text,
   connected    boolean default false,

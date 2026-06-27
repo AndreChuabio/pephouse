@@ -2,6 +2,7 @@ import { Icon } from "@iconify/react";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "../components/layout/AppShell";
 import { BodyVisualization } from "../components/twin/BodyVisualization";
+import { MultiSelectDropdown } from "../components/twin/MultiSelectDropdown";
 import { saveUserData, twinSimulate } from "../lib/api";
 import { getUserRef } from "../lib/userRef";
 import { DEMOGRAPHICS } from "../data/mockSimulation";
@@ -14,7 +15,40 @@ import {
 } from "../lib/biomarkers";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useImport } from "../hooks/useImport";
+import { useCompoundExtras } from "../hooks/useCompoundExtras";
 import type { LabValue, OutcomeResult, PatientInput, SimulateResponse } from "../types/simulation";
+
+const GOAL_OPTIONS = [
+  "More energy",
+  "More healthy years",
+  "Prevent chronic illness",
+  "Support peak performance",
+  "Proactive healthcare",
+  "Optimize my biomarkers",
+  "Mental clarity",
+  "To look my best",
+  "Support my metabolism",
+  "Revitalize my sexual health",
+  "Lose weight",
+  "Optimize muscle composition",
+  "Support menopause / perimenopause",
+  "Support my cardiovascular health",
+  "Cellular rejuvenation (NAD+ / Glutathione)",
+];
+
+const CONDITION_OPTIONS = [
+  "Diabetes",
+  "High cholesterol",
+  "Prediabetes",
+  "Hypertension",
+  "Obesity",
+  "Hypothyroidism",
+  "PCOS",
+  "Fatty liver",
+  "Low testosterone",
+  "Anxiety",
+  "Insomnia",
+];
 
 // realId = registry compound_id used by /twin/simulate (BPC-157=1, Tirzepatide=3).
 const DEMO_COMPOUNDS = [
@@ -147,7 +181,7 @@ function MetricChip({ icon, label, value }: { icon: string; label: string; value
 export default function DigitalTwinPage() {
   useDocumentTitle("PepHouse | Digital Twin");
   const imp = useImport();
-  const connected = imp.hasData;
+  const connected = imp.connected;
 
   const [selectedCompounds, setSelectedCompounds] = useState<string[]>(["tirzepatide"]);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -163,7 +197,7 @@ export default function DigitalTwinPage() {
   const [loading, setLoading] = useState(false);
 
   // Editable patient profile.
-  const [patient, setPatient] = useState<PatientInput>(DEMOGRAPHICS);
+  const [patient, setPatient] = useState<PatientInput>({ ...DEMOGRAPHICS, conditions: [], goals: [] });
   useEffect(() => {
     setPatient((prev) => ({
       ...prev,
@@ -171,8 +205,9 @@ export default function DigitalTwinPage() {
       ...(imp.sex ? { sex: imp.sex } : {}),
       ...(imp.weightKg != null ? { weightKg: imp.weightKg } : {}),
       conditions: imp.conditions.length ? imp.conditions : prev.conditions,
+      goals: imp.goals.length ? imp.goals : prev.goals,
     }));
-  }, [imp.age, imp.sex, imp.weightKg, imp.conditions]);
+  }, [imp.age, imp.sex, imp.weightKg, imp.conditions, imp.goals]);
 
   const editProfile = (partial: Partial<PatientInput>) => {
     setPatient((prev) => ({ ...prev, ...partial }));
@@ -186,7 +221,8 @@ export default function DigitalTwinPage() {
         age: patient.age,
         sex: patient.sex,
         weightKg: patient.weightKg,
-        conditions: patient.conditions,
+        conditions: patient.conditions ?? [],
+        goals: patient.goals ?? [],
         source: { kind: "reported", label: "Manual entry", at: new Date().toISOString() },
       });
       setSaveState("saved");
@@ -200,6 +236,7 @@ export default function DigitalTwinPage() {
     setSelectedCompounds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const selectedReal = DEMO_COMPOUNDS.filter((c) => selectedCompounds.includes(c.id));
+  const compoundExtras = useCompoundExtras(selectedReal.map((c) => c.realId));
   const overallGrade = useMemo(() => gradeFor(imp.labs), [imp.labs]);
   const og = gradeMeta(overallGrade);
 
@@ -299,6 +336,24 @@ export default function DigitalTwinPage() {
                   style={{ background: `linear-gradient(to right, #22d3ee ${weightPct}%, #27272a ${weightPct}%)` }}
                 />
               </div>
+
+              <MultiSelectDropdown
+                label="Goals"
+                icon="lucide:target"
+                options={GOAL_OPTIONS}
+                selected={patient.goals ?? []}
+                onChange={(next) => editProfile({ goals: next })}
+                placeholder="Select your goals…"
+              />
+              <MultiSelectDropdown
+                label="Conditions"
+                icon="lucide:heart-pulse"
+                options={CONDITION_OPTIONS}
+                selected={patient.conditions ?? []}
+                onChange={(next) => editProfile({ conditions: next })}
+                placeholder="Select conditions…"
+              />
+
               <button
                 type="button"
                 onClick={handleSave}
@@ -324,25 +379,54 @@ export default function DigitalTwinPage() {
               </div>
               {DEMO_COMPOUNDS.map((c) => {
                 const sel = selectedCompounds.includes(c.id);
+                const ex = compoundExtras[c.realId];
                 return (
-                  <button
+                  <div
                     key={c.id}
-                    type="button"
-                    onClick={() => toggleCompound(c.id)}
-                    aria-pressed={sel}
-                    className={`bg-transparent rounded-xl p-4 flex flex-col text-left transition-colors relative ${
+                    className={`rounded-xl transition-colors relative ${
                       sel ? "border border-cyan-500 ring-1 ring-cyan-500" : "border border-zinc-700 hover:bg-zinc-800/30"
                     }`}
                   >
-                    <span className={`absolute top-3 right-3 w-4 h-4 rounded border flex items-center justify-center ${sel ? "bg-cyan-500 border-cyan-500" : "border-zinc-600"}`}>
-                      {sel && <Icon icon="lucide:check" className="w-3 h-3 text-white" />}
-                    </span>
-                    <div className="flex items-center gap-3 mb-1 pr-6">
-                      <span className="text-[15px] font-medium text-zinc-100">{c.name}</span>
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded tracking-wider uppercase ${c.tagClass}`}>{c.tag}</span>
-                    </div>
-                    <div className="text-[13px] text-zinc-500">{c.desc}</div>
-                  </button>
+                    <button type="button" onClick={() => toggleCompound(c.id)} aria-pressed={sel} className="w-full p-4 flex flex-col text-left">
+                      <span className={`absolute top-3 right-3 w-4 h-4 rounded border flex items-center justify-center ${sel ? "bg-cyan-500 border-cyan-500" : "border-zinc-600"}`}>
+                        {sel && <Icon icon="lucide:check" className="w-3 h-3 text-white" />}
+                      </span>
+                      <div className="flex items-center gap-3 mb-1 pr-6">
+                        <span className="text-[15px] font-medium text-zinc-100">{c.name}</span>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded tracking-wider uppercase ${c.tagClass}`}>{c.tag}</span>
+                      </div>
+                      <div className="text-[13px] text-zinc-500">{c.desc}</div>
+                    </button>
+                    {sel && (
+                      <div className="px-4 pb-4 -mt-1 space-y-2">
+                        <div className="text-[12px] text-zinc-400 flex items-center gap-1.5">
+                          <Icon icon="lucide:pill" className="w-3.5 h-3.5 text-cyan-400" />
+                          Typical dose: <span className="text-zinc-200">{ex?.dose ?? "—"}</span>
+                        </div>
+                        {ex?.vendors && ex.vendors.length > 0 && (
+                          <div>
+                            <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Where to get it</div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {ex.vendors.map((v) => (
+                                <a
+                                  key={v.name}
+                                  href={v.url ?? "#"}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-[11px] px-2 py-1 rounded-lg border border-zinc-700 bg-zinc-950 text-cyan-300 hover:border-cyan-700 hover:bg-cyan-950/20 flex items-center gap-1"
+                                >
+                                  <Icon icon="lucide:external-link" className="w-3 h-3" />
+                                  {v.name}
+                                  {v.costPerVial ? <span className="text-zinc-500">${v.costPerVial}</span> : null}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
               <button
@@ -352,7 +436,7 @@ export default function DigitalTwinPage() {
                 className="w-full rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-3 text-sm font-semibold text-white flex items-center justify-center gap-2 transition-colors"
               >
                 <Icon icon={loading ? "svg-spinners:180-ring" : "lucide:play"} />
-                {loading ? "Simulating…" : `Run Simulation${selectedReal.length > 1 ? ` (${selectedReal.length})` : ""}`}
+                {loading ? "Simulating…" : `Simulate My Results${selectedReal.length > 1 ? ` (${selectedReal.length})` : ""}`}
               </button>
             </div>
 

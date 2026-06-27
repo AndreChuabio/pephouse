@@ -81,6 +81,7 @@ export type ImportPatch = {
 
 export type PatientInput = Demographics & {
   conditions?: string[];
+  goals?: string[];
   labs?: LabValue[];
   importSource?: ImportSource;
 };
