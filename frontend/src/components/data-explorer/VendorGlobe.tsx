@@ -217,10 +217,24 @@ function Marker({ position, pulseSeed }: { position: THREE.Vector3; pulseSeed: n
   );
 }
 
-function AutoRotateGroup({ children }: { children: React.ReactNode }) {
+function ControlledGlobeGroup({
+  targetRotationY,
+  children,
+}: {
+  targetRotationY: number | null;
+  children: React.ReactNode;
+}) {
   const ref = useRef<THREE.Group>(null);
   useFrame((_, delta) => {
-    if (ref.current) ref.current.rotation.y += delta * 0.08;
+    if (!ref.current) return;
+    if (targetRotationY === null) {
+      ref.current.rotation.y += delta * 0.08;
+      return;
+    }
+    const cur = ref.current.rotation.y;
+    let diff = targetRotationY - cur;
+    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    ref.current.rotation.y = cur + diff * Math.min(1, delta * 3);
   });
   return <group ref={ref}>{children}</group>;
 }
@@ -264,10 +278,18 @@ export function VendorGlobe({ vendors, compoundName }: { vendors: Vendor[]; comp
     return vendors.filter((v) => v.country && normalize(v.country) === key);
   }, [activeCountry, vendors]);
 
+  const targetRotationY = useMemo<number | null>(() => {
+    if (!activeCountry) return null;
+    const entry = byCountry.find((c) => c.display === activeCountry);
+    if (!entry) return null;
+    const pos = latLonToVec3(entry.coords[0], entry.coords[1], 1);
+    return Math.atan2(-pos.x, pos.z);
+  }, [activeCountry, byCountry]);
+
   return (
     <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-lg overflow-hidden">
       <div className="px-4 py-3 border-b border-zinc-800/60 flex items-center gap-2 flex-wrap">
-        <Icon icon="solar:global-linear" className="text-emerald-400/80" />
+        <Icon icon="solar:global-linear" className="text-blue-500" />
         <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-widest">
           Global Sourcing
         </h3>
@@ -293,14 +315,14 @@ export function VendorGlobe({ vendors, compoundName }: { vendors: Vendor[]; comp
           >
             <ambientLight intensity={0.6} />
             <directionalLight position={[5, 3, 5]} intensity={1.2} />
-            <AutoRotateGroup>
+            <ControlledGlobeGroup targetRotationY={targetRotationY}>
               <Suspense fallback={<FallbackSphere />}>
                 <EarthSphere />
               </Suspense>
               {markers.map((m, i) => (
                 <Marker key={i} position={m.position} pulseSeed={m.pulseSeed} />
               ))}
-            </AutoRotateGroup>
+            </ControlledGlobeGroup>
             <Atmosphere />
             <OrbitControls
               enablePan={false}

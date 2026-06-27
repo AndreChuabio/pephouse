@@ -15,7 +15,6 @@ type Compound = {
 };
 
 type Detail = {
-  caseStudies: any[];
   trials: any[];
   anecdotes: any[];
   papers: any[];
@@ -39,10 +38,11 @@ const SOURCE_TONE: Record<string, "green" | "orange" | "zinc"> = {
   research_chem: "zinc",
 };
 
-function Badge({ tone, children }: { tone: "green" | "orange" | "zinc"; children: React.ReactNode }) {
+function Badge({ tone, children }: { tone: "green" | "orange" | "yellow" | "zinc"; children: React.ReactNode }) {
   const map = {
     green: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
     orange: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+    yellow: "bg-amber-500/10 text-amber-400 border-amber-500/20",
     zinc: "bg-zinc-800 text-zinc-400 border-zinc-700",
   } as const;
   return (
@@ -90,14 +90,13 @@ export default function DataExplorerPage() {
     setLoading(true);
     const id = selected.id;
     Promise.all([
-      supabase.from("case_studies").select("cluster_label,evidence_basis,n,confidence,trial_backed").eq("compound_id", id),
       supabase.from("trials").select("nct_id,phase,indication,status,n_enrolled,source_url,matched_intervention").eq("compound_id", id).limit(25),
       supabase.from("anecdotes").select("body,claimed_effect,sentiment,permalink,dose_mentioned").eq("compound_id", id),
       supabase.from("research_papers").select("title,journal,year,is_narrative,url").eq("compound_id", id),
       supabase.from("source_potency_priors").select("source_type,potency_mean,potency_sd,p_fail,p_contam,quantity_variance_p95,compound_id,basis").or(`compound_id.eq.${id},compound_id.is.null`),
       supabase.from("vendor_lab_results").select("vendor_name,purity_pct,label_mg,tested_mg,quantity_variance_pct,potency_factor,test_lab,failed").eq("compound_id", id),
       supabase.from("vendors").select("*").order("reliability_score", { ascending: false }),
-    ]).then(([cs, t, a, rp, sp, lr, v]) => {
+    ]).then(([t, a, rp, sp, lr, v]) => {
       // prefer compound-specific prior over the NULL default, per source_type
       const bySource: Record<string, any> = {};
       for (const row of (sp.data ?? [])) {
@@ -106,7 +105,6 @@ export default function DataExplorerPage() {
       }
       const order = ["compounding_pharmacy", "vendor_tested", "gray_market", "research_chem", "brand"];
       setDetail({
-        caseStudies: cs.data ?? [],
         trials: t.data ?? [],
         anecdotes: a.data ?? [],
         papers: rp.data ?? [],
@@ -169,20 +167,6 @@ export default function DataExplorerPage() {
                 <>
                   <VendorGlobe vendors={detail.vendors} compoundName={selected.name} />
 
-                  <Section icon="solar:layers-linear" title="Case Studies" count={detail.caseStudies.length}>
-                    <div className="space-y-1.5">
-                      {detail.caseStudies.map((cs, i) => (
-                        <div key={i} className="flex items-center justify-between text-sm">
-                          <span className="text-zinc-300 flex items-center gap-2">
-                            <Badge tone={cs.trial_backed ? "green" : "orange"}>{cs.evidence_basis}</Badge>
-                            {cs.cluster_label}
-                          </span>
-                          <span className="font-mono text-xs text-zinc-500">n={cs.n} &middot; conf {cs.confidence}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </Section>
-
                   <Section icon="solar:document-text-linear" title="Clinical Trials" count={detail.trials.length}>
                     <div className="space-y-1.5">
                       {detail.trials.map((t, i) => (
@@ -196,16 +180,21 @@ export default function DataExplorerPage() {
 
                   <Section icon="solar:chat-round-line-linear" title="Reddit Anecdotes" count={detail.anecdotes.length}>
                     <div className="space-y-2">
-                      {detail.anecdotes.map((a, i) => (
+                      {detail.anecdotes.map((a, i) => {
+                        const s = (a.sentiment ?? "").toLowerCase();
+                        const tone: "green" | "yellow" | "orange" | "zinc" =
+                          s === "positive" ? "green" : s === "mixed" ? "yellow" : s === "negative" ? "orange" : "zinc";
+                        return (
                         <a key={i} href={a.permalink} target="_blank" rel="noreferrer" className="block text-sm hover:bg-zinc-950/60 rounded px-2 py-1.5 group">
                           <div className="flex items-center gap-2">
-                            <Badge tone="orange">{a.sentiment}</Badge>
+                            <Badge tone={tone}>{a.sentiment}</Badge>
                             <span className="text-zinc-300">{a.claimed_effect}</span>
                             {a.dose_mentioned && <span className="text-xs font-mono text-zinc-600">{a.dose_mentioned}</span>}
                           </div>
                           <p className="text-xs text-zinc-600 mt-0.5 truncate group-hover:text-zinc-500">{a.body}</p>
                         </a>
-                      ))}
+                        );
+                      })}
                     </div>
                   </Section>
 
