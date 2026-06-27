@@ -25,6 +25,7 @@ function severityClasses(s: InteractionSeverity) {
 
 function sourceLabel(kind: InteractionPair["source_kind"]): string {
   if (kind === "fda_label") return "FDA label";
+  if (kind === "fda_label_live") return "FDA label (live)";
   if (kind === "curated") return "curated";
   if (kind === "mechanistic") return "mechanistic";
   return "no data";
