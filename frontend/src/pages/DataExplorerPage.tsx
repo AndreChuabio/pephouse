@@ -20,6 +20,23 @@ type Detail = {
   anecdotes: any[];
   papers: any[];
   sourcing: any[];
+  sourcePriors: any[];
+  labResults: any[];
+};
+
+const SOURCE_LABEL: Record<string, string> = {
+  compounding_pharmacy: "Compounding pharmacy",
+  vendor_tested: "Gray-market, lab-tested",
+  gray_market: "Gray-market, untested",
+  research_chem: "Research chemical",
+  brand: "Brand / pharma-grade",
+};
+const SOURCE_TONE: Record<string, "green" | "orange" | "zinc"> = {
+  compounding_pharmacy: "green",
+  brand: "green",
+  vendor_tested: "orange",
+  gray_market: "orange",
+  research_chem: "zinc",
 };
 
 function Badge({ tone, children }: { tone: "green" | "orange" | "zinc"; children: React.ReactNode }) {
@@ -77,7 +94,16 @@ export default function DataExplorerPage() {
       supabase.from("anecdotes").select("body,claimed_effect,sentiment,permalink,dose_mentioned").eq("compound_id", id),
       supabase.from("research_papers").select("title,journal,year,is_narrative,url").eq("compound_id", id),
       supabase.from("sourcing").select("vendor_name,origin_country,notes,source_url").eq("compound_id", id),
-    ]).then(([p, cs, t, a, rp, s]) => {
+      supabase.from("source_potency_priors").select("source_type,potency_mean,potency_sd,p_fail,p_contam,quantity_variance_p95,compound_id,basis").or(`compound_id.eq.${id},compound_id.is.null`),
+      supabase.from("vendor_lab_results").select("vendor_name,purity_pct,label_mg,tested_mg,quantity_variance_pct,potency_factor,test_lab,failed").eq("compound_id", id),
+    ]).then(([p, cs, t, a, rp, s, sp, lr]) => {
+      // prefer compound-specific prior over the NULL default, per source_type
+      const bySource: Record<string, any> = {};
+      for (const row of (sp.data ?? [])) {
+        const cur = bySource[row.source_type];
+        if (!cur || (row.compound_id && !cur.compound_id)) bySource[row.source_type] = row;
+      }
+      const order = ["compounding_pharmacy", "vendor_tested", "gray_market", "research_chem", "brand"];
       setDetail({
         priors: p.data ?? [],
         caseStudies: cs.data ?? [],
@@ -85,6 +111,8 @@ export default function DataExplorerPage() {
         anecdotes: a.data ?? [],
         papers: rp.data ?? [],
         sourcing: s.data ?? [],
+        sourcePriors: order.map((k) => bySource[k]).filter(Boolean),
+        labResults: lr.data ?? [],
       });
       setLoading(false);
     });
@@ -205,6 +233,38 @@ export default function DataExplorerPage() {
                         </a>
                       ))}
                     </div>
+                  </Section>
+
+                  <Section icon="solar:shield-warning-linear" title="Source Quality — delivered-dose variance" count={detail.sourcePriors.length}>
+                    <p className="text-xs text-zinc-500 mb-3">delivered_dose = label &times; potency_factor. Where you source it shifts the curve.</p>
+                    <div className="space-y-1.5">
+                      {detail.sourcePriors.map((sp, i) => (
+                        <div key={i} className="flex items-center justify-between text-sm bg-zinc-950/50 rounded px-3 py-2">
+                          <span className="flex items-center gap-2">
+                            <Badge tone={SOURCE_TONE[sp.source_type] ?? "zinc"}>{SOURCE_LABEL[sp.source_type] ?? sp.source_type}</Badge>
+                          </span>
+                          <span className="font-mono text-xs text-zinc-400">
+                            potency {sp.potency_mean}&plusmn;{sp.potency_sd}
+                            {sp.p_fail > 0 && <span className="text-orange-400"> &middot; {Math.round(sp.p_fail * 100)}% dud</span>}
+                            {sp.p_contam > 0 && <span className="text-red-400"> &middot; {Math.round(sp.p_contam * 100)}% contam</span>}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {detail.labResults.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-zinc-800/50">
+                        <p className="text-[10px] uppercase tracking-widest text-zinc-600 mb-1.5">measured (third-party tested)</p>
+                        {detail.labResults.map((lr, i) => (
+                          <div key={i} className="flex items-center justify-between text-sm py-0.5">
+                            <span className="text-zinc-300">{lr.vendor_name} <span className="text-zinc-600">&middot; {lr.test_lab}</span></span>
+                            <span className="font-mono text-xs text-zinc-400">
+                              {lr.purity_pct}% pure, {lr.tested_mg}/{lr.label_mg}mg
+                              <span className={lr.potency_factor < 0.95 ? "text-orange-400" : "text-emerald-400"}> &rarr; {lr.potency_factor}&times;</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </Section>
 
                   <Section icon="solar:map-point-linear" title="Sourcing" count={detail.sourcing.length}>
