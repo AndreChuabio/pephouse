@@ -1,6 +1,6 @@
 export type EvidenceTier = "gray-market" | "fda-approved";
 
-export type ProvenanceTier = "anecdotal";
+export type ProvenanceTier = "anecdotal" | "trial";
 
 export type Compound = {
   id: string;

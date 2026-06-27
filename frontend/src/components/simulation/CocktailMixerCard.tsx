@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
 import { MOCK_COMPOUNDS } from "../../data/mockSimulation";
+import { useCompounds } from "../../hooks/useCompounds";
 import { getTierBadge } from "../../lib/badges";
 import type { Compound } from "../../types/simulation";
 import { Panel } from "../ui/Panel";
@@ -40,12 +41,16 @@ function CompoundRow({ compound }: CompoundRowProps) {
 }
 
 export function CocktailMixerCard() {
+  // Real compounds from Supabase; falls back to mock only while the request is in flight.
+  const { compounds } = useCompounds();
+  const list = compounds ?? MOCK_COMPOUNDS;
+
   return (
     <Panel className="p-5">
       <PanelHeader icon="solar:test-tube-linear" title="Cocktail Formulation" />
 
       <div className="space-y-3">
-        {MOCK_COMPOUNDS.map((compound) => (
+        {list.map((compound) => (
           <CompoundRow key={compound.id} compound={compound} />
         ))}
       </div>
