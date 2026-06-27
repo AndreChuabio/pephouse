@@ -229,28 +229,6 @@ export function ReportPanel({
 
               <div className="space-y-3">
                 <h4 className="text-xs font-medium text-zinc-400">
-                  {audience === "individual" ? "Possible benefits" : "Likely Benefits"}
-                </h4>
-                {topBenefits.map((b) => (
-                  <div key={b.label} className="space-y-2">
-                    <div className="flex justify-between items-end">
-                      <span className="text-xs text-zinc-200">{b.label}</span>
-                      {b.probabilityLabel && (
-                        <span className="text-[10px] text-zinc-500">{b.probabilityLabel}</span>
-                      )}
-                    </div>
-                    <div className="h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-teal-500/70 transition-all duration-300"
-                        style={{ width: `${b.percent}%`, opacity }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="space-y-3 pt-2">
-                <h4 className="text-xs font-medium text-zinc-400">
                   {audience === "individual" ? "Risks to watch" : "Surfaced Risks"}
                 </h4>
                 {topRisks.map((risk) => {
@@ -299,6 +277,28 @@ export function ReportPanel({
                     </div>
                   );
                 })}
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <h4 className="text-xs font-medium text-zinc-400">
+                  {audience === "individual" ? "Possible benefits" : "Likely Benefits"}
+                </h4>
+                {topBenefits.map((b) => (
+                  <div key={b.label} className="space-y-2">
+                    <div className="flex justify-between items-end">
+                      <span className="text-xs text-zinc-200">{b.label}</span>
+                      {b.probabilityLabel && (
+                        <span className="text-[10px] text-zinc-500">{b.probabilityLabel}</span>
+                      )}
+                    </div>
+                    <div className="h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-teal-500/70 transition-all duration-300"
+                        style={{ width: `${b.percent}%`, opacity }}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </>
