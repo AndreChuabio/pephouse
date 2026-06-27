@@ -95,7 +95,7 @@ export type InteractionPair = {
   mechanism: string | null;
   management: string | null;
   source_url: string | null;
-  source_kind: "drugbank_pubchem" | "curated" | "mechanistic" | "no_data";
+  source_kind: "drugbank_pubchem" | "curated" | "no_data";
 };
 
 export type InteractionsResponse = {

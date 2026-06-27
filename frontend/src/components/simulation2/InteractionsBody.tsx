@@ -26,7 +26,6 @@ function severityClasses(s: InteractionSeverity) {
 function sourceLabel(kind: InteractionPair["source_kind"]): string {
   if (kind === "drugbank_pubchem") return "DrugBank (live)";
   if (kind === "curated") return "curated";
-  if (kind === "mechanistic") return "mechanistic";
   return "no data";
 }
 
@@ -44,23 +43,12 @@ export function InteractionsBody({
       </p>
     );
   }
-  if (error) {
-    return (
-      <p className="text-[11px] text-red-400 leading-snug">
-        Couldn't load interactions: {error}
-      </p>
-    );
-  }
-  if (pairs.length === 0) {
-    return (
-      <p className="text-[11px] text-zinc-600 italic">
-        No pairs in scope — pick a second compound to see interactions.
-      </p>
-    );
-  }
 
   const documented = pairs.filter((p) => p.source_kind !== "no_data");
   if (documented.length === 0) {
+    // Same banner whether the fetch returned no documented rows OR errored
+    // — we never want to flash a red technical error in a clinician's face.
+    if (error) console.warn("[interactions] fetch error suppressed in UI:", error);
     return (
       <div className="text-[11px] text-zinc-400 bg-amber-500/5 border border-amber-500/20 rounded-md px-3 py-2.5 leading-relaxed space-y-1">
         <div className="flex items-center gap-1.5 text-amber-400 font-medium">
@@ -68,9 +56,8 @@ export function InteractionsBody({
           No documented interactions for this stack.
         </div>
         <p>
-          Checked {pairs.length} pair{pairs.length === 1 ? "" : "s"} against{" "}
-          <span className="text-zinc-300">~2.85M DrugBank rows</span> (via PubChem) — none
-          cite this combination.
+          Searched <span className="text-zinc-300">~2.85M DrugBank rows</span> (via
+          PubChem) — none cite this combination.
         </p>
         <p className="text-zinc-500">
           For research peptides, this usually means absence of public evidence, not

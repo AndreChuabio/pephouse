@@ -194,7 +194,7 @@ class InteractionPair(BaseModel):
     mechanism: str | None = None
     management: str | None = None
     source_url: str | None = None
-    source_kind: str  # 'fda_label' | 'curated' | 'mechanistic' | 'no_data'
+    source_kind: str  # 'drugbank_pubchem' | 'curated' | 'no_data'
 
 
 class InteractionsResponse(BaseModel):
