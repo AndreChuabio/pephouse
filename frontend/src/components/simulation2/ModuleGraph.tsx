@@ -77,11 +77,11 @@ function layout(states: Record<string, SyntheaState>): {
   return { positions, cols: maxCol, rows: maxDepth + 1 };
 }
 
-const NODE_W = 130;
-const NODE_H = 36;
-const GAP_X = 14;
-const GAP_Y = 22;
-const PAD = 8;
+const NODE_W = 156;
+const NODE_H = 44;
+const GAP_X = 18;
+const GAP_Y = 28;
+const PAD = 10;
 
 export function ModuleGraph({ states }: { states: Record<string, SyntheaState> }) {
   const { positions, cols, rows } = layout(states);
@@ -95,7 +95,7 @@ export function ModuleGraph({ states }: { states: Record<string, SyntheaState> }
   });
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} width="100%" preserveAspectRatio="xMinYMid meet" className="block">
+    <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} className="block">
       <defs>
         <marker id="mg-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
           <path d="M0,0 L10,5 L0,10 z" fill="#71717a" />
@@ -119,7 +119,7 @@ export function ModuleGraph({ states }: { states: Record<string, SyntheaState> }
             <g key={`${from}->${t.target}-${i}`}>
               <path d={d} fill="none" stroke="#71717a" strokeWidth={1} markerEnd="url(#mg-arrow)" />
               {t.label && (
-                <text x={(x1 + x2) / 2 + 4} y={(y1 + y2) / 2} fill="#a1a1aa" fontSize={8}>
+                <text x={(x1 + x2) / 2 + 4} y={(y1 + y2) / 2} fill="#a1a1aa" fontSize={10}>
                   {t.label}
                 </text>
               )}
@@ -134,12 +134,12 @@ export function ModuleGraph({ states }: { states: Record<string, SyntheaState> }
         const fill = STATE_FILL[st.type] ?? "#52525b";
         return (
           <g key={name}>
-            <rect x={x} y={y} width={NODE_W} height={NODE_H} rx={5} fill={fill} opacity={0.9} />
-            <text x={x + NODE_W / 2} y={y + 14} textAnchor="middle" fontSize={9} fill="white" fontWeight={600}>
+            <rect x={x} y={y} width={NODE_W} height={NODE_H} rx={6} fill={fill} opacity={0.9} />
+            <text x={x + NODE_W / 2} y={y + 17} textAnchor="middle" fontSize={11} fill="white" fontWeight={600}>
               {st.type}
             </text>
-            <text x={x + NODE_W / 2} y={y + 27} textAnchor="middle" fontSize={8} fill="#fafafa" opacity={0.85}>
-              {name.length > 22 ? name.slice(0, 21) + "…" : name}
+            <text x={x + NODE_W / 2} y={y + 33} textAnchor="middle" fontSize={10} fill="#fafafa" opacity={0.9}>
+              {name.length > 24 ? name.slice(0, 23) + "…" : name}
             </text>
           </g>
         );
