@@ -6,7 +6,7 @@ import {
   type SimulationSnapshot,
 } from "../../data/simulation2";
 import type { InteractionPair } from "../../lib/api";
-import type { ProjectedBand } from "../../hooks/useSim2Backend";
+import { DRAW_OPTIONS, MONTE_CARLO_DRAWS, type ProjectedBand } from "../../hooks/useSim2Backend";
 import { cn } from "../../lib/cn";
 
 type ReportPanelProps = {
@@ -23,6 +23,8 @@ type ReportPanelProps = {
   interactionsRequested: boolean;
   band?: ProjectedBand | null;
   running?: boolean;
+  draws?: number;
+  onDrawsChange?: (n: number) => void;
 };
 
 function confidenceColor(level: SimulationSnapshot["confidenceLevel"]) {
@@ -101,6 +103,8 @@ export function ReportPanel({
   interactionsRequested,
   band,
   running,
+  draws,
+  onDrawsChange,
 }: ReportPanelProps) {
   if (!open) {
     return (
@@ -328,6 +332,11 @@ export function ReportPanel({
                           ~{band.dudPct}% chance of a near-inert (under-dosed) source.
                         </p>
                       ) : null}
+                      {draws ? (
+                        <p className="text-[10px] text-zinc-600">
+                          Projected from {draws.toLocaleString()} Monte Carlo simulations.
+                        </p>
+                      ) : null}
                     </>
                   )}
                 </div>
@@ -412,6 +421,24 @@ export function ReportPanel({
       </div>
 
       <div className="p-4 border-t border-zinc-800/50 bg-[#121212] shrink-0">
+        {onDrawsChange ? (
+          <div className="mb-3">
+            <label className="block text-[10px] uppercase tracking-widest text-zinc-500 mb-1">
+              Monte Carlo runs (samples, not patients)
+            </label>
+            <select
+              value={draws ?? MONTE_CARLO_DRAWS}
+              onChange={(e) => onDrawsChange(Number(e.target.value))}
+              className="w-full py-1.5 px-2 bg-[#0A0A0A] border border-zinc-700 rounded-md text-xs text-zinc-100 focus:outline-none focus:border-zinc-500"
+            >
+              {DRAW_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={onRun}

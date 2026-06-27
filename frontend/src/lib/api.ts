@@ -128,6 +128,47 @@ export type InteractionsResponse = {
   pairs: InteractionPair[];
 };
 
+export type SyntheaState = {
+  type: string;
+  direct_transition?: string;
+  distributed_transition?: { transition: string; distribution: number }[];
+  conditional_transition?: { transition: string; condition?: Record<string, unknown> }[];
+  complex_transition?: Record<string, unknown>[];
+  category?: string;
+  codes?: { system: string; code: string; display?: string }[];
+  unit?: string;
+  range?: { low?: number; high?: number };
+  exact?: { quantity?: number };
+  encounter_class?: string;
+  reason?: string;
+  allow?: {
+    condition_type?: string;
+    conditions?: Array<{ condition_type?: string; operator?: string; quantity?: number; unit?: string }>;
+  };
+};
+
+export type SyntheaModuleRow = {
+  id: number;
+  name: string;
+  outcome_name: string;
+  compound_id: number;
+  active: boolean;
+  source?: string;
+  eligibility?: Record<string, unknown>;
+  created_at?: string;
+  module: {
+    name: string;
+    states: Record<string, SyntheaState>;
+    remarks?: string[];
+  };
+};
+
+export async function fetchCompoundModules(compoundId: number): Promise<SyntheaModuleRow[]> {
+  const res = await fetch(`${API_BASE}/compounds/${compoundId}/modules`);
+  if (!res.ok) throw new Error(`modules failed (${res.status})`);
+  return res.json() as Promise<SyntheaModuleRow[]>;
+}
+
 export async function fetchInteractions(compoundIds: number[]): Promise<InteractionsResponse> {
   if (compoundIds.length < 2) return { pairs: [] };
   const qs = compoundIds.join(",");

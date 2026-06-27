@@ -13,6 +13,20 @@ import type { ConfidenceLevel, LedgerLine, Sex, SimulationSnapshot } from "../da
 // tier2 = verified real-world/lab data (the source-quality axis), tier1 = anecdote.
 const TIER_MAP: Record<string, string> = { tier4: "trial", tier3: "trial", tier2: "quality", tier1: "anecdote" };
 
+// Monte Carlo sample count. These are statistical DRAWS (not patients) — numpy does
+// 100k in <1s, so it's an honest "100,000 simulations" number, distinct from the ~20
+// Synthea bodies (the cohort). Never conflate the two on stage.
+export const MONTE_CARLO_DRAWS = 100_000;
+
+// Options for the "how many simulations to run" dropdown in the report side panel.
+export const DRAW_OPTIONS: { value: number; label: string }[] = [
+  { value: 1_000, label: "1,000 runs" },
+  { value: 5_000, label: "5,000 runs" },
+  { value: 20_000, label: "20,000 runs" },
+  { value: 100_000, label: "100,000 runs (default)" },
+  { value: 1_000_000, label: "1,000,000 runs" },
+];
+
 export function tiersFromFractions(fractions: Record<string, number>): string[] {
   const set = new Set<string>();
   for (const [key, frac] of Object.entries(fractions)) {
@@ -29,7 +43,7 @@ export function useSim2Backend() {
   const [error, setError] = useState<string | null>(null);
 
   const run = useCallback(
-    async (compoundIds: number[], patient: Patient, fractions: Record<string, number>, outcomes?: string[]) => {
+    async (compoundIds: number[], patient: Patient, fractions: Record<string, number>, outcomes?: string[], nDraws?: number) => {
       if (!compoundIds.length) return;
       setLoading(true);
       setError(null);
@@ -41,7 +55,7 @@ export function useSim2Backend() {
           outcomes: outcomes && outcomes.length ? outcomes : ["weight_change_pct"],
           tiers,
           source_type: tiers.includes("quality") ? "gray_market" : undefined,
-          n_draws: 5000,
+          n_draws: nDraws ?? MONTE_CARLO_DRAWS,
           seed: 42,
         });
         setResult(data);

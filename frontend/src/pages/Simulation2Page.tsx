@@ -21,10 +21,11 @@ import {
 import { studiesFromBundle } from "../data/registryStudies";
 import { synthesizeProfile } from "../data/synthesizeProfile";
 import { useCompoundData } from "../hooks/useCompoundData";
+import { useCompoundModules } from "../hooks/useCompoundModules";
 import { useCompoundRegistry } from "../hooks/useCompoundRegistry";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useInteractions } from "../hooks/useInteractions";
-import { useSim2Backend, mergeBackendSnapshot, projectedBand } from "../hooks/useSim2Backend";
+import { useSim2Backend, mergeBackendSnapshot, projectedBand, MONTE_CARLO_DRAWS } from "../hooks/useSim2Backend";
 import type { InteractionLedgerInput, InteractionSeverityKey } from "../data/simulation2";
 import type { StudyRef } from "../data/simulation2";
 
@@ -42,12 +43,14 @@ export default function Simulation2Page() {
   const [hasRun, setHasRun] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(true);
+  const [draws, setDraws] = useState(MONTE_CARLO_DRAWS);
 
   const registry = useCompoundRegistry();
   const { bundles, loading: bundleLoading, errors: bundleErrors } = useCompoundData(
     compoundIds,
     registry,
   );
+  const { bySlug: modulesBySlug } = useCompoundModules(compoundIds, registry);
 
   const profileBySlug = useMemo(() => {
     const out: Record<string, CompoundProfile> = { ...COMPOUND_PROFILES };
@@ -156,7 +159,7 @@ export default function Simulation2Page() {
   // canvas and report stay reconciled (and responsive) until the next Run Execution.
   useEffect(() => {
     backend.reset();
-  }, [compoundIds, age, sex, weight, sourceFractions, backend.reset]);
+  }, [compoundIds, age, sex, weight, sourceFractions, draws, backend.reset]);
 
   const toggleInteraction = useCallback((pairKey: string) => {
     setExcludedInteractions((prev) => {
@@ -215,7 +218,7 @@ export default function Simulation2Page() {
   const handleRun = () => {
     setHasRun(true);
     if (compoundBackendIds.length) {
-      backend.run(compoundBackendIds, { age, sex, weightKg: weight }, sourceFractions, outcomeNames);
+      backend.run(compoundBackendIds, { age, sex, weightKg: weight }, sourceFractions, outcomeNames, draws);
     }
   };
 
@@ -353,6 +356,7 @@ export default function Simulation2Page() {
           sourceFractions={sourceFractions}
           studiesByCompoundTier={studiesByCompoundTier}
           studiesLoadingByCompound={studiesLoadingByCompound}
+          modulesByCompound={modulesBySlug}
           interactionPairs={interactions.pairs}
           interactionsLoading={interactions.loading}
           interactionsError={interactions.error}
@@ -374,6 +378,8 @@ export default function Simulation2Page() {
           interactionsRequested={compoundIds.length >= 2}
           band={band}
           running={backend.loading}
+          draws={draws}
+          onDrawsChange={setDraws}
         />
       </div>
 

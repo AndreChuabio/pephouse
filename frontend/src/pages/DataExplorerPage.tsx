@@ -4,6 +4,7 @@ import { AppShell } from "../components/layout/AppShell";
 import { VendorGlobe } from "../components/data-explorer/VendorGlobe";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { supabase } from "../lib/supabase";
+import { tweetsForCompound } from "../data/tweets";
 
 type Compound = {
   id: number;
@@ -17,7 +18,6 @@ type Compound = {
 type Detail = {
   trials: any[];
   anecdotes: any[];
-  tweets: any[];
   papers: any[];
   sourcePriors: any[];
   labResults: any[];
@@ -53,7 +53,7 @@ function Badge({ tone, children }: { tone: "green" | "orange" | "yellow" | "zinc
   );
 }
 
-function Section({ icon, title, count, children }: { icon: string; title: string; count: number; children: React.ReactNode }) {
+function Section({ icon, title, count, children }: { icon: string; title: string; count: number; tier?: number; children: React.ReactNode }) {
   return (
     <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-lg p-4">
       <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-widest mb-3 flex items-center gap-2">
@@ -61,6 +61,27 @@ function Section({ icon, title, count, children }: { icon: string; title: string
         <span className="text-zinc-600">({count})</span>
       </h3>
       {count === 0 ? <p className="text-xs text-zinc-600 italic">none in the database</p> : children}
+    </div>
+  );
+}
+
+const TIER_STYLES: Record<1 | 2 | 3, { text: string; dot: string; hint: string }> = {
+  1: { text: "text-emerald-400", dot: "bg-emerald-400", hint: "Highest confidence — trial-grade" },
+  2: { text: "text-blue-400", dot: "bg-blue-400", hint: "Product reality — measured / sourced" },
+  3: { text: "text-amber-400", dot: "bg-amber-400", hint: "Anecdotal — community reports" },
+};
+
+function TierHeader({ tier, label }: { tier: 1 | 2 | 3; label: string }) {
+  const s = TIER_STYLES[tier];
+  return (
+    <div className="flex items-center gap-3 pt-3 pb-1">
+      <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} aria-hidden />
+      <span className={`text-[10px] font-bold uppercase tracking-widest ${s.text}`}>
+        Tier {tier}
+      </span>
+      <span className="text-[10px] text-zinc-500 uppercase tracking-widest">&middot; {label}</span>
+      <span className="text-[10px] text-zinc-600 italic ml-1">{s.hint}</span>
+      <div className="flex-1 h-px bg-zinc-800/60 ml-2" />
     </div>
   );
 }
@@ -93,7 +114,7 @@ export default function DataExplorerPage() {
     const id = selected.id;
     Promise.all([
       supabase.from("trials").select("nct_id,phase,indication,status,n_enrolled,source_url,matched_intervention").eq("compound_id", id).limit(25),
-      supabase.from("anecdotes").select("body,claimed_effect,sentiment,permalink,dose_mentioned,source").eq("compound_id", id),
+      supabase.from("anecdotes").select("body,claimed_effect,sentiment,permalink,dose_mentioned").eq("compound_id", id),
       supabase.from("research_papers").select("title,journal,year,is_narrative,url").eq("compound_id", id),
       supabase.from("source_potency_priors").select("source_type,potency_mean,potency_sd,p_fail,p_contam,quantity_variance_p95,compound_id,basis").or(`compound_id.eq.${id},compound_id.is.null`),
       supabase.from("vendor_lab_results").select("vendor_name,purity_pct,label_mg,tested_mg,quantity_variance_pct,potency_factor,test_lab,failed").eq("compound_id", id),
@@ -106,15 +127,9 @@ export default function DataExplorerPage() {
         if (!cur || (row.compound_id && !cur.compound_id)) bySource[row.source_type] = row;
       }
       const order = ["compounding_pharmacy", "vendor_tested", "gray_market", "research_chem", "brand"];
-      const anecdotes = a.data ?? [];
-      const isTweet = (s: string | null | undefined) => {
-        const k = (s ?? "").toLowerCase();
-        return k === "x" || k === "twitter";
-      };
       setDetail({
         trials: t.data ?? [],
-        anecdotes: anecdotes.filter((row) => !isTweet(row.source)),
-        tweets: anecdotes.filter((row) => isTweet(row.source)),
+        anecdotes: a.data ?? [],
         papers: rp.data ?? [],
         sourcePriors: order.map((k) => bySource[k]).filter(Boolean),
         labResults: lr.data ?? [],
@@ -174,7 +189,101 @@ export default function DataExplorerPage() {
                 <>
                   <VendorGlobe vendors={detail.vendors} compoundName={selected.name} />
 
-                  <Section icon="solar:document-text-linear" title="Clinical Trials" count={detail.trials.length}>
+                  {(() => {
+                    const xTweets = tweetsForCompound(selected.name);
+                    type DoseReport = {
+                      mcg: number;
+                      raw: string;
+                      source: "x" | "reddit";
+                      permalink: string;
+                      label: string;
+                      sentiment: string;
+                    };
+                    const parseDose = (s: string | null | undefined): { mcg: number; raw: string } | null => {
+                      if (!s) return null;
+                      const m = s.match(/(\d+(?:\.\d+)?)\s*(mg|mcg|μg|ug)\b/i);
+                      if (!m) return null;
+                      const v = parseFloat(m[1]);
+                      const u = m[2].toLowerCase();
+                      return { mcg: u === "mg" ? v * 1000 : v, raw: `${m[1]}${u}` };
+                    };
+                    const reports: DoseReport[] = [];
+                    for (const t of xTweets) {
+                      const p = parseDose(t.dose_mentioned);
+                      if (p) reports.push({ ...p, source: "x", permalink: t.permalink, label: t.claimed_effect, sentiment: t.sentiment });
+                    }
+                    for (const a of detail.anecdotes) {
+                      const p = parseDose(a.dose_mentioned);
+                      if (p) reports.push({ ...p, source: "reddit", permalink: a.permalink, label: a.claimed_effect, sentiment: a.sentiment ?? "" });
+                    }
+                    reports.sort((a, b) => a.mcg - b.mcg);
+                    const fmt = (mcg: number) => (mcg >= 1000 ? `${mcg / 1000}mg` : `${mcg}mcg`);
+                    const min = reports[0]?.mcg;
+                    const max = reports[reports.length - 1]?.mcg;
+                    const sentColor = (s: string) => {
+                      const k = (s ?? "").toLowerCase();
+                      if (k === "positive") return "bg-emerald-400";
+                      if (k === "negative") return "bg-orange-400";
+                      if (k === "mixed") return "bg-amber-400";
+                      return "bg-zinc-400";
+                    };
+                    return (
+                      <Section icon="solar:pills-linear" title="Reported Dosing" count={reports.length}>
+                        {reports.length > 0 && (
+                          <div className="mb-4 pt-2">
+                            <div className="relative h-1 bg-zinc-800 rounded-full mx-2">
+                              {reports.map((r, i) => {
+                                const pct = max === min ? 50 : ((r.mcg - min!) / (max! - min!)) * 100;
+                                return (
+                                  <div
+                                    key={i}
+                                    className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full ring-2 ring-zinc-950 ${sentColor(r.sentiment)}`}
+                                    style={{ left: `${pct}%` }}
+                                    title={`${r.raw} · ${r.source === "x" ? "X" : "Reddit"} · ${r.sentiment}`}
+                                  />
+                                );
+                              })}
+                            </div>
+                            <div className="flex justify-between mt-2 px-1 text-[10px] font-mono text-zinc-500">
+                              <span>{fmt(min!)}</span>
+                              {min !== max && <span>{fmt(max!)}</span>}
+                            </div>
+                          </div>
+                        )}
+                        <div className="space-y-1">
+                          {reports.map((r, i) => (
+                            <a
+                              key={i}
+                              href={r.permalink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center justify-between gap-3 text-sm hover:bg-zinc-950/60 rounded px-2 py-1.5 group"
+                            >
+                              <span className="flex items-center gap-2 min-w-0">
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${sentColor(r.sentiment)}`}
+                                  aria-hidden
+                                />
+                                <span className="font-mono text-zinc-200 shrink-0">{r.raw}</span>
+                                <span className="text-[10px] uppercase tracking-wider text-zinc-500 shrink-0">
+                                  {r.source === "x" ? "X" : "Reddit"}
+                                </span>
+                                <span className="text-zinc-500 truncate">&middot; {r.label}</span>
+                              </span>
+                              <Icon
+                                icon="solar:arrow-right-up-linear"
+                                className="text-zinc-600 opacity-0 group-hover:opacity-100 shrink-0"
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      </Section>
+                    );
+                  })()}
+
+                  <TierHeader tier={1} label="Clinical evidence" />
+
+                  <Section icon="solar:document-text-linear" title="Clinical Trials" count={detail.trials.length} tier={1}>
                     <div className="space-y-1.5">
                       {detail.trials.map((t, i) => (
                         <a key={i} href={t.source_url} target="_blank" rel="noreferrer" className="flex items-center justify-between text-sm hover:bg-zinc-950/60 rounded px-2 py-1.5 group">
@@ -185,47 +294,7 @@ export default function DataExplorerPage() {
                     </div>
                   </Section>
 
-                  <Section icon="solar:chat-round-line-linear" title="Reddit Anecdotes" count={detail.anecdotes.length}>
-                    <div className="space-y-2">
-                      {detail.anecdotes.map((a, i) => {
-                        const s = (a.sentiment ?? "").toLowerCase();
-                        const tone: "green" | "yellow" | "orange" | "zinc" =
-                          s === "positive" ? "green" : s === "mixed" ? "yellow" : s === "negative" ? "orange" : "zinc";
-                        return (
-                        <a key={i} href={a.permalink} target="_blank" rel="noreferrer" className="block text-sm hover:bg-zinc-950/60 rounded px-2 py-1.5 group">
-                          <div className="flex items-center gap-2">
-                            <Badge tone={tone}>{a.sentiment}</Badge>
-                            <span className="text-zinc-300">{a.claimed_effect}</span>
-                            {a.dose_mentioned && <span className="text-xs font-mono text-zinc-600">{a.dose_mentioned}</span>}
-                          </div>
-                          <p className="text-xs text-zinc-600 mt-0.5 truncate group-hover:text-zinc-500">{a.body}</p>
-                        </a>
-                        );
-                      })}
-                    </div>
-                  </Section>
-
-                  <Section icon="ri:twitter-x-line" title="X (Tweets)" count={detail.tweets.length}>
-                    <div className="space-y-2">
-                      {detail.tweets.map((t, i) => {
-                        const s = (t.sentiment ?? "").toLowerCase();
-                        const tone: "green" | "yellow" | "orange" | "zinc" =
-                          s === "positive" ? "green" : s === "mixed" ? "yellow" : s === "negative" ? "orange" : "zinc";
-                        return (
-                        <a key={i} href={t.permalink} target="_blank" rel="noreferrer" className="block text-sm hover:bg-zinc-950/60 rounded px-2 py-1.5 group">
-                          <div className="flex items-center gap-2">
-                            <Badge tone={tone}>{t.sentiment}</Badge>
-                            <span className="text-zinc-300">{t.claimed_effect}</span>
-                            {t.dose_mentioned && <span className="text-xs font-mono text-zinc-600">{t.dose_mentioned}</span>}
-                          </div>
-                          <p className="text-xs text-zinc-600 mt-0.5 truncate group-hover:text-zinc-500">{t.body}</p>
-                        </a>
-                        );
-                      })}
-                    </div>
-                  </Section>
-
-                  <Section icon="solar:book-linear" title="Research Papers" count={detail.papers.length}>
+                  <Section icon="solar:book-linear" title="Research Papers" count={detail.papers.length} tier={1}>
                     <div className="space-y-1.5">
                       {detail.papers.map((p, i) => (
                         <a key={i} href={p.url} target="_blank" rel="noreferrer" className="flex items-start justify-between gap-3 text-sm hover:bg-zinc-950/60 rounded px-2 py-1.5 group">
@@ -239,7 +308,9 @@ export default function DataExplorerPage() {
                     </div>
                   </Section>
 
-                  <Section icon="solar:shield-warning-linear" title="Source Quality — delivered-dose variance" count={detail.sourcePriors.length}>
+                  <TierHeader tier={2} label="Product reality" />
+
+                  <Section icon="solar:shield-warning-linear" title="Source Quality — delivered-dose variance" count={detail.sourcePriors.length} tier={2}>
                     <p className="text-xs text-zinc-500 mb-3">delivered_dose = label &times; potency_factor. Where you source it shifts the curve.</p>
                     <div className="space-y-1.5">
                       {detail.sourcePriors.map((sp, i) => {
@@ -287,7 +358,7 @@ export default function DataExplorerPage() {
                     )}
                   </Section>
 
-                  <Section icon="solar:shop-2-linear" title="Vendors & Sellers" count={detail.vendors.length}>
+                  <Section icon="solar:shop-2-linear" title="Vendors & Sellers" count={detail.vendors.length} tier={2}>
                     <div className="space-y-1.5">
                       {detail.vendors.map((v) => {
                         const k = `v-${v.id}`;
@@ -326,6 +397,53 @@ export default function DataExplorerPage() {
                       })}
                     </div>
                   </Section>
+
+                  <TierHeader tier={3} label="Community reports" />
+
+                  <Section icon="solar:chat-round-line-linear" title="Reddit Anecdotes" count={detail.anecdotes.length} tier={3}>
+                    <div className="space-y-2">
+                      {detail.anecdotes.map((a, i) => {
+                        const s = (a.sentiment ?? "").toLowerCase();
+                        const tone: "green" | "yellow" | "orange" | "zinc" =
+                          s === "positive" ? "green" : s === "mixed" ? "yellow" : s === "negative" ? "orange" : "zinc";
+                        return (
+                        <a key={i} href={a.permalink} target="_blank" rel="noreferrer" className="block text-sm hover:bg-zinc-950/60 rounded px-2 py-1.5 group">
+                          <div className="flex items-center gap-2">
+                            <Badge tone={tone}>{a.sentiment}</Badge>
+                            <span className="text-zinc-300">{a.claimed_effect}</span>
+                            {a.dose_mentioned && <span className="text-xs font-mono text-zinc-600">{a.dose_mentioned}</span>}
+                          </div>
+                          <p className="text-xs text-zinc-600 mt-0.5 truncate group-hover:text-zinc-500">{a.body}</p>
+                        </a>
+                        );
+                      })}
+                    </div>
+                  </Section>
+
+                  {(() => {
+                    const xTweets = tweetsForCompound(selected.name);
+                    return (
+                  <Section icon="ri:twitter-x-line" title="X (Tweets)" count={xTweets.length} tier={3}>
+                    <div className="space-y-2">
+                      {xTweets.map((t, i) => {
+                        const s = (t.sentiment ?? "").toLowerCase();
+                        const tone: "green" | "yellow" | "orange" | "zinc" =
+                          s === "positive" ? "green" : s === "mixed" ? "yellow" : s === "negative" ? "orange" : "zinc";
+                        return (
+                        <a key={i} href={t.permalink} target="_blank" rel="noreferrer" className="block text-sm hover:bg-zinc-950/60 rounded px-2 py-1.5 group">
+                          <div className="flex items-center gap-2">
+                            <Badge tone={tone}>{t.sentiment}</Badge>
+                            <span className="text-zinc-300">{t.claimed_effect}</span>
+                            {t.dose_mentioned && <span className="text-xs font-mono text-zinc-600">{t.dose_mentioned}</span>}
+                          </div>
+                          <p className="text-xs text-zinc-600 mt-0.5 truncate group-hover:text-zinc-500">{t.body}</p>
+                        </a>
+                        );
+                      })}
+                    </div>
+                  </Section>
+                    );
+                  })()}
 
                 </>
               )}

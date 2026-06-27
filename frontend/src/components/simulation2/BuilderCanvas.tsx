@@ -13,9 +13,10 @@ import {
   type SimulationSnapshot,
   type StudyRef,
 } from "../../data/simulation2";
-import type { InteractionPair } from "../../lib/api";
+import type { InteractionPair, SyntheaModuleRow } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { InteractionsBody } from "./InteractionsBody";
+import { ModuleGraph, ModuleStateInspector } from "./ModuleGraph";
 import { TierBadge } from "./Sim2Primitives";
 
 const COMPOUND_HUES = [
@@ -86,6 +87,7 @@ type BuilderCanvasProps = {
   sourceFractions: Record<string, number>;
   studiesByCompoundTier: Record<string, StudyRef[]>;
   studiesLoadingByCompound: Record<string, boolean>;
+  modulesByCompound: Record<string, SyntheaModuleRow[]>;
   interactionPairs: InteractionPair[];
   interactionsLoading: boolean;
   interactionsError: string | null;
@@ -375,6 +377,7 @@ type SourceBodyProps = {
   studiesLoading?: boolean;
   excludedStudies: Record<string, boolean>;
   onToggleStudy: (compoundId: string, tier: 1 | 2 | 3 | 4, title: string) => void;
+  modules: SyntheaModuleRow[];
 };
 
 function SourceBody({
@@ -383,6 +386,7 @@ function SourceBody({
   studies,
   studiesLoading,
   excludedStudies,
+  modules,
   onToggleStudy,
 }: SourceBodyProps) {
   const source = compound.evidenceSources.find((s) => s.tier === tier);
@@ -456,6 +460,51 @@ function SourceBody({
           {studiesLoading ? "Loading studies…" : "No registry rows for this tier yet."}
         </p>
       )}
+      {(() => {
+        const relevant = modules.filter((m) => {
+          const isAnecdotal = (m.name ?? "").toLowerCase().includes("anecdotal");
+          if (tier === 1) return isAnecdotal;
+          if (tier === 4) return !isAnecdotal;
+          return false;
+        });
+        if (relevant.length === 0) return null;
+        return (
+          <details className="pt-2 border-t border-zinc-800/40">
+            <summary className="cursor-pointer text-[10px] uppercase tracking-widest text-zinc-500 hover:text-zinc-200 select-none">
+              Synthea modules ({relevant.length})
+            </summary>
+            <div className="mt-2 space-y-3">
+              {relevant.map((m) => (
+                <div
+                  key={m.id}
+                  className="bg-[#0a0a0a] border border-zinc-800/60 rounded-md p-2 space-y-2"
+                >
+                  <div className="text-[10px] text-zinc-400">
+                    <code className="text-zinc-200">{m.outcome_name}</code>
+                    <span className="text-zinc-600"> · module #{m.id}</span>
+                  </div>
+                  <ModuleGraph states={m.module.states} />
+                  <details>
+                    <summary className="cursor-pointer text-[9px] uppercase tracking-widest text-zinc-500 hover:text-zinc-200 select-none">
+                      State inspector
+                    </summary>
+                    <div className="mt-1.5">
+                      <ModuleStateInspector states={m.module.states} />
+                    </div>
+                  </details>
+                  {m.module.remarks && m.module.remarks.length > 0 && (
+                    <ul className="text-[9px] text-zinc-500 pl-3 list-disc space-y-0.5">
+                      {m.module.remarks.map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          </details>
+        );
+      })()}
     </div>
   );
 }
@@ -704,6 +753,7 @@ export function BuilderCanvas({
   sourceFractions,
   studiesByCompoundTier,
   studiesLoadingByCompound,
+  modulesByCompound,
   interactionPairs,
   interactionsLoading,
   interactionsError,
@@ -933,6 +983,7 @@ export function BuilderCanvas({
                   studiesLoading={studiesLoadingByCompound[nodeCompound.id] === true}
                   excludedStudies={excludedStudies}
                   onToggleStudy={onToggleStudy}
+                  modules={modulesByCompound[nodeCompound.id] ?? []}
                 />
               </NodeShell>
             );
