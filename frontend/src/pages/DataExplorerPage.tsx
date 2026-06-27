@@ -4,6 +4,7 @@ import { AppShell } from "../components/layout/AppShell";
 import { VendorGlobe } from "../components/data-explorer/VendorGlobe";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { supabase } from "../lib/supabase";
+import { tweetsForCompound } from "../data/tweets";
 
 type Compound = {
   id: number;
@@ -17,7 +18,6 @@ type Compound = {
 type Detail = {
   trials: any[];
   anecdotes: any[];
-  tweets: any[];
   papers: any[];
   sourcePriors: any[];
   labResults: any[];
@@ -93,7 +93,7 @@ export default function DataExplorerPage() {
     const id = selected.id;
     Promise.all([
       supabase.from("trials").select("nct_id,phase,indication,status,n_enrolled,source_url,matched_intervention").eq("compound_id", id).limit(25),
-      supabase.from("anecdotes").select("body,claimed_effect,sentiment,permalink,dose_mentioned,source").eq("compound_id", id),
+      supabase.from("anecdotes").select("body,claimed_effect,sentiment,permalink,dose_mentioned").eq("compound_id", id),
       supabase.from("research_papers").select("title,journal,year,is_narrative,url").eq("compound_id", id),
       supabase.from("source_potency_priors").select("source_type,potency_mean,potency_sd,p_fail,p_contam,quantity_variance_p95,compound_id,basis").or(`compound_id.eq.${id},compound_id.is.null`),
       supabase.from("vendor_lab_results").select("vendor_name,purity_pct,label_mg,tested_mg,quantity_variance_pct,potency_factor,test_lab,failed").eq("compound_id", id),
@@ -106,15 +106,9 @@ export default function DataExplorerPage() {
         if (!cur || (row.compound_id && !cur.compound_id)) bySource[row.source_type] = row;
       }
       const order = ["compounding_pharmacy", "vendor_tested", "gray_market", "research_chem", "brand"];
-      const anecdotes = a.data ?? [];
-      const isTweet = (s: string | null | undefined) => {
-        const k = (s ?? "").toLowerCase();
-        return k === "x" || k === "twitter";
-      };
       setDetail({
         trials: t.data ?? [],
-        anecdotes: anecdotes.filter((row) => !isTweet(row.source)),
-        tweets: anecdotes.filter((row) => isTweet(row.source)),
+        anecdotes: a.data ?? [],
         papers: rp.data ?? [],
         sourcePriors: order.map((k) => bySource[k]).filter(Boolean),
         labResults: lr.data ?? [],
@@ -205,9 +199,12 @@ export default function DataExplorerPage() {
                     </div>
                   </Section>
 
-                  <Section icon="ri:twitter-x-line" title="X (Tweets)" count={detail.tweets.length}>
+                  {(() => {
+                    const xTweets = tweetsForCompound(selected.name);
+                    return (
+                  <Section icon="ri:twitter-x-line" title="X (Tweets)" count={xTweets.length}>
                     <div className="space-y-2">
-                      {detail.tweets.map((t, i) => {
+                      {xTweets.map((t, i) => {
                         const s = (t.sentiment ?? "").toLowerCase();
                         const tone: "green" | "yellow" | "orange" | "zinc" =
                           s === "positive" ? "green" : s === "mixed" ? "yellow" : s === "negative" ? "orange" : "zinc";
@@ -224,6 +221,8 @@ export default function DataExplorerPage() {
                       })}
                     </div>
                   </Section>
+                    );
+                  })()}
 
                   <Section icon="solar:book-linear" title="Research Papers" count={detail.papers.length}>
                     <div className="space-y-1.5">
