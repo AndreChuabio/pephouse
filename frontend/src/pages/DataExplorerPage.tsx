@@ -122,7 +122,6 @@ export default function DataExplorerPage() {
         <h1 className="text-sm font-medium text-white tracking-tight flex items-center gap-2">
           <Icon icon="solar:database-linear" className="text-blue-500" /> Database Explorer
         </h1>
-        <span className="ml-3 text-xs text-zinc-500">live from Supabase &mdash; click a compound</span>
       </div>
 
       <div className="flex-1 overflow-hidden flex z-10">
