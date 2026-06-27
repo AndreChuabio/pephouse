@@ -584,9 +584,9 @@ export default function DigitalTwinPage() {
 
             {/* SUMMARY card — top-left (only once connected) */}
             {connected && (
-              <div className="absolute top-28 left-6 z-20 w-64 rounded-2xl border border-cyan-900/30 bg-black/50 backdrop-blur-md p-4">
-                <div className="grid grid-cols-2 gap-x-3 gap-y-2 items-center">
-                  <div className="flex items-center gap-2">
+              <div className="absolute top-28 left-6 z-20 w-56 rounded-2xl border border-cyan-900/30 bg-black/50 backdrop-blur-md p-4">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
                     <span className="text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">Summary</span>
                     <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded border ${og.border} ${og.bg} ${og.text}`}>{overallGrade}</span>
                   </div>
