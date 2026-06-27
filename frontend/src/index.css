@@ -37,8 +37,8 @@ body {
   content: "";
   position: absolute;
   top: 24px;
-  right: -2rem;
-  width: 2rem;
+  right: -4rem;
+  width: 4rem;
   height: 1px;
   background-color: #3f3f46;
   transform: translateY(-50%);
