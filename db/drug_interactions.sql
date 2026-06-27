@@ -1,11 +1,8 @@
 -- Drug interactions table for the Simulation 2 builder.
--- Live-only (not in schema.sql core); backend reads defensively, so it's safe
--- to apply this at any time without coordinated deploys.
---
--- Apply via Supabase SQL Editor. Rows are then populated by
---   python3 scripts/ingest_drug_interactions.py > interactions.sql
--- which pulls real openFDA Section-7 prose + curated peptide rows with
--- explicit citation URLs. No hardcoded inserts live here.
+-- Live-only (not in schema.sql core); the backend reads defensively, so the
+-- table can stay empty while the live DrugBank-via-PubChem lookup carries
+-- the load. Curated peptide-specific rows can be inserted by hand later.
+-- Apply once via Supabase SQL Editor.
 
 create table if not exists drug_interactions (
   id            bigint generated always as identity primary key,

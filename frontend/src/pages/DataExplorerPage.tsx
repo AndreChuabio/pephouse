@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@iconify/react";
 import { AppShell } from "../components/layout/AppShell";
+import { VendorGlobe } from "../components/data-explorer/VendorGlobe";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { postGenerateModule } from "../lib/api";
 import { supabase } from "../lib/supabase";
 
 type Compound = {
@@ -15,17 +15,12 @@ type Compound = {
 };
 
 type Detail = {
-  priors: any[];
-  caseStudies: any[];
   trials: any[];
   anecdotes: any[];
   papers: any[];
-  sourcing: any[];
   sourcePriors: any[];
   labResults: any[];
   vendors: any[];
-  runs: any[];
-  modules: any[];
 };
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -43,29 +38,15 @@ const SOURCE_TONE: Record<string, "green" | "orange" | "zinc"> = {
   research_chem: "zinc",
 };
 
-// Walk a Synthea Generic Module's transitions into logical flow order
-// (jsonb does not preserve key order, so we can't just read Object.keys).
-function moduleFlow(states: Record<string, { direct_transition?: string }> | undefined): string[] {
-  if (!states) return [];
-  const flow: string[] = [];
-  const seen = new Set<string>();
-  let cur: string | undefined = "Initial";
-  while (cur && states[cur] && !seen.has(cur)) {
-    seen.add(cur);
-    flow.push(cur);
-    cur = states[cur].direct_transition;
-  }
-  return flow;
-}
-
-function Badge({ tone, children }: { tone: "green" | "orange" | "zinc"; children: React.ReactNode }) {
+function Badge({ tone, children }: { tone: "green" | "orange" | "yellow" | "zinc"; children: React.ReactNode }) {
   const map = {
     green: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
     orange: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+    yellow: "bg-amber-500/10 text-amber-400 border-amber-500/20",
     zinc: "bg-zinc-800 text-zinc-400 border-zinc-700",
   } as const;
   return (
-    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border uppercase tracking-wider ${map[tone]}`}>
+    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border uppercase tracking-wider whitespace-nowrap shrink-0 ${map[tone]}`}>
       {children}
     </span>
   );
@@ -84,38 +65,22 @@ function Section({ icon, title, count, children }: { icon: string; title: string
 }
 
 export default function DataExplorerPage() {
-  useDocumentTitle("PepHouse | Database Explorer");
+  useDocumentTitle("PepHouse | Cellar");
   const [compounds, setCompounds] = useState<Compound[]>([]);
   const [selected, setSelected] = useState<Compound | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const toggle = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [genState, setGenState] = useState<"idle" | "loading">("idle");
-  const [genError, setGenError] = useState<string | null>(null);
-
-  const handleGenerateModule = async () => {
-    if (!selected) return;
-    setGenState("loading");
-    setGenError(null);
-    try {
-      await postGenerateModule(selected.id);
-      setRefreshKey((k) => k + 1);
-    } catch (e) {
-      setGenError(e instanceof Error ? e.message : "Generation failed");
-    } finally {
-      setGenState("idle");
-    }
-  };
 
   useEffect(() => {
     supabase
       .from("compounds")
       .select("id,name,drug_class,fda_status,approved,summary")
-      .order("name")
       .then(({ data }) => {
-        const list = (data ?? []) as Compound[];
+        const list = ((data ?? []) as Compound[])
+          .slice()
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
         setCompounds(list);
         if (list.length) setSelected(list[0]);
       });
@@ -124,21 +89,15 @@ export default function DataExplorerPage() {
   useEffect(() => {
     if (!selected) return;
     setLoading(true);
-    setGenError(null);
     const id = selected.id;
     Promise.all([
-      supabase.from("outcome_priors").select("outcome_name,effect_mean,effect_sd,unit,population_n,source_nct,dispersion_basis").eq("compound_id", id),
-      supabase.from("case_studies").select("cluster_label,evidence_basis,n,confidence,trial_backed").eq("compound_id", id),
       supabase.from("trials").select("nct_id,phase,indication,status,n_enrolled,source_url,matched_intervention").eq("compound_id", id).limit(25),
       supabase.from("anecdotes").select("body,claimed_effect,sentiment,permalink,dose_mentioned").eq("compound_id", id),
       supabase.from("research_papers").select("title,journal,year,is_narrative,url").eq("compound_id", id),
-      supabase.from("sourcing").select("vendor_name,origin_country,notes,source_url").eq("compound_id", id),
       supabase.from("source_potency_priors").select("source_type,potency_mean,potency_sd,p_fail,p_contam,quantity_variance_p95,compound_id,basis").or(`compound_id.eq.${id},compound_id.is.null`),
       supabase.from("vendor_lab_results").select("vendor_name,purity_pct,label_mg,tested_mg,quantity_variance_pct,potency_factor,test_lab,failed").eq("compound_id", id),
       supabase.from("vendors").select("*").order("reliability_score", { ascending: false }),
-      supabase.from("simulation_runs").select("id,created_at,source_type,live_cohort,cohort_source,cohort_n,cohort_gen_ms,data_confidence,outcomes").eq("compound_id", id).order("created_at", { ascending: false }).limit(10),
-      supabase.from("synthea_modules").select("id,created_at,name,outcome_name,eligibility,source,module").eq("compound_id", id).order("created_at", { ascending: false }).limit(10),
-    ]).then(([p, cs, t, a, rp, s, sp, lr, v, runs, mods]) => {
+    ]).then(([t, a, rp, sp, lr, v]) => {
       // prefer compound-specific prior over the NULL default, per source_type
       const bySource: Record<string, any> = {};
       for (const row of (sp.data ?? [])) {
@@ -147,29 +106,23 @@ export default function DataExplorerPage() {
       }
       const order = ["compounding_pharmacy", "vendor_tested", "gray_market", "research_chem", "brand"];
       setDetail({
-        priors: p.data ?? [],
-        caseStudies: cs.data ?? [],
         trials: t.data ?? [],
         anecdotes: a.data ?? [],
         papers: rp.data ?? [],
-        sourcing: s.data ?? [],
         sourcePriors: order.map((k) => bySource[k]).filter(Boolean),
         labResults: lr.data ?? [],
         vendors: v.data ?? [],
-        runs: runs.data ?? [],
-        modules: mods.data ?? [],
       });
       setLoading(false);
     });
-  }, [selected, refreshKey]);
+  }, [selected]);
 
   return (
     <AppShell>
       <div className="h-16 flex items-center px-8 border-b border-zinc-800/60 shrink-0 z-10">
         <h1 className="text-sm font-medium text-white tracking-tight flex items-center gap-2">
-          <Icon icon="solar:database-linear" className="text-blue-500" /> Database Explorer
+          <Icon icon="solar:database-linear" className="text-blue-500" /> Cellar
         </h1>
-        <span className="ml-3 text-xs text-zinc-500">live from Supabase &mdash; click a compound</span>
       </div>
 
       <div className="flex-1 overflow-hidden flex z-10">
@@ -186,7 +139,7 @@ export default function DataExplorerPage() {
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm text-zinc-200">{c.name}</span>
-                <Badge tone={c.approved ? "green" : "orange"}>{c.approved ? "FDA" : "Gray"}</Badge>
+                <Badge tone={c.approved ? "green" : "orange"}>{c.approved ? "FDA approved" : "Non-FDA"}</Badge>
               </div>
               <p className="text-xs text-zinc-500 mt-0.5 truncate">{c.drug_class}</p>
             </button>
@@ -202,7 +155,7 @@ export default function DataExplorerPage() {
               <div>
                 <div className="flex items-center gap-3">
                   <h2 className="text-2xl font-semibold text-white">{selected.name}</h2>
-                  <Badge tone={selected.approved ? "green" : "orange"}>{selected.fda_status ?? (selected.approved ? "approved" : "research")}</Badge>
+                  <Badge tone={selected.approved ? "green" : "orange"}>{selected.approved ? "FDA approved" : "Non-FDA"}</Badge>
                 </div>
                 <p className="text-sm text-zinc-400 mt-1">{selected.drug_class}</p>
                 <p className="text-sm text-zinc-500 mt-2">{selected.summary}</p>
@@ -212,153 +165,7 @@ export default function DataExplorerPage() {
                 <p className="text-zinc-500 text-sm">Loading data&hellip;</p>
               ) : (
                 <>
-                  <Section icon="solar:history-2-linear" title="Recent Simulations" count={detail.runs.length}>
-                    {detail.runs.length === 0 ? (
-                      <p className="text-xs text-zinc-600">No runs yet &mdash; run this compound in the Simulation Arena.</p>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {detail.runs.map((r) => {
-                          const o = (r.outcomes && r.outcomes[0]) || null;
-                          return (
-                            <div key={r.id} className="flex items-center justify-between text-sm bg-zinc-950/50 rounded px-3 py-2">
-                              <span className="flex items-center gap-2 min-w-0">
-                                <span className="text-zinc-600 text-xs font-mono">#{r.id}</span>
-                                {r.source_type ? (
-                                  <Badge tone={SOURCE_TONE[r.source_type] ?? "zinc"}>{SOURCE_LABEL[r.source_type] ?? r.source_type}</Badge>
-                                ) : (
-                                  <span className="text-xs text-zinc-500">label dose</span>
-                                )}
-                                <span className="text-xs text-zinc-500 truncate">
-                                  {r.cohort_source === "synthea_live"
-                                    ? `Synthea live · ${r.cohort_n} in ${r.cohort_gen_ms}ms`
-                                    : `cohort ${r.cohort_n}`}
-                                </span>
-                              </span>
-                              <span className="font-mono text-xs text-zinc-400 shrink-0">
-                                {o && o.distribution_void ? (
-                                  <span className="text-orange-400">void</span>
-                                ) : o && o.p50 != null ? (
-                                  <>
-                                    p50 {o.p50}%
-                                    {o.source_dud_pct ? <span className="text-orange-400"> &middot; {o.source_dud_pct}% dud</span> : null}
-                                  </>
-                                ) : null}
-                                <span className="text-zinc-600"> &middot; {r.data_confidence}</span>
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </Section>
-
-                  <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-lg p-4">
-                    <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-widest mb-3 flex items-center justify-between">
-                      <span className="flex items-center gap-2">
-                        <Icon icon="solar:box-minimalistic-linear" className="text-zinc-500" /> Synthea Modules
-                        <span className="text-zinc-600">({detail.modules.length})</span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleGenerateModule}
-                        disabled={genState === "loading" || (detail.priors.length === 0 && detail.anecdotes.length === 0)}
-                        title={detail.priors.length === 0 && detail.anecdotes.length === 0 ? "No priors or anecdotes to build from" : undefined}
-                        className="text-[10px] normal-case px-2.5 py-1 rounded border border-blue-500/40 text-blue-300 hover:bg-blue-500/10 disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        {genState === "loading" ? "Generating…" : "Generate module"}
-                      </button>
-                    </h3>
-                    <p className="text-xs text-zinc-500 mb-2">
-                      Generic Modules built from this compound&apos;s priors (or anecdotes); the newest is loaded into live cohort generation.
-                    </p>
-                    {genError ? (
-                      <p className="text-xs text-orange-400 mb-2">{genError}</p>
-                    ) : detail.priors.length === 0 && detail.anecdotes.length > 0 ? (
-                      <p className="text-xs text-amber-500/80 mb-2">
-                        No trial priors &mdash; Generate builds an <span className="text-amber-400">anecdote-derived</span> module (flagged, low-confidence) from {detail.anecdotes.length} report{detail.anecdotes.length === 1 ? "" : "s"}.
-                      </p>
-                    ) : detail.priors.length === 0 && detail.anecdotes.length === 0 ? (
-                      <p className="text-xs text-zinc-600 mb-2">No priors or anecdotes &mdash; nothing to build a module from.</p>
-                    ) : null}
-                    {detail.modules.length === 0 ? (
-                      detail.priors.length > 0 || detail.anecdotes.length > 0 ? (
-                        <p className="text-xs text-zinc-600">No modules yet &mdash; click Generate to build one.</p>
-                      ) : null
-                    ) : (
-                      <div className="space-y-1.5">
-                        {detail.modules.map((m) => {
-                          const k = `mod-${m.id}`;
-                          const mod = m.module;
-                          const eff = mod?.states?.Apply_Effect?.range;
-                          const unit = mod?.states?.Apply_Effect?.unit ?? "";
-                          return (
-                            <div key={m.id} className="bg-zinc-950/50 rounded">
-                              <button type="button" onClick={() => toggle(k)} className="w-full flex items-center justify-between text-sm px-3 py-2 hover:bg-zinc-900/60 rounded">
-                                <span className="flex items-center gap-2 min-w-0">
-                                  <Icon icon={open[k] ? "solar:alt-arrow-down-linear" : "solar:alt-arrow-right-linear"} className="text-zinc-600 text-xs" />
-                                  <span className="text-zinc-600 text-xs font-mono">#{m.id}</span>
-                                  <span className="text-zinc-300 truncate">{m.outcome_name}</span>
-                                  <Badge tone={m.source === "anecdote" ? "orange" : "green"}>{m.source}</Badge>
-                                </span>
-                                <span className="font-mono text-xs text-zinc-500 shrink-0">
-                                  {m.eligibility?.min_age != null || m.eligibility?.max_age != null
-                                    ? `age ${m.eligibility?.min_age ?? "*"}-${m.eligibility?.max_age ?? "*"}`
-                                    : "age 18+"}
-                                </span>
-                              </button>
-                              {open[k] && mod && (
-                                <div className="px-9 pb-3 pt-1 text-xs space-y-2">
-                                  {Array.isArray(mod.remarks) && (
-                                    <ul className="space-y-0.5 text-zinc-500 list-disc pl-4">
-                                      {mod.remarks.map((r: string, i: number) => <li key={i}>{r}</li>)}
-                                    </ul>
-                                  )}
-                                  <p className="text-zinc-400 font-mono">{moduleFlow(mod.states).join(" → ")}</p>
-                                  {eff && (
-                                    <p className="text-zinc-400">
-                                      Effect band: <span className="font-mono text-emerald-400">{eff.low} to {eff.high}{unit}</span>
-                                    </p>
-                                  )}
-                                  <details>
-                                    <summary className="text-zinc-600 cursor-pointer hover:text-zinc-400">raw module JSON</summary>
-                                    <pre className="mt-1 p-2 bg-zinc-950 rounded text-[10px] text-zinc-400 overflow-x-auto max-h-64">{JSON.stringify(mod, null, 2)}</pre>
-                                  </details>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  <Section icon="solar:graph-new-linear" title="Seed Distribution (Monte Carlo priors)" count={detail.priors.length}>
-                    <div className="space-y-2">
-                      {detail.priors.map((p, i) => (
-                        <div key={i} className="flex items-center justify-between text-sm bg-zinc-950/50 rounded px-3 py-2">
-                          <span className="text-zinc-300">{p.outcome_name}</span>
-                          <span className="font-mono text-emerald-400">
-                            {p.effect_mean} &plusmn; {p.effect_sd} {p.unit} &middot; n={p.population_n}
-                          </span>
-                          <span className="text-xs text-zinc-600">{p.source_nct} &middot; {p.dispersion_basis}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </Section>
-
-                  <Section icon="solar:layers-linear" title="Case Studies" count={detail.caseStudies.length}>
-                    <div className="space-y-1.5">
-                      {detail.caseStudies.map((cs, i) => (
-                        <div key={i} className="flex items-center justify-between text-sm">
-                          <span className="text-zinc-300 flex items-center gap-2">
-                            <Badge tone={cs.trial_backed ? "green" : "orange"}>{cs.evidence_basis}</Badge>
-                            {cs.cluster_label}
-                          </span>
-                          <span className="font-mono text-xs text-zinc-500">n={cs.n} &middot; conf {cs.confidence}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </Section>
+                  <VendorGlobe vendors={detail.vendors} compoundName={selected.name} />
 
                   <Section icon="solar:document-text-linear" title="Clinical Trials" count={detail.trials.length}>
                     <div className="space-y-1.5">
@@ -373,16 +180,21 @@ export default function DataExplorerPage() {
 
                   <Section icon="solar:chat-round-line-linear" title="Reddit Anecdotes" count={detail.anecdotes.length}>
                     <div className="space-y-2">
-                      {detail.anecdotes.map((a, i) => (
+                      {detail.anecdotes.map((a, i) => {
+                        const s = (a.sentiment ?? "").toLowerCase();
+                        const tone: "green" | "yellow" | "orange" | "zinc" =
+                          s === "positive" ? "green" : s === "mixed" ? "yellow" : s === "negative" ? "orange" : "zinc";
+                        return (
                         <a key={i} href={a.permalink} target="_blank" rel="noreferrer" className="block text-sm hover:bg-zinc-950/60 rounded px-2 py-1.5 group">
                           <div className="flex items-center gap-2">
-                            <Badge tone="orange">{a.sentiment}</Badge>
+                            <Badge tone={tone}>{a.sentiment}</Badge>
                             <span className="text-zinc-300">{a.claimed_effect}</span>
                             {a.dose_mentioned && <span className="text-xs font-mono text-zinc-600">{a.dose_mentioned}</span>}
                           </div>
                           <p className="text-xs text-zinc-600 mt-0.5 truncate group-hover:text-zinc-500">{a.body}</p>
                         </a>
-                      ))}
+                        );
+                      })}
                     </div>
                   </Section>
 
@@ -455,13 +267,13 @@ export default function DataExplorerPage() {
                         const labs = detail.labResults.filter((lr) => lr.vendor_name === v.name);
                         return (
                           <div key={k} className="bg-zinc-950/50 rounded">
-                            <button type="button" onClick={() => toggle(k)} className="w-full flex items-center justify-between text-sm px-3 py-2 hover:bg-zinc-900/60 rounded">
-                              <span className="flex items-center gap-2">
-                                <Icon icon={open[k] ? "solar:alt-arrow-down-linear" : "solar:alt-arrow-right-linear"} className="text-zinc-600 text-xs" />
-                                <span className="text-zinc-200">{v.name}</span>
+                            <button type="button" onClick={() => toggle(k)} className="w-full flex items-center justify-between gap-3 text-sm px-3 py-2 hover:bg-zinc-900/60 rounded">
+                              <span className="flex items-center gap-2 min-w-0 flex-1">
+                                <Icon icon={open[k] ? "solar:alt-arrow-down-linear" : "solar:alt-arrow-right-linear"} className="text-zinc-600 text-xs shrink-0" />
+                                <span className="text-zinc-200 truncate">{v.name}</span>
                                 <Badge tone={SOURCE_TONE[v.source_type] ?? "zinc"}>{SOURCE_LABEL[v.source_type] ?? v.source_type}</Badge>
                               </span>
-                              <span className="font-mono text-xs text-zinc-500">
+                              <span className="font-mono text-xs text-zinc-500 shrink-0 whitespace-nowrap">
                                 {v.finnrick_rating ? `rated ${v.finnrick_rating} · ` : ""}reliability {v.reliability_score}
                               </span>
                             </button>
@@ -488,16 +300,6 @@ export default function DataExplorerPage() {
                     </div>
                   </Section>
 
-                  <Section icon="solar:map-point-linear" title="Sourcing" count={detail.sourcing.length}>
-                    <div className="space-y-1.5">
-                      {detail.sourcing.map((s, i) => (
-                        <div key={i} className="flex items-center justify-between text-sm">
-                          <span className="text-zinc-300">{s.vendor_name}</span>
-                          <span className="text-xs text-zinc-500">{s.origin_country}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </Section>
                 </>
               )}
             </div>

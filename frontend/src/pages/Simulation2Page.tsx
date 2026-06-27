@@ -24,13 +24,14 @@ import { useCompoundData } from "../hooks/useCompoundData";
 import { useCompoundRegistry } from "../hooks/useCompoundRegistry";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useInteractions } from "../hooks/useInteractions";
+import { useSim2Backend, mergeBackendSnapshot } from "../hooks/useSim2Backend";
 import type { InteractionLedgerInput, InteractionSeverityKey } from "../data/simulation2";
 import type { StudyRef } from "../data/simulation2";
 
 const INITIAL_COMPOUND_ID = "bpc-157";
 
 export default function Simulation2Page() {
-  useDocumentTitle("PepHouse | Simulation Builder");
+  useDocumentTitle("PepHouse | Studio");
 
   const [compoundIds, setCompoundIds] = useState<string[]>([INITIAL_COMPOUND_ID]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -134,6 +135,12 @@ export default function Simulation2Page() {
     [primaryCompound, extraCompounds, sourceFractions, age, interactionsLedger],
   );
 
+  // Real backend: Run Execution calls POST /simulate and merges the live Monte-Carlo
+  // confidence/ledger into the report snapshot. BuilderCanvas keeps the client snapshot
+  // (the live preview); the report shows the real result once a run completes.
+  const backend = useSim2Backend();
+  const reportSnapshot = mergeBackendSnapshot(snapshot, backend.result);
+
   const toggleInteraction = useCallback((pairKey: string) => {
     setExcludedInteractions((prev) => {
       const next = { ...prev };
@@ -190,6 +197,8 @@ export default function Simulation2Page() {
 
   const handleRun = () => {
     setHasRun(true);
+    const backendId = compoundBackendIds[0];
+    if (backendId) backend.run(backendId, { age, sex, weightKg: weight }, sourceFractions);
   };
 
   const studiesByCompoundTier = useMemo(() => {
@@ -245,9 +254,11 @@ export default function Simulation2Page() {
         if (!profile) continue;
         const newSources = sourceNodesFor(profile);
         if (newSources.length === 0) continue;
+        // Sources slot between Demographics (or Compound) and the terminal
+        // pair: Drug Interactions if present, then Run, then end of chain.
+        const intIdx = next.findIndex((n) => n.type === "interactions");
         const runIdx = next.findIndex((n) => n.type === "run");
-        const demoIdx = next.findIndex((n) => n.type === "demographics");
-        const insertAt = demoIdx !== -1 ? demoIdx : runIdx !== -1 ? runIdx : next.length;
+        const insertAt = intIdx !== -1 ? intIdx : runIdx !== -1 ? runIdx : next.length;
         next = [...next.slice(0, insertAt), ...newSources, ...next.slice(insertAt)];
       }
 
@@ -255,29 +266,27 @@ export default function Simulation2Page() {
     });
   }, [compoundIds, profileBySlug]);
 
-  // Interactions node only appears when we have at least one DOCUMENTED pair
-  // (i.e. the backend returned a row that isn't a no_data placeholder). With
-  // <2 compounds, or while the fetch is still in flight, or when every pair
-  // is no_data, the node stays out of the chain.
+  // Interactions node present iff >=2 compounds. Sits right before Run so
+  // the user reads it last (it's the warning, not an input).
   useEffect(() => {
-    const hasDocumented = interactions.pairs.some((p) => p.source_kind !== "no_data");
+    const wantsInteractions = compoundIds.length >= 2;
     setNodes((prev) => {
       const hasNode = prev.some((n) => n.type === "interactions");
-      if (hasDocumented && !hasNode) {
-        const compoundIdx = prev.findIndex((n) => n.type === "compound");
-        const insertAt = compoundIdx === -1 ? 0 : compoundIdx + 1;
+      if (wantsInteractions && !hasNode) {
+        const runIdx = prev.findIndex((n) => n.type === "run");
+        const insertAt = runIdx === -1 ? prev.length : runIdx;
         return [
           ...prev.slice(0, insertAt),
           { id: "interactions", type: "interactions" },
           ...prev.slice(insertAt),
         ];
       }
-      if (!hasDocumented && hasNode) {
+      if (!wantsInteractions && hasNode) {
         return prev.filter((n) => n.type !== "interactions");
       }
       return prev;
     });
-  }, [interactions.pairs]);
+  }, [compoundIds]);
 
   useEffect(() => {
     if (!searchQuery.trim()) return;
@@ -296,7 +305,7 @@ export default function Simulation2Page() {
 
   return (
     <AppShell>
-      <Simulation2Header onRun={handleRun} />
+      <Simulation2Header />
 
       <div className="flex-1 flex overflow-hidden bg-[#0A0A0A] min-h-0">
         <BuilderCanvas
@@ -337,11 +346,14 @@ export default function Simulation2Page() {
           hasRun={hasRun}
           audience="clinician"
           compound={primaryCompound}
-          snapshot={snapshot}
+          snapshot={reportSnapshot}
           onOpenBreakdown={() => setBreakdownOpen(true)}
+          onRun={handleRun}
           open={reportOpen}
           onToggleOpen={() => setReportOpen((v) => !v)}
           chainReady={chainReady}
+          interactionPairs={interactions.pairs}
+          interactionsRequested={compoundIds.length >= 2}
         />
       </div>
 
@@ -349,7 +361,7 @@ export default function Simulation2Page() {
         open={breakdownOpen}
         onClose={() => setBreakdownOpen(false)}
         compound={primaryCompound}
-        snapshot={snapshot}
+        snapshot={reportSnapshot}
       />
     </AppShell>
   );

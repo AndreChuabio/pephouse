@@ -24,7 +24,6 @@ export const PENALTIES = {
   tier1OffBpc: 15,
   ageExtrapolated: 18,
   outsideStudiedRange: 10,
-  stackInteraction: 10,
 } as const;
 
 export type InteractionSeverityKey = "major" | "moderate" | "minor" | "unknown";
@@ -244,28 +243,14 @@ export function computeSnapshot(input: {
     ledger.push({ label: "Outside studied age range", delta: -PENALTIES.outsideStudiedRange, tone: "negative" });
   }
 
-  // Interaction penalties: if we have per-pair data (from the backend), use
-  // it. Otherwise fall back to a flat per-extra-compound charge so the chain
-  // still reflects stacking risk before the interactions endpoint resolves.
-  if (input.interactions && input.interactions.length > 0) {
-    for (const pair of input.interactions) {
-      const penalty = SEVERITY_PENALTY[pair.severity] ?? PENALTIES.stackInteraction;
-      score -= penalty;
-      ledger.push({
-        label: `${pair.partnerName} interaction (${pair.severity})`,
-        delta: -penalty,
-        tone: "negative",
-      });
-    }
-  } else {
-    for (const extra of input.extraCompounds) {
-      score -= PENALTIES.stackInteraction;
-      ledger.push({
-        label: `${extra.name} interaction penalty`,
-        delta: -PENALTIES.stackInteraction,
-        tone: "negative",
-      });
-    }
+  for (const pair of input.interactions ?? []) {
+    const penalty = SEVERITY_PENALTY[pair.severity] ?? SEVERITY_PENALTY.unknown;
+    score -= penalty;
+    ledger.push({
+      label: `${pair.partnerName} interaction (${pair.severity})`,
+      delta: -penalty,
+      tone: "negative",
+    });
   }
 
   score = Math.max(5, Math.min(95, Math.round(score)));
@@ -348,8 +333,8 @@ export function sourceNodesFor(compound: CompoundProfile): ChainNode[] {
 export function defaultChain(compound: CompoundProfile): ChainNode[] {
   return [
     { id: "compound", type: "compound" },
-    ...sourceNodesFor(compound),
     { id: "demographics", type: "demographics" },
+    ...sourceNodesFor(compound),
     { id: "run", type: "run" },
   ];
 }

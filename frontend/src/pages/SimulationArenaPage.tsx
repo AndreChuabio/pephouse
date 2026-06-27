@@ -87,7 +87,7 @@ const TIER_OPTIONS: { key: string; label: string }[] = [
 ];
 
 export default function SimulationArenaPage() {
-  useDocumentTitle("PepHouse | Simulation Arena");
+  useDocumentTitle("PepHouse | Simulation [old]");
 
   const [patient, setPatient] = useState(DEMOGRAPHICS);
   const [selectedCompoundId, setSelectedCompoundId] = useState(COMPOUNDS[1].id);

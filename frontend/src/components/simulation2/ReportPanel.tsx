@@ -5,6 +5,7 @@ import {
   type CompoundProfile,
   type SimulationSnapshot,
 } from "../../data/simulation2";
+import type { InteractionPair } from "../../lib/api";
 import { cn } from "../../lib/cn";
 
 type ReportPanelProps = {
@@ -13,9 +14,12 @@ type ReportPanelProps = {
   compound: CompoundProfile;
   snapshot: SimulationSnapshot;
   onOpenBreakdown: () => void;
+  onRun: () => void;
   open: boolean;
   onToggleOpen: () => void;
   chainReady: boolean;
+  interactionPairs: InteractionPair[];
+  interactionsRequested: boolean;
 };
 
 function confidenceColor(level: SimulationSnapshot["confidenceLevel"]) {
@@ -24,15 +28,74 @@ function confidenceColor(level: SimulationSnapshot["confidenceLevel"]) {
   return "text-red-400";
 }
 
+const SEVERITY_RANK: Record<string, number> = { major: 3, moderate: 2, minor: 1, unknown: 0 };
+
+function InteractionsCallout({ pairs }: { pairs: InteractionPair[] }) {
+  const documented = pairs.filter((p) => p.source_kind !== "no_data");
+
+  if (documented.length === 0) {
+    return (
+      <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2.5 space-y-1.5 text-zinc-400">
+        <div className="flex items-center gap-1.5 font-medium text-xs text-amber-400">
+          <Icon icon="solar:danger-triangle-linear" className="text-sm" />
+          No documented interactions for this stack.
+        </div>
+        <p className="text-[11px] leading-snug">
+          Searched <span className="text-zinc-300">~2.85M DrugBank rows</span> (via PubChem)
+          — none cite this combination.
+        </p>
+        <p className="text-[11px] text-zinc-500">
+          For research peptides, this usually means absence of public evidence, not absence
+          of risk. Curate cautiously.
+        </p>
+      </div>
+    );
+  }
+
+  const counts: Record<string, number> = {};
+  let worst = "unknown";
+  for (const p of documented) {
+    counts[p.severity] = (counts[p.severity] ?? 0) + 1;
+    if ((SEVERITY_RANK[p.severity] ?? 0) > (SEVERITY_RANK[worst] ?? 0)) worst = p.severity;
+  }
+  const tone =
+    worst === "major"
+      ? "border-red-500/30 bg-red-500/10 text-red-300"
+      : worst === "moderate"
+        ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+        : "border-zinc-700/60 bg-zinc-800/40 text-zinc-300";
+  const summary = (["major", "moderate", "minor", "unknown"] as const)
+    .filter((s) => counts[s])
+    .map((s) => `${counts[s]} ${s}`)
+    .join(" · ");
+  return (
+    <div className={cn("rounded-lg border px-3 py-2.5 space-y-1.5", tone)}>
+      <div className="flex items-center gap-1.5 font-medium text-xs">
+        <Icon icon="solar:shield-warning-linear" className="text-sm" />
+        Drug interactions detected
+      </div>
+      <p className="text-[11px] leading-snug">
+        {documented.length} documented pair{documented.length === 1 ? "" : "s"} — {summary}
+      </p>
+      <p className="text-[11px] text-zinc-500">
+        See the Drug Interactions card in the chain for full mechanism + source citations.
+      </p>
+    </div>
+  );
+}
+
 export function ReportPanel({
   hasRun,
   audience,
   compound,
   snapshot,
   onOpenBreakdown,
+  onRun,
   open,
   onToggleOpen,
   chainReady,
+  interactionPairs,
+  interactionsRequested,
 }: ReportPanelProps) {
   if (!open) {
     return (
@@ -116,6 +179,7 @@ export function ReportPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8 min-h-0">
+        {interactionsRequested && <InteractionsCallout pairs={interactionPairs} />}
         {!hasRun ? (
           <div className="space-y-4">
             <div className="text-xs text-zinc-500 border border-dashed border-zinc-700 rounded-lg p-4 text-center leading-relaxed">
@@ -229,28 +293,6 @@ export function ReportPanel({
 
               <div className="space-y-3">
                 <h4 className="text-xs font-medium text-zinc-400">
-                  {audience === "individual" ? "Possible benefits" : "Likely Benefits"}
-                </h4>
-                {topBenefits.map((b) => (
-                  <div key={b.label} className="space-y-2">
-                    <div className="flex justify-between items-end">
-                      <span className="text-xs text-zinc-200">{b.label}</span>
-                      {b.probabilityLabel && (
-                        <span className="text-[10px] text-zinc-500">{b.probabilityLabel}</span>
-                      )}
-                    </div>
-                    <div className="h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-teal-500/70 transition-all duration-300"
-                        style={{ width: `${b.percent}%`, opacity }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="space-y-3 pt-2">
-                <h4 className="text-xs font-medium text-zinc-400">
                   {audience === "individual" ? "Risks to watch" : "Surfaced Risks"}
                 </h4>
                 {topRisks.map((risk) => {
@@ -300,6 +342,28 @@ export function ReportPanel({
                   );
                 })}
               </div>
+
+              <div className="space-y-3 pt-2">
+                <h4 className="text-xs font-medium text-zinc-400">
+                  {audience === "individual" ? "Possible benefits" : "Reported Benefits"}
+                </h4>
+                {topBenefits.map((b) => (
+                  <div key={b.label} className="space-y-2">
+                    <div className="flex justify-between items-end">
+                      <span className="text-xs text-zinc-200">{b.label}</span>
+                      {b.probabilityLabel && (
+                        <span className="text-[10px] text-zinc-500">{b.probabilityLabel}</span>
+                      )}
+                    </div>
+                    <div className="h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-teal-500/70 transition-all duration-300"
+                        style={{ width: `${b.percent}%`, opacity }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </>
         )}
@@ -308,19 +372,20 @@ export function ReportPanel({
       <div className="p-4 border-t border-zinc-800/50 bg-[#121212] shrink-0">
         <button
           type="button"
-          onClick={onOpenBreakdown}
-          disabled={!hasRun}
-          className="w-full py-2 mb-2 bg-zinc-100 border border-transparent rounded-md text-xs font-medium text-zinc-900 hover:bg-white disabled:opacity-40 transition-colors shadow-sm flex items-center justify-center gap-2"
+          onClick={onRun}
+          className="w-full py-2 mb-2 bg-zinc-100 border border-transparent rounded-md text-xs font-medium text-zinc-900 hover:bg-white transition-colors shadow-sm flex items-center justify-center gap-2"
         >
-          <Icon icon="solar:chart-2-linear" className="text-sm" />
-          View Full Breakdown
+          <Icon icon="solar:play-linear" className="text-sm" />
+          Run Simulation
         </button>
         <button
           type="button"
+          onClick={onOpenBreakdown}
           disabled={!hasRun}
-          className="w-full py-2 bg-[#0A0A0A] border border-zinc-700 rounded-md text-xs font-medium text-zinc-100 hover:bg-zinc-800 disabled:opacity-40 transition-colors shadow-sm"
+          className="w-full py-2 bg-[#0A0A0A] border border-zinc-700 rounded-md text-xs font-medium text-zinc-100 hover:bg-zinc-800 disabled:opacity-40 transition-colors shadow-sm flex items-center justify-center gap-2"
         >
-          Export Clinical PDF
+          <Icon icon="solar:chart-2-linear" className="text-sm" />
+          View Full Breakdown
         </button>
       </div>
     </div>
