@@ -12,7 +12,10 @@ Single-page Simulation Arena UI. Scaffold only — all data is mocked.
 
 ## Run
 
+All commands run from this `frontend/` directory (not the repo root).
+
 ```bash
+cd frontend
 npm install
 npm run dev      # http://localhost:5173
 npm run build    # tsc -b && vite build
