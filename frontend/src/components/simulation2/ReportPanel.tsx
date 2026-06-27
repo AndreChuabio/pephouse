@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Icon } from "@iconify/react";
 import {
   barOpacity,
@@ -106,6 +107,21 @@ export function ReportPanel({
   draws,
   onDrawsChange,
 }: ReportPanelProps) {
+  // Elapsed-time loader: a fast Monte Carlo run flashes "Running…"; a live Synthea
+  // cohort (~15-20s) crosses the threshold and shows the labelled progress bar.
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!running) {
+      setElapsed(0);
+      return;
+    }
+    const start = Date.now();
+    const id = setInterval(() => setElapsed((Date.now() - start) / 1000), 250);
+    return () => clearInterval(id);
+  }, [running]);
+  const liveCohort = elapsed >= 1.8;
+  const loaderProgress = Math.min(95, (elapsed / 18) * 100);
+
   if (!open) {
     return (
       <aside className="w-10 bg-[#121212] border-l border-zinc-800 flex flex-col items-center py-3 shrink-0 z-20">
@@ -189,7 +205,29 @@ export function ReportPanel({
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8 min-h-0">
         {interactionsRequested && <InteractionsCallout pairs={interactionPairs} />}
-        {!hasRun ? (
+        {running ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+            <Icon icon="svg-spinners:ring-resize" className="text-3xl text-amber-400" />
+            <p className="text-sm font-medium text-zinc-100">
+              {liveCohort
+                ? `Generating live Synthea cohort… ${elapsed.toFixed(0)}s`
+                : `Running ${(draws ?? MONTE_CARLO_DRAWS).toLocaleString()} Monte Carlo simulations…`}
+            </p>
+            {liveCohort && (
+              <>
+                <div className="h-1.5 w-48 bg-zinc-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-amber-500 transition-all duration-300"
+                    style={{ width: `${loaderProgress}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-zinc-500">
+                  Synthea is building patient-matched bodies (~15-20s).
+                </p>
+              </>
+            )}
+          </div>
+        ) : !hasRun ? (
           <div className="space-y-4">
             <div className="text-xs text-zinc-500 border border-dashed border-zinc-700 rounded-lg p-4 text-center leading-relaxed">
               Click <span className="text-zinc-300">Run Execution</span> to project benefits and
@@ -300,11 +338,7 @@ export function ReportPanel({
                 {audience === "individual" ? "What you might notice" : "Projected Outcomes"}
               </h3>
 
-              {running ? (
-                <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 text-xs text-zinc-400">
-                  Computing projection…
-                </div>
-              ) : band ? (
+              {band ? (
                 <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 space-y-2">
                   {band.isVoid ? (
                     <p className="text-xs text-orange-400">
