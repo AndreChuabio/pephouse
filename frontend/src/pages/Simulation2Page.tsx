@@ -24,6 +24,7 @@ import { useCompoundData } from "../hooks/useCompoundData";
 import { useCompoundRegistry } from "../hooks/useCompoundRegistry";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useInteractions } from "../hooks/useInteractions";
+import { useSim2Backend, mergeBackendSnapshot } from "../hooks/useSim2Backend";
 import type { InteractionLedgerInput, InteractionSeverityKey } from "../data/simulation2";
 import type { StudyRef } from "../data/simulation2";
 
@@ -134,6 +135,12 @@ export default function Simulation2Page() {
     [primaryCompound, extraCompounds, sourceFractions, age, interactionsLedger],
   );
 
+  // Real backend: Run Execution calls POST /simulate and merges the live Monte-Carlo
+  // confidence/ledger into the report snapshot. BuilderCanvas keeps the client snapshot
+  // (the live preview); the report shows the real result once a run completes.
+  const backend = useSim2Backend();
+  const reportSnapshot = mergeBackendSnapshot(snapshot, backend.result);
+
   const toggleInteraction = useCallback((pairKey: string) => {
     setExcludedInteractions((prev) => {
       const next = { ...prev };
@@ -190,6 +197,8 @@ export default function Simulation2Page() {
 
   const handleRun = () => {
     setHasRun(true);
+    const backendId = compoundBackendIds[0];
+    if (backendId) backend.run(backendId, { age, sex, weightKg: weight }, sourceFractions);
   };
 
   const studiesByCompoundTier = useMemo(() => {
@@ -337,7 +346,7 @@ export default function Simulation2Page() {
           hasRun={hasRun}
           audience="clinician"
           compound={primaryCompound}
-          snapshot={snapshot}
+          snapshot={reportSnapshot}
           onOpenBreakdown={() => setBreakdownOpen(true)}
           onRun={handleRun}
           open={reportOpen}
@@ -352,7 +361,7 @@ export default function Simulation2Page() {
         open={breakdownOpen}
         onClose={() => setBreakdownOpen(false)}
         compound={primaryCompound}
-        snapshot={snapshot}
+        snapshot={reportSnapshot}
       />
     </AppShell>
   );
