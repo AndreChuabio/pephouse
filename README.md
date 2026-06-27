@@ -5,29 +5,9 @@ Health AI Hackathon (NYC, June 2026).
 A voice-first simulator for the hardest conversations in medicine: counseling on hyped, under-evidenced compounds (peptides, then psychedelics). One evidence registry powers two front doors:
 
 - **Clinician door** — interview an AI patient by voice; an evidence-grounded attending grades you, citing the real trial and regulatory record.
-- **Patient door (Simulation Arena)** — enter your profile; `POST /simulate` returns quarter-by-quarter outcome bands from Tier-1 priors, with void/excluded paths for honest compounds. Education, not prediction.
+- **Patient door (digital twin)** — enter your profile; a Monte Carlo extrapolation off real trial data shows your likely outcome distribution, with loud uncertainty. Education, not prediction.
 
 The shared asset is a **tiered evidence registry** that grounds both, so the AI cites real sources and cannot make things up.
-
-## v1: `POST /simulate` (implemented)
-
-Monte Carlo twin engine — **does not invoke Synthea at request time**. Bodies come from pre-loaded `synthetic_patients` in Supabase; effects come from `outcome_priors`.
-
-```bash
-# after backend setup (see below)
-curl -X POST http://localhost:8000/simulate \
-  -H 'Content-Type: application/json' \
-  -d '{"compounds":[{"compound_id":3}],"patient":{"age":55,"sex":"M","weight_kg":102},"outcomes":["weight_change_pct"],"seed":42}'
-```
-
-| Path | Behavior |
-|------|----------|
-| Trial-backed (e.g. Tirzepatide) | `quarters[]` fan from `N(mean, SD)` + eligibility gate |
-| Anecdote-only (e.g. BPC-157) | `distribution_void: true` + Tier-3 anecdotes |
-| Ineligible patient | `excluded_priors` with reason |
-| Thin Tier-4 match | `substrate_missing`, anecdote fallback, widened SD |
-
-See `DATA_CONTRACT.md`, `backend/twin_engine.py`, and `synthea/README.md` (offline cohort only).
 
 ## Structure
 
@@ -46,7 +26,7 @@ Every source is tagged by trust, and **Tier 3 / vendor claims never count as evi
 - **Tier 1 — Evidence:** ClinicalTrials.gov, openFDA, FDA bulks list, PubMed. Grounds the grader's citations and the twin's priors.
 - **Tier 2 — Quality:** Finnrick lab tests, vendor scrapes. Real-world purity/quality reality.
 - **Tier 3 — Anecdote:** Reddit. Seeds patient personas ONLY.
-- **Tier 4 — Synthetic:** Synthea-generated bodies in `synthetic_patients` (offline load; `/simulate` reads Supabase only).
+- **Tier 4 — Synthetic:** Synthea. Patient baselines, no PHI.
 
 ## Setup
 
@@ -65,16 +45,18 @@ uvicorn main:app --reload
 ```
 
 ### Frontend
-```bash
-cd frontend
-npm install
-npm run dev    # http://localhost:5173/simulation-arena
-```
-Simulation Arena UI exists; wiring to `/simulate` is next. Data Explorer at `/explorer`.
+Lovable export drops into `frontend/`. Use the Supabase `anon` key only.
 
-## Registry status
+## Populating the registry (current task)
 
-Phase 0 data is loaded in Supabase (compounds, trials, priors, case studies, anecdotes, ~47 synthetic patients). Ingestion scripts live under `scripts/`.
+Split by tier so nobody collides. The compound spine (12 compounds) is already seeded; everyone references compounds by name.
+
+- **Tier 1 (evidence) — Andre.** `python3 scripts/ingest_clinicaltrials.py > trials.sql`, paste into SQL Editor. Already loaded (~71 real trials). Next: openFDA + the verified `evidence_facts`.
+- **Tier 2 (quality) — Kien.** Finnrick + vendor scrape into `vendor_lab_results` (purity, label-vs-actual mg, batch variance).
+- **Tier 3 (anecdote) — Nikki.** Reddit JSON into `anecdotes` (body, claimed_effect, sentiment). Seeds personas only.
+- **Tier 4 (synthetic).** Synthea into `synthetic_patients`. Whoever finishes first.
+
+Add new ingestion scripts under `scripts/` that print idempotent SQL (`... on conflict do nothing`), the same pattern as `ingest_clinicaltrials.py`.
 
 ## Secrets
 `.env` is gitignored. The `service_role` / secret key lives ONLY in `backend/.env`, never in the frontend.

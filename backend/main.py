@@ -12,8 +12,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 import db
-from models import SimulateRequest, SimulateResponse
-from twin_engine import run_simulation
 
 app = FastAPI(title="pephouse")
 
@@ -50,29 +48,5 @@ def get_evidence(compound_id: int) -> dict:
     return db.get_evidence(compound_id)
 
 
-@app.post("/simulate", response_model=SimulateResponse)
-def simulate(body: SimulateRequest) -> SimulateResponse:
-    """Monte Carlo over outcome_priors; bodies from synthetic_patients in Supabase.
-
-    BTW: this does not invoke Synthea — no JVM, no module run at request time.
-    Cohort is pre-loaded in Supabase (see synthea/README.md).
-
-    Nice future: call Synthea at enrollment time (cluster-specific module from
-    case_studies + outcome_priors) to evolve comorbidities/labs over the horizon,
-    while keeping Tier-1 effect draws in the Monte Carlo — not in the JVM.
-    """
-    if not body.compounds:
-        raise HTTPException(status_code=400, detail="compounds required")
-    for c in body.compounds:
-        if db.get_compound(c.compound_id) is None:
-            raise HTTPException(status_code=404, detail=f"compound {c.compound_id} not found")
-    return run_simulation(
-        compounds=body.compounds,
-        patient=body.patient,
-        outcomes=body.outcomes,
-        n_draws=body.n_draws,
-        seed=body.seed,
-    )
-
-
+# TODO(twin): POST /simulate -> Monte Carlo over outcome_priors for a patient profile
 # TODO(grader): POST /grade -> score a clinician transcript against get_evidence()

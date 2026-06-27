@@ -63,31 +63,3 @@ def get_outcome_priors(compound_id: int) -> list[dict]:
         .execute()
         .data
     )
-
-
-def get_case_studies(compound_id: int) -> list[dict]:
-    """Return evidence clusters for routing trial vs anecdote paths."""
-    return (
-        supabase.table("case_studies")
-        .select("*")
-        .eq("compound_id", compound_id)
-        .execute()
-        .data
-    )
-
-
-def get_synthetic_patients() -> list[dict]:
-    """Return Tier-4 Synthea bodies from Supabase."""
-    return supabase.table("synthetic_patients").select("*").execute().data
-
-
-def get_anecdotes(compound_id: int, limit: int = 5) -> list[dict]:
-    """Return Tier-3 anecdotes for cohort-miss fallback (context only)."""
-    return (
-        supabase.table("anecdotes")
-        .select("permalink,claimed_effect,sentiment")
-        .eq("compound_id", compound_id)
-        .limit(limit)
-        .execute()
-        .data
-    )
