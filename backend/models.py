@@ -24,6 +24,9 @@ class SimulateRequest(BaseModel):
     n_draws: int = 5000
     horizon_months: int = 12
     seed: int = 42
+    # SOURCE variance axis: where the peptide was made. None = label-dose (no source modeling).
+    # compounding_pharmacy | vendor_tested | gray_market | research_chem | brand
+    source_type: str | None = None
 
 
 class QuarterBand(BaseModel):
@@ -42,13 +45,17 @@ class OutcomeResult(BaseModel):
     trial_backed: bool
     confidence: float
     distribution_void: bool = False
-    mean: float | None = None
+    mean: float | None = None  # delivered-effect mean (source-adjusted when source_type set)
     sd: float | None = None
     n: int | None = None
     p10: float | None = None
     p50: float | None = None
     p90: float | None = None
     prob_threshold: float | None = None
+    # SOURCE axis outputs (null when source_type not supplied)
+    biological_mean: float | None = None  # label-dose mean, before source adjustment
+    source_type: str | None = None
+    source_dud_pct: float | None = None  # P(near-inert "sugar water" lot), as a %
     quarters: list[QuarterBand] = Field(default_factory=list)
 
 

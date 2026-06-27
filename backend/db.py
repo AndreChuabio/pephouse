@@ -81,6 +81,26 @@ def get_synthetic_patients() -> list[dict]:
     return supabase.table("synthetic_patients").select("*").execute().data
 
 
+def get_source_potency_prior(source_type: str, compound_id: int) -> dict | None:
+    """Resolve the Tier-2 source-quality prior for the SOURCE variance axis.
+
+    Resolution order: compound-specific override (source_type, compound_id) ->
+    source_type default (compound_id is NULL). Returns None if the source is unknown.
+    """
+    rows = (
+        supabase.table("source_potency_priors")
+        .select("*")
+        .eq("source_type", source_type)
+        .or_(f"compound_id.eq.{compound_id},compound_id.is.null")
+        .execute()
+        .data
+    )
+    if not rows:
+        return None
+    specific = [r for r in rows if r.get("compound_id") == compound_id]
+    return specific[0] if specific else rows[0]
+
+
 def get_anecdotes(compound_id: int, limit: int = 5) -> list[dict]:
     """Return Tier-3 anecdotes for cohort-miss fallback (context only)."""
     return (
