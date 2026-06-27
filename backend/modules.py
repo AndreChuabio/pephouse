@@ -12,6 +12,7 @@ Monte Carlo (Synthea can't sample a Gaussian).
 
 from __future__ import annotations
 
+import copy
 import re
 
 from db import supabase
@@ -226,6 +227,112 @@ def get_module(module_id: int) -> dict | None:
         return rows[0] if rows else None
     except Exception:
         return None
+
+
+def module_for(compound_id: int) -> dict | None:
+    """The compound's active module, or one built in-memory from its priors/anecdotes
+    (NOT persisted -- avoids polluting synthea_modules on every Arena run)."""
+    active = get_active_module(compound_id)
+    if active:
+        return active
+    comp = supabase.table("compounds").select("name").eq("id", compound_id).execute().data
+    if not comp:
+        return None
+    name = comp[0]["name"]
+    priors = supabase.table("outcome_priors").select("*").eq("compound_id", compound_id).execute().data
+    if priors:
+        return build_module(name, priors[0])
+    anecdotes = supabase.table("anecdotes").select("sentiment,claimed_effect").eq("compound_id", compound_id).limit(50).execute().data
+    if anecdotes:
+        return build_anecdote_module(name, anecdotes)
+    return None
+
+
+def _effect_chain(module: dict) -> list[str]:
+    """Ordered state names from after Eligibility up to (not including) Terminal."""
+    states = module.get("states", {})
+    chain: list[str] = []
+    seen: set[str] = set()
+    cur = states.get("Eligibility", {}).get("direct_transition")
+    while cur and cur != "Terminal" and cur in states and cur not in seen:
+        seen.add(cur)
+        chain.append(cur)
+        cur = states[cur].get("direct_transition")
+    return chain
+
+
+def _first_effect_state(module: dict) -> dict | None:
+    """The module's Apply_Effect Observation (the effect range), if any."""
+    states = module.get("states", {})
+    for name in _effect_chain(module):
+        if states.get(name, {}).get("type") == "Observation":
+            return states[name]
+    for state in states.values():
+        if state.get("type") == "Observation":
+            return state
+    return None
+
+
+def combine_modules(name: str, weighted_modules: list[tuple[dict, int]]) -> dict:
+    """Pool N study/compound modules into one, matching synthea/example_combined.py:
+    a shared Initial + Eligibility (AND of conditions) + Treatment_Encounter that
+    distributed_transition fans out to each module's Observation branch, WEIGHTED by N
+    (study-N / total-N), converging to Terminal. One study -> linear; many -> fan-out."""
+    conditions: list[dict] = []
+    for module, _ in weighted_modules:
+        for cond in module.get("states", {}).get("Eligibility", {}).get("allow", {}).get("conditions", []):
+            if cond not in conditions:
+                conditions.append(cond)
+    if not conditions:
+        conditions = [{"condition_type": "Age", "operator": ">=", "quantity": 18, "unit": "years"}]
+
+    states: dict[str, dict] = {
+        "Initial": {"type": "Initial", "direct_transition": "Eligibility"},
+        "Eligibility": {
+            "type": "Guard",
+            "allow": {"condition_type": "And", "conditions": conditions},
+            "direct_transition": "Treatment_Encounter",
+        },
+        "Terminal": {"type": "Terminal"},
+    }
+    encounter: dict = {
+        "type": "Encounter",
+        "encounter_class": "ambulatory",
+        "codes": [{"system": "SNOMED-CT", "code": "185349003", "display": "Encounter for check up"}],
+    }
+
+    branches: list[tuple[str, dict, int]] = []
+    for i, (module, weight) in enumerate(weighted_modules):
+        effect = _first_effect_state(module)
+        state = copy.deepcopy(effect) if effect else {
+            "type": "Observation", "category": "vital-signs", "unit": "%",
+            "codes": [{"system": "LOINC", "code": "00000-0", "display": "effect"}],
+            "range": {"low": -10, "high": 10},
+        }
+        for branch_key in ("conditional_transition", "distributed_transition", "complex_transition"):
+            state.pop(branch_key, None)
+        state["direct_transition"] = "Terminal"
+        branches.append((f"Apply_m{i}", state, max(int(weight or 0), 1)))
+
+    if len(branches) == 1:
+        encounter["direct_transition"] = branches[0][0]
+    else:
+        total = sum(w for _, _, w in branches)
+        encounter["distributed_transition"] = [
+            {"distribution": round(w / total, 4), "transition": nm} for nm, _, w in branches
+        ]
+    states["Treatment_Encounter"] = encounter
+    for nm, state, _ in branches:
+        states[nm] = state
+
+    return {
+        "name": name,
+        "remarks": [
+            f"Pooled across {len(branches)} study/compound module(s), weighted by N.",
+            "distributed_transition fan-out (modules.combine_modules; see synthea/example_combined.py).",
+        ],
+        "states": states,
+    }
 
 
 def get_active_module(compound_id: int) -> dict | None:

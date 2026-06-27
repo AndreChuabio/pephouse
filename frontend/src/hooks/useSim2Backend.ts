@@ -13,6 +13,11 @@ import type { ConfidenceLevel, LedgerLine, Sex, SimulationSnapshot } from "../da
 // tier2 = verified real-world/lab data (the source-quality axis), tier1 = anecdote.
 const TIER_MAP: Record<string, string> = { tier4: "trial", tier3: "trial", tier2: "quality", tier1: "anecdote" };
 
+// Monte Carlo sample count. These are statistical DRAWS (not patients) — numpy does
+// 100k in <1s, so it's an honest "100,000 simulations" number, distinct from the ~20
+// Synthea bodies (the cohort). Never conflate the two on stage.
+export const MONTE_CARLO_DRAWS = 100_000;
+
 export function tiersFromFractions(fractions: Record<string, number>): string[] {
   const set = new Set<string>();
   for (const [key, frac] of Object.entries(fractions)) {
@@ -41,7 +46,7 @@ export function useSim2Backend() {
           outcomes: outcomes && outcomes.length ? outcomes : ["weight_change_pct"],
           tiers,
           source_type: tiers.includes("quality") ? "gray_market" : undefined,
-          n_draws: 5000,
+          n_draws: MONTE_CARLO_DRAWS,
           seed: 42,
         });
         setResult(data);

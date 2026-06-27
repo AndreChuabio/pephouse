@@ -279,7 +279,24 @@ def run_simulation(
     explicit = tiers is not None
     eff_live = live_cohort or (explicit and "synthetic" in tiers)
 
-    active_module = modules.get_active_module(compounds[0].compound_id) if (eff_live and compounds) else None
+    # Pool the stack's modules into one (distributed_transition fan-out, weighted by N)
+    # and load it into live cohort generation -- one study = linear, many = a blend.
+    active_module = None
+    n_modules = 0
+    if eff_live and compounds:
+        weighted: list[tuple[dict, int]] = []
+        for c in compounds:
+            module = modules.module_for(c.compound_id)
+            if not module:
+                continue
+            ns = [int(p.get("population_n") or 0) for p in db.get_outcome_priors(c.compound_id)]
+            weighted.append((module, max(ns) if ns else 1))
+        n_modules = len(weighted)
+        if n_modules > 1:
+            active_module = modules.combine_modules(f"Arena pooled ({n_modules} modules)", weighted)
+        elif n_modules == 1:
+            active_module = weighted[0][0]
+
     cohort, cohort_source, cohort_gen_ms = resolve_cohort(patient, eff_live, active_module)
     cohort_n = len(cohort)
     substrate_missing = cohort_n < MIN_COHORT
@@ -289,7 +306,8 @@ def run_simulation(
     anecdotes: list[AnecdoteSnippet] = []
 
     if cohort_source == "synthea_live":
-        cohort_callout = f"Generated {cohort_n} patient-matched Synthea bodies live in {cohort_gen_ms} ms."
+        cohort_callout = f"Generated {cohort_n} Synthea bodies live in {cohort_gen_ms} ms"
+        cohort_callout += f" using a pooled {n_modules}-study module." if n_modules > 1 else "."
 
     if substrate_missing:
         cohort_fallback = "anecdote"

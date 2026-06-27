@@ -23,6 +23,7 @@ type ReportPanelProps = {
   interactionsRequested: boolean;
   band?: ProjectedBand | null;
   running?: boolean;
+  draws?: number;
 };
 
 function confidenceColor(level: SimulationSnapshot["confidenceLevel"]) {
@@ -101,6 +102,7 @@ export function ReportPanel({
   interactionsRequested,
   band,
   running,
+  draws,
 }: ReportPanelProps) {
   if (!open) {
     return (
@@ -326,6 +328,11 @@ export function ReportPanel({
                       {band.dudPct ? (
                         <p className="text-[11px] text-orange-400">
                           ~{band.dudPct}% chance of a near-inert (under-dosed) source.
+                        </p>
+                      ) : null}
+                      {draws ? (
+                        <p className="text-[10px] text-zinc-600">
+                          Projected from {draws.toLocaleString()} Monte Carlo simulations.
                         </p>
                       ) : null}
                     </>

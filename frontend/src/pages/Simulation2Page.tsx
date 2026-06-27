@@ -24,7 +24,7 @@ import { useCompoundData } from "../hooks/useCompoundData";
 import { useCompoundRegistry } from "../hooks/useCompoundRegistry";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useInteractions } from "../hooks/useInteractions";
-import { useSim2Backend, mergeBackendSnapshot, projectedBand } from "../hooks/useSim2Backend";
+import { useSim2Backend, mergeBackendSnapshot, projectedBand, MONTE_CARLO_DRAWS } from "../hooks/useSim2Backend";
 import type { InteractionLedgerInput, InteractionSeverityKey } from "../data/simulation2";
 import type { StudyRef } from "../data/simulation2";
 
@@ -374,6 +374,7 @@ export default function Simulation2Page() {
           interactionsRequested={compoundIds.length >= 2}
           band={band}
           running={backend.loading}
+          draws={MONTE_CARLO_DRAWS}
         />
       </div>
 
