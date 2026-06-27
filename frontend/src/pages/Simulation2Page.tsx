@@ -21,6 +21,7 @@ import {
 import { studiesFromBundle } from "../data/registryStudies";
 import { synthesizeProfile } from "../data/synthesizeProfile";
 import { useCompoundData } from "../hooks/useCompoundData";
+import { useCompoundModules } from "../hooks/useCompoundModules";
 import { useCompoundRegistry } from "../hooks/useCompoundRegistry";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useInteractions } from "../hooks/useInteractions";
@@ -49,6 +50,7 @@ export default function Simulation2Page() {
     compoundIds,
     registry,
   );
+  const { bySlug: modulesBySlug } = useCompoundModules(compoundIds, registry);
 
   const profileBySlug = useMemo(() => {
     const out: Record<string, CompoundProfile> = { ...COMPOUND_PROFILES };
@@ -354,6 +356,7 @@ export default function Simulation2Page() {
           sourceFractions={sourceFractions}
           studiesByCompoundTier={studiesByCompoundTier}
           studiesLoadingByCompound={studiesLoadingByCompound}
+          modulesByCompound={modulesBySlug}
           interactionPairs={interactions.pairs}
           interactionsLoading={interactions.loading}
           interactionsError={interactions.error}
