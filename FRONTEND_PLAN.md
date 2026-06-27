@@ -1,90 +1,79 @@
-# PepHouse — Simulation Arena Wiring Plan
+# PepHouse — Simulation Arena Wiring Plan (hardened, 2nd pass)
 
 Wire the (currently mock) Simulation Arena frontend to the live Supabase DB + Monte Carlo engine.
 
-**Current state (verified):** components import `MOCK_*` from `data/mockSimulation.ts`, take no props, hold no state; `SimulationArenaPage.tsx` renders them statically. Chart is a hardcoded CSS-bar with a fixed 0-100% axis — not a distribution renderer. No charting lib, no `@supabase/supabase-js`, no fetch layer, no `.env`.
+## TEAM: two open decisions before you start
+1. **Chart lib — visx vs Recharts.** This plan specs **visx** (fan chart, single-dot rug, per-element opacity/stroke — the strongest honesty viz). It's more code than Recharts. If short on time, Recharts `Area`+`ErrorBar` is the fallback. Pick one and don't mix.
+2. **Who owns `POST /simulate`.** This pass assigns the engine to **Andre** (it's a Monte Carlo — his wheelhouse) and the API/data plumbing to **Kien**. `HANDOFF_KIEN.md` earlier put the whole thing on Kien. Decide as a team; the split below assumes Andre owns the engine, Kien owns the data layer.
+
+Current state (verified): components import `MOCK_*` from `data/mockSimulation.ts`, take no props, hold no state. `ArenaHeader` "Run Simulation" has no handler. Chart is hardcoded CSS bars, not a distribution renderer. No charting lib, no `@supabase/supabase-js`, no fetch layer, no `.env`.
 
 ---
 
-## 1. Integration approach — HYBRID
-- **Direct Supabase** (`@supabase/supabase-js` + publishable key) for static catalog reads: compounds, case_studies, outcome_priors metadata, trials, anecdotes, synthetic_patients. Public-read RLS is already on.
-- **FastAPI `POST /simulate`** for the Monte Carlo only — the numpy draw + eligibility gate + tier wall stay server-side.
-- Anti-pattern: don't proxy catalog data through FastAPI AND hit Supabase for it. One source per concern: catalog = Supabase, compute = backend.
+## 1. Integration — HYBRID
+- **Catalog/evidence/provenance → Supabase-direct** (`@supabase/supabase-js` + publishable key). Public-read, no compute, no second deploy target.
+- **Monte Carlo → FastAPI `POST /simulate`** (server-authoritative). The honesty rule lives in ONE place server-side: eligibility gate, trial-vs-anecdote branch, n=1 SD-inflation, seeded RNG. A client must not be able to read `outcome_priors` and roll its own confident-looking numbers. CORS is already `*`, so Vite can call it immediately.
 
 ## 2. Component wiring map
-State owner = `SimulationArenaPage` (holds `selectedCompoundId`, `dose`, `patient`; passes props down; runs `useSimulation`).
+State owner = `SimulationArenaPage` (holds `selectedCompoundId(s)`, `dose`, `patient`; `useSimulation` feeds the output column).
 
-| Component | Mock now | New source | Call |
+| View (file) | Replaces | Source | Call |
 |---|---|---|---|
-| CocktailMixerCard | MOCK_COMPOUNDS | Supabase | `compounds.select('id,name,drug_class,fda_status,approved,summary')`; tier badge = `approved ? fda-approved : gray-market` |
-| DemographicsCard | DEMOGRAPHICS | local state (INPUT) | optional seed from `synthetic_patients` (the 30 Synthea rows) |
-| ProjectedOutcomesChart | MOCK_CHART_BARS | backend `/simulate` | `distribution.histogram` + `.timeline` |
-| MetricsGrid | MOCK_METRICS | backend `/simulate` | `p10/p50/p90`, `confidence`, `trial_backed`, `eligible` |
-| DataProvenanceList | MOCK_PROVENANCE | Supabase | `trials` (tier1) styled as evidence; `anecdotes` styled with permalink badge — never merged |
+| CocktailMixerCard | MOCK_COMPOUNDS | Supabase | `compounds.select('id,name,aliases,drug_class,fda_status,approved,summary')` + `outcome_priors.select('compound_id')` → grounded-set (4 of 12). Badge: `approved ? fda-approved : gray-market`. **Grounded flag drives the loud low-confidence marker.** |
+| DemographicsCard | DEMOGRAPHICS | controlled inputs (+ optional seed) | real select/slider (replace FakeSelect/SliderTrack); optional seed `synthetic_patients.select(...).limit(30)`. Feeds `/simulate.patient`. |
+| ProjectedOutcomesChart | MOCK_CHART_BARS | `POST /simulate` | `outcomes[].quarters[]` (p10/p50/p90 per quarter) → FanChart (§3). |
+| MetricsGrid | MOCK_METRICS | `/simulate` summary | `prob_threshold`, `data_confidence`, real `confidence:number` (drop the 1/2/3 enum; drop the unsourced synergy note). |
+| DataProvenanceList | MOCK_PROVENANCE | Supabase (mirror `/simulate.provenance`) | trials: `outcome_priors.select('source_nct,population_n,dispersion_basis,unit')`; anecdotes: `anecdotes.select('source,permalink,claimed_effect,sentiment')`. Add **Tier-1** value to `ProvenanceSource.tier` so trials get a badge. Never merge the two lists. |
+| ArenaHeader | — | — | wire "Run Simulation" onClick → `useSimulation.run()`. |
 
-**Type fixes (`types/simulation.ts`):** `Compound.id` string -> number (BIGINT); add `SimulateRequest`/`SimulateResponse` (no `any`); generate `types/db.ts` from the LIVE DB — `db/schema.sql` is stale (missing case_studies, editorial_profiles, research_papers, sourcing, extra outcome_priors cols).
+**New files:** `lib/supabase.ts`, `lib/api.ts`, `hooks/{useCompounds,useProvenance,useSyntheticPatients,useSimulation}.ts`, `types/db.ts` (`supabase gen types typescript --project-id aglgyphihqcconivmmux`), `frontend/.env.local`. `npm i @supabase/supabase-js`.
 
-**New files (`frontend/src/`):** `lib/supabase.ts`, `lib/api.ts`, `hooks/useCompounds.ts`, `hooks/useEvidence.ts`, `hooks/useSimulation.ts`, `.env.local`. `npm i @supabase/supabase-js recharts`.
+**Type fixes:** `Compound.id` string→number (BIGINT); add `SimulateRequest`/`SimulateResponse`; add Tier-1 to `ProvenanceSource.tier`. `db/schema.sql` is STALE — generate types from the live DB, not the file.
 
+## 3. Honesty-display spec (visx)
+`npm i @visx/shape @visx/scale @visx/axis @visx/group @visx/gradient @visx/stats @visx/glyph @visx/tooltip d3-random`
+
+- **`<FanChart>`** — median `LinePath` + ±1 SD ribbon (opaque) + ±2 SD ribbon (faint) over the 12-month horizon. Trial twin stays tight; anecdote twin blows into a cone.
+- **Trial vs anecdote encoding (redundant, never color-only):** width = literal SD; fill opacity ∝ confidence; stroke solid (trial) vs **dashed** (anecdote, survives grayscale/colorblind); **rug of actual samples** — n=1 anecdote draws exactly ONE dot (you can't fake confidence when the viewer counts one dot). **Same x-axis AND y-scale for both** — never auto-rescale per panel or the contrast is erased.
+- **`<EvidenceVoid>`** for BPC-157 (no prior): do NOT synthesize a curve. Axes + diagonal-hatch "no trial data" + copy "No controlled-trial distribution exists… this is patient-reported anecdote (n=37), not evidence." Show the 37 anecdotes as discrete permalinked cards, never a bell.
+- **`<ConfidenceMeter>`** — absolute 0.0–1.0 track (NOT normalized to max). 0.69 sits just past middle. Bands: 0.31–0.45 weak, 0.45–0.60 moderate, 0.60–0.69 trial-supported. No "high" band exists — don't draw one. Tooltip names the driver via `dispersion_basis`.
+- **Reminder:** only 4 of 12 compounds have priors, so the anecdote/void branch is the MAJORITY path — build it first-class.
+
+### `POST /simulate` contract (Andre builds, Kien+Nikki code against)
 ```
-VITE_SUPABASE_URL=https://aglgyphihqcconivmmux.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=<publishable key from Settings -> API>
-VITE_API_BASE_URL=http://localhost:8000
+REQ: { compounds:[{compound_id,dose_label}], patient:{age,sex,weight_kg,conditions[]},
+       outcomes:[...], n_draws:10000, horizon_months:12, seed:42 }
+RES: { outcomes:[{ compound_id, outcome_name, unit, evidence_basis, trial_backed, confidence,
+                   mean, sd, n, p10, p50, p90, prob_threshold, quarters:[{q,p10,p50,p90}] }],
+       excluded_priors:[{compound_id,reason}], data_confidence:"Low"|"High", provenance:[] }
 ```
+Engine per compound×outcome: load priors for `outcome_name` → **eligibility gate** (int-parse text `min_age/max_age`; `sex=='ALL'` wildcard; gated-out → `excluded_priors`, never silently dropped) → **trial branch** (`default_rng(seed).normal(mean,sd,n_draws)`, tight, confidence 0.56–0.69) OR **anecdote branch** (8 priorless compounds: center from `case_studies.reported_effect`, inflated SD, confidence 0.31–0.38) → per-quarter ramp.
 
-## 3. Honesty-display spec (chart lib: Recharts)
-Two mutually exclusive render modes, keyed on `trial_backed`:
+## 4. Task list (demo-ordered)
+**Vertical slice — one trial-backed compound (Semaglutide or Tirzepatide) end-to-end:**
+1. `frontend/.env.local` (URL, publishable key, API base); confirm `.gitignore` covers `frontend/.env*`. *quick*
+2. `npm i @supabase/supabase-js`; `lib/supabase.ts`; gen `types/db.ts`. *quick*
+3. `POST /simulate` trial branch + eligibility gate, one compound. Verify with curl. *critical*
+4. `useSimulation` hook + wire "Run Simulation". *critical*
+5. visx `<FanChart>` bound to `quarters[]`. **← real compound, real distribution, end-to-end demo moment.** *critical*
 
-| | TRIAL-BACKED (distribution present) | ANECDOTE-ONLY (distribution null) |
-|---|---|---|
-| Render | histogram + tight p10-p90 band | wide band (2-3x wider), dashed/hatched, muted |
-| Color | solid blue/emerald | amber/zinc, low opacity — reads as "not science" |
-| Label | `n = population_n` (e.g. 100) | `n = anecdote n`, "Reddit anecdotes — low confidence" |
-| Confidence | 0.56-0.69 -> meter 2-3 | 0.31-0.38 -> meter 1 + "No trial-grounded distribution" |
-| Footnote | `dispersion_basis` | fallback message + permalinks |
+**Honesty contrast (the money shot):**
+6. `useCompounds` + grounded-set → real picker. *quick*
+7. Anecdote branch + `<EvidenceVoid>` for BPC-157; side-by-side Semaglutide-tight vs BPC-157-void on shared axes. *critical*
+8. `<ConfidenceMeter>` on real float + MetricsGrid summary. *quick*
+9. `useProvenance` → DataProvenanceList with trial vs anecdote badges. *quick*
 
-`eligible=false` -> overlay "out-of-population (teaching moment)", still show curve as extrapolated.
-**Tier wall:** anecdotes only ever render the wide-band fallback / community panel — never the histogram. Only 4 of 12 compounds have priors, so **the anecdote-only branch is the majority path — build it first-class, not as an edge case.**
-
-## 4. Prioritized task list (demo-ordered)
-**Vertical slice first (one real compound, one real distribution):**
-1. [Kien] `POST /simulate` happy path — Tirzepatide / weight_change_pct: `normal(mean, sd, n)` -> p10/p50/p90 + histogram + timeline. *quick win*
-2. [Nikki] Supabase catalog read -> real compounds in picker. *quick win*
-3. [Nikki] Recharts distribution chart replacing MOCK_CHART_BARS; lift state into page; wire `useSimulation`.
-4. [Nikki] MetricsGrid from simulate response.
-→ Tirzepatide shows a real trial-backed n=100 distribution = **the demo spine.**
-
-**Honesty payoff:**
-5. [Kien] `/simulate` anecdote-only branch (`trial_backed=false`, `anecdote_fallback` from anecdotes + case_studies). *highest demo value*
-6. [Nikki] Wide-band fallback render — switch Tirzepatide -> BPC-157, watch tight curve become wide low-confidence band.
-7. [Nikki] DataProvenanceList — real trials + anecdote permalinks.
-
-**Polish:** 8. [Kien] eligibility gate (parse TEXT min/max_age defensively). 9. [Andre] `compound_summary` view (counts per compound, one read powers all picker cards). 10. [Andre] DemographicsCard "Import EHR" from a synthetic_patients row.
-
-**Stretch:** `/report` + Bayesian prior update + Supabase Realtime on outcome_priors = the evolving graph; vendor_lab_results panel; editorial copy panel.
+**Polish/stretch:** 10. controlled DemographicsCard feeding `patient` (debounce 250ms, stable seed). 11. `excluded_priors` "outside the trial's age window" surfacing. 12. clinician door (ForestPlot over case_studies). 13. `<EvolvingDistribution>` band-tightening as n grows. 14. regenerate stale `db/schema.sql`.
 
 ## 5. Three-person split
-- **Andre (data/sim):** regenerate TS types from live DB (unblocks everyone day 1); `compound_summary` view; validate the 7 priors plot sanely; spec the anecdote-fallback math (mean of reported effects, SD inflated by low confidence); Synthea seed for DemographicsCard.
-- **Kien (backend):** `POST /simulate` happy path -> anecdote branch -> eligibility gate. Enforce the tier wall. Replace CORS `*` before deploy. Stretch: `/report` + Bayesian update.
-- **Nikki (frontend):** install deps; convert 5 prop-less components to props; lift state; tasks 2,3,4,6,7. The dual render-mode chart is the headline.
+- **Andre (data/sim) — integrity core, critical path:** the `/simulate` engine + gating helper — eligibility gate (text-parse, ALL wildcard), trial branch (seeded `rng.normal`), anecdote branch (SD inflation, confidence capped ~0.38), `quarters[]`, `excluded_priors`, `data_confidence`. Owns the rule that anecdote SD is wide. Regenerate `db/schema.sql`.
+- **Kien (backend/data layer):** `lib/supabase.ts`, `lib/api.ts`, `types/db.ts`, `.env.local`+gitignore; the four hooks; db→view-model mapping (slug↔int id, FDA-status↔grounding split). Keep `/compounds*` alive for the grader path.
+- **Nikki (frontend/honesty UI):** visx `<FanChart>` replacing the bar chart; `<EvidenceVoid>`, `<ConfidenceMeter>`, rug/stroke/opacity encoding; extend `types/simulation.ts`; controlled inputs; wire header; MetricsGrid + DataProvenanceList from real data.
 
-**Critical path:** Task 1 -> 3 -> 5/6. The demo dies without 1, 3, 5, 6.
+**Critical path:** Andre `/simulate` trial branch → Kien `useSimulation`+`types/db` → Nikki `<FanChart>`. **Day-1 unblock:** Kien ships `lib/supabase.ts` + `types/db.ts` first; Andre+Nikki agree the `/simulate` JSON and mock a fixture so Nikki builds `<FanChart>` against it while Andre builds the real engine in parallel. Second sync point = the anecdote branch (step 7) → the BPC-157 void, the demo's strongest honesty statement.
 
-### `POST /simulate` contract (Kien's interface, Nikki codes against it)
-```
-REQ:  { compound_id:int, outcome_name?:str, patient:{age,sex,weight_kg,conditions[]},
-        dose?:str, n_draws:int=10000, horizon_months:int=12 }
-RES:  { compound_id, compound_name, outcome_name, unit, trial_backed:bool, eligible:bool,
-        eligibility_note, confidence:float,
-        distribution: null | { mean, sd, n, p10, p50, p90,
-                               histogram:[{bin,count}], timeline:[{month,mean,sd}] },
-        anecdote_fallback: null | { n, wide_uncertainty:true, claimed_effects[], permalinks[], message },
-        sources:{ nct[], source_url, dispersion_basis } }
-```
-`distribution` and `anecdote_fallback` are mutually exclusive — exactly one is non-null. That switch is what the whole honesty display keys on.
-
-### Risks (flag now)
-1. `outcome_priors.min_age/max_age/sex` are TEXT — gate must parse empties/non-numerics or it throws.
-2. Only 7 priors / 4 compounds — anecdote branch is the majority path, build early.
-3. `db/schema.sql` stale — regenerate types from live DB before writing queries.
-4. `Compound.id` string vs BIGINT mismatch — fix first or selection breaks.
+### Risks
+1. `outcome_priors.min_age/max_age/sex` are TEXT — gate must int-parse / handle empties or it throws.
+2. Only 7 priors / 4 compounds — anecdote+void branch is the majority path, build early.
+3. `db/schema.sql` stale — gen types from live DB before writing queries.
+4. `Compound.id` string vs BIGINT — fix first or selection breaks.
