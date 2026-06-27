@@ -87,9 +87,6 @@ class SimulateResponse(BaseModel):
     data_confidence: str
 
 
-# --- /compounds/{id}/simulation-data: Supabase data layer, no Monte Carlo ---
-
-
 class EvidenceSource(BaseModel):
     """One toggleable evidence layer for the Arena 2 evidence map.
 
@@ -99,8 +96,8 @@ class EvidenceSource(BaseModel):
 
     id: str
     label: str
-    data_tier: str          # raw DB enum: tier1_evidence | tier2_quality | tier3_anecdote
-    display_tier: int       # 4 strongest .. 1 weakest (Arena 2 badge convention)
+    data_tier: str
+    display_tier: int
     count: int
     available: bool
 
@@ -112,13 +109,9 @@ class SimulationDataResponse(BaseModel):
     fda_status: str | None = None
     approved: bool = False
     summary: str | None = None
-    # Derived conveniences for the builder UI:
     evidence_sources: list[EvidenceSource] = Field(default_factory=list)
     outcome_names: list[str] = Field(default_factory=list)
     studied_age_min: int | None = None
     studied_age_max: int | None = None
     cohort_total: int = 0
-    # All related rows, keyed by table name (trials, outcome_priors, case_studies,
-    # research_papers, vendor_lab_results, sourcing, source_potency_priors,
-    # anecdotes, evidence_facts, vendors). It's just data at the end of the day.
     tables: dict[str, list[dict]] = Field(default_factory=dict)
