@@ -83,3 +83,29 @@ export async function fetchCompoundData(compoundId: number): Promise<SimulationD
   if (!res.ok) throw new Error(`compound data failed (${res.status})`);
   return res.json() as Promise<SimulationDataResponse>;
 }
+
+export type InteractionSeverity = "major" | "moderate" | "minor" | "unknown";
+
+export type InteractionPair = {
+  compound_a_id: number;
+  compound_a_name: string;
+  compound_b_id: number;
+  compound_b_name: string;
+  severity: InteractionSeverity;
+  mechanism: string | null;
+  management: string | null;
+  source_url: string | null;
+  source_kind: "fda_label" | "curated" | "mechanistic" | "no_data";
+};
+
+export type InteractionsResponse = {
+  pairs: InteractionPair[];
+};
+
+export async function fetchInteractions(compoundIds: number[]): Promise<InteractionsResponse> {
+  if (compoundIds.length < 2) return { pairs: [] };
+  const qs = compoundIds.join(",");
+  const res = await fetch(`${API_BASE}/interactions?ids=${qs}`);
+  if (!res.ok) throw new Error(`interactions failed (${res.status})`);
+  return res.json() as Promise<InteractionsResponse>;
+}

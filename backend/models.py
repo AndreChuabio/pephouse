@@ -123,3 +123,19 @@ class SimulationDataResponse(BaseModel):
     studied_age_max: int | None = None
     cohort_total: int = 0
     tables: dict[str, list[dict]] = Field(default_factory=dict)
+
+
+class InteractionPair(BaseModel):
+    compound_a_id: int
+    compound_a_name: str
+    compound_b_id: int
+    compound_b_name: str
+    severity: str  # 'major' | 'moderate' | 'minor' | 'unknown'
+    mechanism: str | None = None
+    management: str | None = None
+    source_url: str | None = None
+    source_kind: str  # 'fda_label' | 'curated' | 'mechanistic' | 'no_data'
+
+
+class InteractionsResponse(BaseModel):
+    pairs: list[InteractionPair] = Field(default_factory=list)

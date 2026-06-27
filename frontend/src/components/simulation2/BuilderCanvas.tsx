@@ -2,16 +2,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@iconify/react";
 import {
   PENALTIES,
+  SEVERITY_PENALTY,
   sourceTier,
   studyKey,
   type ChainNode,
   type ChainNodeType,
   type CompoundProfile,
+  type InteractionSeverityKey,
   type Sex,
   type SimulationSnapshot,
   type StudyRef,
 } from "../../data/simulation2";
+import type { InteractionPair } from "../../lib/api";
 import { cn } from "../../lib/cn";
+import { InteractionsBody } from "./InteractionsBody";
 import { TierBadge } from "./Sim2Primitives";
 
 const COMPOUND_HUES = [
@@ -82,6 +86,11 @@ type BuilderCanvasProps = {
   sourceFractions: Record<string, number>;
   studiesByCompoundTier: Record<string, StudyRef[]>;
   studiesLoadingByCompound: Record<string, boolean>;
+  interactionPairs: InteractionPair[];
+  interactionsLoading: boolean;
+  interactionsError: string | null;
+  excludedInteractions: Record<string, boolean>;
+  onToggleInteraction: (pairKey: string) => void;
 };
 
 function nodeContribution(
@@ -695,6 +704,11 @@ export function BuilderCanvas({
   sourceFractions,
   studiesByCompoundTier,
   studiesLoadingByCompound,
+  interactionPairs,
+  interactionsLoading,
+  interactionsError,
+  excludedInteractions,
+  onToggleInteraction,
 }: BuilderCanvasProps) {
   const runIdx = nodes.findIndex((n) => n.type === "run");
   const lastMovableIdx = runIdx === -1 ? nodes.length - 1 : runIdx - 1;
@@ -815,6 +829,64 @@ export function BuilderCanvas({
                   onSearchQueryChange={onSearchQueryChange}
                   onToggleCompound={onToggleCompound}
                   compoundIndexById={compoundIndexById}
+                />
+              </NodeShell>
+            );
+          }
+
+          if (node.type === "interactions") {
+            const activePairs = interactionPairs.filter((p) => {
+              const lo = Math.min(p.compound_a_id, p.compound_b_id);
+              const hi = Math.max(p.compound_a_id, p.compound_b_id);
+              return !excludedInteractions[`${lo}::${hi}::${p.source_kind}`];
+            });
+            const totalPenalty = activePairs.reduce(
+              (acc, p) => acc + (SEVERITY_PENALTY[p.severity as InteractionSeverityKey] ?? 0),
+              0,
+            );
+            const worst: InteractionSeverityKey | null = activePairs.some((p) => p.severity === "major")
+              ? "major"
+              : activePairs.some((p) => p.severity === "moderate")
+                ? "moderate"
+                : activePairs.some((p) => p.severity === "minor")
+                  ? "minor"
+                  : activePairs.some((p) => p.severity === "unknown")
+                    ? "unknown"
+                    : null;
+            const interactionBadge = activePairs.length > 0 ? (
+              <ContributionChip
+                contribution={{
+                  value: -totalPenalty,
+                  tone: worst === "major" ? "negative" : worst === "moderate" ? "negative" : "neutral",
+                  suffix: "risk",
+                }}
+              />
+            ) : undefined;
+            const subtitle = (
+              <span className="text-zinc-500">
+                {interactionPairs.length} pair{interactionPairs.length === 1 ? "" : "s"}
+                {worst && ` · worst: ${worst}`}
+              </span>
+            );
+            return (
+              <NodeShell
+                key={node.id}
+                title="Drug Interactions"
+                subtitle={subtitle}
+                icon="solar:shield-warning-linear"
+                warn={worst === "major"}
+                {...shared}
+                canRemove={false}
+                canMoveUp={false}
+                canMoveDown={false}
+                badge={interactionBadge}
+              >
+                <InteractionsBody
+                  pairs={interactionPairs}
+                  loading={interactionsLoading}
+                  error={interactionsError}
+                  excluded={excludedInteractions}
+                  onTogglePair={onToggleInteraction}
                 />
               </NodeShell>
             );

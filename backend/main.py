@@ -16,7 +16,13 @@ import modules
 import runs
 import tiers
 from evidence import build_simulation_data
-from models import SimulateRequest, SimulateResponse, SimulationDataResponse
+from interactions import build_interactions
+from models import (
+    InteractionsResponse,
+    SimulateRequest,
+    SimulateResponse,
+    SimulationDataResponse,
+)
 from twin_engine import run_simulation
 
 app = FastAPI(title="pephouse")
@@ -52,6 +58,27 @@ def get_compound(compound_id: int) -> dict:
 def get_evidence(compound_id: int) -> dict:
     """Tier-1 evidence bundle the grader is allowed to cite."""
     return db.get_evidence(compound_id)
+
+
+@app.get("/interactions", response_model=InteractionsResponse)
+def get_interactions(ids: str = "") -> InteractionsResponse:
+    """Pairwise drug-interaction warnings for a set of compound ids.
+
+    Query: `?ids=1,2,3`. Returns a row per unordered pair; pairs without
+    documented rows in `drug_interactions` come back with severity='unknown'
+    and source_kind='no_data' so the UI can surface the honest gap rather
+    than show silence.
+    """
+    parsed: list[int] = []
+    for token in ids.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            parsed.append(int(token))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"bad id: {token}")
+    return build_interactions(parsed)
 
 
 @app.get("/compounds/{compound_id}/data", response_model=SimulationDataResponse)
