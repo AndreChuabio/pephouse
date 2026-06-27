@@ -162,7 +162,7 @@ function ProjectedTrajectory({
                 Weight {wp.from} kg → {wp.to} kg
                 <span className="text-zinc-500 text-sm font-normal"> ({wp.delta > 0 ? "+" : ""}{wp.delta} kg · {outcome.p50!.toFixed(1)}%)</span>
               </div>
-              <div className="text-[10px] text-zinc-500">median over {outcome.quarters.at(-1)?.month ?? 12} months</div>
+              <div className="text-[10px] text-zinc-500">median over {(outcome.quarters ?? []).at(-1)?.month ?? 12} months</div>
             </div>
           ) : (
             <div className="text-sm font-semibold text-emerald-400 mb-2">
@@ -170,8 +170,8 @@ function ProjectedTrajectory({
             </div>
           )}
           <div className="flex items-end gap-1 h-14">
-            {outcome.quarters.map((q) => {
-              const maxAbs = Math.max(1, ...outcome.quarters.map((x) => Math.abs(x.p50)));
+            {(outcome.quarters ?? []).map((q) => {
+              const maxAbs = Math.max(1, ...(outcome.quarters ?? []).map((x) => Math.abs(x.p50)));
               const h = 8 + (Math.abs(q.p50) / maxAbs) * 40;
               return (
                 <div
@@ -351,7 +351,7 @@ export default function DigitalTwinPage() {
   const score = useMemo(() => healthScore(imp.labs), [imp.labs]);
 
   const outcomeFor = (realId: number) =>
-    result?.outcomes.find((o) => o.compound_id === realId && o.outcome_name === "weight_change_pct") ?? null;
+    result?.outcomes?.find((o) => o.compound_id === realId && o.outcome_name === "weight_change_pct") ?? null;
   const excludedFor = (realId: number) =>
     result?.excluded_priors?.find((e) => e.compound_id === realId)?.reason ?? null;
   const primaryOutcome =
