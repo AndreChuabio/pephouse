@@ -12,7 +12,7 @@ import {
   type SimulationSnapshot,
 } from "../../data/simulation2";
 import { cn } from "../../lib/cn";
-import { CustomCheckbox, TierBadge } from "./Sim2Primitives";
+import { TierBadge } from "./Sim2Primitives";
 
 type BuilderCanvasProps = {
   nodes: ChainNode[];
@@ -60,7 +60,7 @@ function PortDot({ side }: { side: "left" | "right" }) {
     <span
       aria-hidden
       className={cn(
-        "absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full border border-zinc-700 bg-[#0A0A0A]",
+        "absolute top-[24px] -translate-y-1/2 w-2.5 h-2.5 rounded-full border border-zinc-700 bg-[#0A0A0A]",
         side === "left" ? "-left-[5px]" : "-right-[5px]",
       )}
     />
@@ -169,21 +169,30 @@ function CompoundBody({ compound, searchQuery, onSearchQueryChange, onCompoundSe
           className="w-full pl-8 pr-3 py-1.5 bg-[#0A0A0A] border border-zinc-800 rounded-md text-xs text-zinc-100 focus:outline-none focus:border-zinc-600 focus:bg-[#121212] transition-colors placeholder-zinc-600"
         />
       </div>
-      <div className="space-y-2">
-        {COMPOUND_LIST.map((c) => (
-          <label key={c.id} className="flex items-start gap-2 cursor-pointer group/item">
-            <CustomCheckbox
-              checked={compound.id === c.id}
-              onChange={() => onCompoundSelect(c.id)}
-            />
-            <div>
-              <span className="text-xs text-zinc-200 block font-medium">{c.name}</span>
+      <div className="space-y-1">
+        {COMPOUND_LIST.map((c) => {
+          const selected = compound.id === c.id;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => onCompoundSelect(c.id)}
+              className={cn(
+                "w-full text-left px-2.5 py-1.5 rounded-md border transition-colors",
+                selected
+                  ? "bg-zinc-800/70 border-zinc-700"
+                  : "border-transparent hover:bg-zinc-900/70 hover:border-zinc-800",
+              )}
+            >
+              <span className={cn("text-xs block font-medium", selected ? "text-zinc-50" : "text-zinc-200")}>
+                {c.name}
+              </span>
               <span className="text-[11px] text-zinc-500 block leading-tight mt-0.5">
                 {c.subtitle}
               </span>
-            </div>
-          </label>
-        ))}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -397,13 +406,13 @@ function PaletteButton({ options, onAddNode }: PaletteButtonProps) {
   const disabled = options.length === 0;
 
   return (
-    <div ref={wrapRef} className="relative shrink-0 self-center">
+    <div ref={wrapRef} className="relative shrink-0 self-start">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         disabled={disabled}
         className={cn(
-          "w-14 h-14 rounded-full border border-dashed flex items-center justify-center transition-colors",
+          "w-12 h-12 rounded-full border border-dashed flex items-center justify-center transition-colors",
           disabled
             ? "border-zinc-800 text-zinc-700 cursor-not-allowed"
             : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-100 bg-[#0A0A0A]",
