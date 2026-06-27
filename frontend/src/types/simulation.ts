@@ -60,6 +60,8 @@ export type SimulateRequest = {
   source_type?: string;
   // Run Synthea live for a patient-matched cohort (~7s); falls back to the pre-loaded cohort.
   live_cohort?: boolean;
+  // Data tiers to include: trial | quality | anecdote | synthetic
+  tiers?: string[];
 };
 
 export type QuarterBand = {
@@ -87,6 +89,7 @@ export type OutcomeResult = {
   biological_mean?: number | null;
   source_type?: string | null;
   source_dud_pct?: number | null;
+  illustrative?: boolean;
   quarters: QuarterBand[];
 };
 
@@ -101,4 +104,6 @@ export type SimulateResponse = {
   excluded_priors: { compound_id: number; outcome_name: string; reason: string }[];
   anecdotes: { permalink?: string | null; claimed_effect?: string | null; sentiment?: string | null }[];
   data_confidence: string;
+  tiers_used?: string[];
+  tier_notes?: string[];
 };

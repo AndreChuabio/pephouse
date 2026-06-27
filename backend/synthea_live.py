@@ -146,7 +146,7 @@ def _run_docker(lo: int, hi: int, gender: str, n: int, timeout_s: int, module: d
         return None
 
 
-def generate_cohort(age: int, sex: str, n: int = 10, span: int = 5, timeout_s: int = 150, module: dict | None = None) -> list[dict] | None:
+def generate_cohort(age: int, sex: str, n: int = 20, span: int = 5, timeout_s: int = 150, module: dict | None = None) -> list[dict] | None:
     """Run Synthea live for a cohort near (age, sex). None on failure/timeout.
 
     module: an optional compound-specific Synthea Generic Module to load (hosted).

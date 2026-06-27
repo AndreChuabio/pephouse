@@ -11,7 +11,7 @@ export function useSimulation() {
     async (
       compoundId: number,
       patient: { age: number; sex: "M" | "F"; weightKg: number },
-      options?: { sourceType?: string; liveCohort?: boolean; nDraws?: number },
+      options?: { sourceType?: string; liveCohort?: boolean; nDraws?: number; tiers?: string[] },
     ) => {
       setLoading(true);
       setError(null);
@@ -28,6 +28,7 @@ export function useSimulation() {
           seed: 42,
           source_type: options?.sourceType || undefined,
           live_cohort: options?.liveCohort ?? false,
+          tiers: options?.tiers && options.tiers.length ? options.tiers : undefined,
         });
         setResult(data);
       } catch (e) {

@@ -70,8 +70,7 @@ export function Sidebar() {
     <aside className="w-64 border-r border-zinc-800/60 bg-zinc-950 flex flex-col justify-between shrink-0 hidden md:flex h-full z-10">
       <div>
         <div className="h-16 flex items-center px-6 border-b border-zinc-800/60">
-          <div className="flex items-center gap-2.5 text-white font-medium tracking-tighter uppercase text-sm">
-            <Icon icon="solar:dna-linear" className="text-blue-500 text-lg" />
+          <div className="flex items-center text-white font-medium tracking-tighter uppercase text-sm">
             PEPHOUSE
           </div>
         </div>

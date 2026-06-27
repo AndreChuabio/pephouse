@@ -27,6 +27,21 @@ export const PENALTIES = {
   stackInteraction: 10,
 } as const;
 
+export type InteractionSeverityKey = "major" | "moderate" | "minor" | "unknown";
+
+export const SEVERITY_PENALTY: Record<InteractionSeverityKey, number> = {
+  major: 30,
+  moderate: 15,
+  minor: 5,
+  unknown: 5,
+};
+
+export type InteractionLedgerInput = {
+  pairId: string;
+  partnerName: string;
+  severity: InteractionSeverityKey;
+};
+
 export type OutcomeBar = {
   label: string;
   percent: number;
@@ -171,6 +186,7 @@ export function computeSnapshot(input: {
   extraCompounds: CompoundProfile[];
   sourceFractions: Record<string, number>;
   age: number;
+  interactions?: InteractionLedgerInput[];
 }): SimulationSnapshot {
   const ledger: LedgerLine[] = [
     { label: `${input.compound.name} base profile`, delta: input.compound.baseProfileScore, tone: "positive" },
@@ -228,13 +244,28 @@ export function computeSnapshot(input: {
     ledger.push({ label: "Outside studied age range", delta: -PENALTIES.outsideStudiedRange, tone: "negative" });
   }
 
-  for (const extra of input.extraCompounds) {
-    score -= PENALTIES.stackInteraction;
-    ledger.push({
-      label: `${extra.name} interaction penalty`,
-      delta: -PENALTIES.stackInteraction,
-      tone: "negative",
-    });
+  // Interaction penalties: if we have per-pair data (from the backend), use
+  // it. Otherwise fall back to a flat per-extra-compound charge so the chain
+  // still reflects stacking risk before the interactions endpoint resolves.
+  if (input.interactions && input.interactions.length > 0) {
+    for (const pair of input.interactions) {
+      const penalty = SEVERITY_PENALTY[pair.severity] ?? PENALTIES.stackInteraction;
+      score -= penalty;
+      ledger.push({
+        label: `${pair.partnerName} interaction (${pair.severity})`,
+        delta: -penalty,
+        tone: "negative",
+      });
+    }
+  } else {
+    for (const extra of input.extraCompounds) {
+      score -= PENALTIES.stackInteraction;
+      ledger.push({
+        label: `${extra.name} interaction penalty`,
+        delta: -PENALTIES.stackInteraction,
+        tone: "negative",
+      });
+    }
   }
 
   score = Math.max(5, Math.min(95, Math.round(score)));
@@ -276,6 +307,7 @@ export function barOpacity(confidenceScore: number): number {
 
 export type ChainNodeType =
   | "compound"
+  | "interactions"
   | "source-tier-1"
   | "source-tier-2"
   | "source-tier-3"
@@ -368,6 +400,8 @@ export function nodeLabel(
   switch (type) {
     case "compound":
       return "Compound";
+    case "interactions":
+      return "Drug Interactions";
     case "demographics":
       return "Demographics";
     case "run":

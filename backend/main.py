@@ -14,9 +14,12 @@ from fastapi.middleware.cors import CORSMiddleware
 import db
 import modules
 import runs
+import tiers
 import user_data
 from evidence import build_simulation_data
+from interactions import build_interactions
 from models import (
+    InteractionsResponse,
     SimulateRequest,
     SimulateResponse,
     SimulationDataResponse,
@@ -60,6 +63,27 @@ def get_evidence(compound_id: int) -> dict:
     return db.get_evidence(compound_id)
 
 
+@app.get("/interactions", response_model=InteractionsResponse)
+def get_interactions(ids: str = "") -> InteractionsResponse:
+    """Pairwise drug-interaction warnings for a set of compound ids.
+
+    Query: `?ids=1,2,3`. Returns a row per unordered pair; pairs without
+    documented rows in `drug_interactions` come back with severity='unknown'
+    and source_kind='no_data' so the UI can surface the honest gap rather
+    than show silence.
+    """
+    parsed: list[int] = []
+    for token in ids.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            parsed.append(int(token))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"bad id: {token}")
+    return build_interactions(parsed)
+
+
 @app.get("/compounds/{compound_id}/data", response_model=SimulationDataResponse)
 def get_compound_data(compound_id: int) -> SimulationDataResponse:
     """Supabase data layer for the simulation builder (Arena 2).
@@ -98,7 +122,16 @@ def simulate(body: SimulateRequest) -> SimulateResponse:
         seed=body.seed,
         source_type=body.source_type,
         live_cohort=body.live_cohort,
+        tiers=body.tiers,
     )
+
+
+@app.get("/compounds/{compound_id}/tiers")
+def get_tiers(compound_id: int) -> dict:
+    """Which data tiers are available for this compound (for the UI tier toggles)."""
+    if db.get_compound(compound_id) is None:
+        raise HTTPException(status_code=404, detail="compound not found")
+    return tiers.availability(compound_id)
 
 
 @app.get("/runs")
