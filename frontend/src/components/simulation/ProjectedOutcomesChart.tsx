@@ -8,6 +8,8 @@ const X_LABELS = ["Base", "Q1", "Q2", "Q3", "Q4"] as const;
 type ProjectedOutcomesChartProps = {
   outcome: OutcomeResult | null;
   loading?: boolean;
+  loadingLabel?: string;
+  loadingProgress?: number | null;
   error?: string | null;
   cohortCallout?: string | null;
   distributionVoid?: boolean;
@@ -49,6 +51,8 @@ function QuarterBars({ outcome }: { outcome: OutcomeResult }) {
 export function ProjectedOutcomesChart({
   outcome,
   loading,
+  loadingLabel,
+  loadingProgress,
   error,
   cohortCallout,
   distributionVoid,
@@ -59,8 +63,14 @@ export function ProjectedOutcomesChart({
   return (
     <Panel className="p-6 flex flex-col min-h-[400px] relative">
       {loading && (
-        <div className="absolute inset-0 bg-zinc-950/60 flex items-center justify-center z-20 rounded-xl">
+        <div className="absolute inset-0 bg-zinc-950/80 flex flex-col items-center justify-center z-20 rounded-xl gap-3 px-8">
           <Icon icon="svg-spinners:ring-resize" className="text-2xl text-blue-400" />
+          <p className="text-sm text-zinc-300 text-center max-w-sm">{loadingLabel ?? "Running simulation…"}</p>
+          {loadingProgress != null && (
+            <div className="w-64 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+              <div className="h-full bg-blue-500 transition-all duration-300 ease-out" style={{ width: `${loadingProgress}%` }} />
+            </div>
+          )}
         </div>
       )}
 

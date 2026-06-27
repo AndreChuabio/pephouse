@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@iconify/react";
 import { AppShell } from "../components/layout/AppShell";
 import { ArenaHeader } from "../components/layout/ArenaHeader";
@@ -110,6 +110,24 @@ export default function SimulationArenaPage() {
 
   const metrics = useMemo(() => buildMetrics(result, weightOutcome), [result, weightOutcome]);
 
+  // Live Synthea generation takes ~15-20s; show an elapsed-time loader so the wait reads as intentional.
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!loading) {
+      setElapsed(0);
+      return;
+    }
+    const start = Date.now();
+    const id = setInterval(() => setElapsed((Date.now() - start) / 1000), 250);
+    return () => clearInterval(id);
+  }, [loading]);
+
+  const isLive = tiers.includes("synthetic");
+  const loadingLabel = isLive
+    ? `Generating patient-matched Synthea cohort live… ${elapsed.toFixed(0)}s (~15-20s)`
+    : "Running Monte Carlo…";
+  const loadingProgress = isLive ? Math.min(95, (elapsed / 20) * 100) : null;
+
   const handleRun = () => {
     run(Number(selectedCompoundId), patient, {
       sourceType: tiers.includes("quality") ? sourceType || "gray_market" : undefined,
@@ -188,6 +206,8 @@ export default function SimulationArenaPage() {
             <ProjectedOutcomesChart
               outcome={weightOutcome}
               loading={loading}
+              loadingLabel={loadingLabel}
+              loadingProgress={loadingProgress}
               error={error}
               cohortCallout={result?.cohort_callout}
               distributionVoid={weightOutcome?.distribution_void}
