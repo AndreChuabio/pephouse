@@ -188,7 +188,7 @@ export default function SimulationArenaPage() {
               </div>
 
               <div>
-                <label className="text-xs text-zinc-500">Monte Carlo draws (statistical samples, not patients)</label>
+                <label className="text-xs text-zinc-500">Run synthetic patient scenarios</label>
                 <select
                   value={nDraws}
                   onChange={(e) => setNDraws(Number(e.target.value))}

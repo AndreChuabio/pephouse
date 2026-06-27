@@ -458,7 +458,7 @@ export function ReportPanel({
         {onDrawsChange ? (
           <div className="mb-3">
             <label className="block text-[10px] uppercase tracking-widest text-zinc-500 mb-1">
-              Monte Carlo runs (samples, not patients)
+              Run synthetic patient scenarios
             </label>
             <select
               value={draws ?? MONTE_CARLO_DRAWS}
