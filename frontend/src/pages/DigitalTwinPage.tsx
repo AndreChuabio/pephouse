@@ -81,7 +81,7 @@ function BiomarkerRow({ lab }: { lab: LabValue }) {
   const meta = statusMeta(lab.status);
   const toneBar =
     lab.status === "high"
-      ? "bg-pink-500/60"
+      ? "bg-rose-500/60"
       : lab.status === "low" || lab.status === "abnormal"
         ? "bg-amber-500/60"
         : "bg-emerald-500/60";
@@ -134,14 +134,14 @@ function ProjectedTrajectory({
     <div className="bg-zinc-800/30 border border-zinc-800/50 rounded-xl p-4">
       <div className="flex justify-between items-center mb-2">
         <span className="text-xs font-medium text-zinc-300 flex items-center gap-1.5">
-          <Icon icon="lucide:trending-up" className="w-3.5 h-3.5 text-cyan-400" />
+          <Icon icon="lucide:trending-up" className="w-3.5 h-3.5 text-blue-400" />
           Projected Trajectory
         </span>
         <span className="text-[10px] text-zinc-500">{compoundName}</span>
       </div>
       {loading ? (
         <div className="text-sm text-zinc-400 flex items-center gap-2">
-          <Icon icon="svg-spinners:180-ring" className="text-cyan-400" /> Running Monte Carlo…
+          <Icon icon="svg-spinners:180-ring" className="text-blue-400" /> Running synthetic patients…
         </div>
       ) : excludedReason ? (
         <div className="text-sm text-amber-300">
@@ -162,7 +162,7 @@ function ProjectedTrajectory({
                 Weight {wp.from} kg → {wp.to} kg
                 <span className="text-zinc-500 text-sm font-normal"> ({wp.delta > 0 ? "+" : ""}{wp.delta} kg · {outcome.p50!.toFixed(1)}%)</span>
               </div>
-              <div className="text-[10px] text-zinc-500">median over {outcome.quarters.at(-1)?.month ?? 12} months</div>
+              <div className="text-[10px] text-zinc-500">median over {(outcome.quarters ?? []).at(-1)?.month ?? 12} months</div>
             </div>
           ) : (
             <div className="text-sm font-semibold text-emerald-400 mb-2">
@@ -170,13 +170,13 @@ function ProjectedTrajectory({
             </div>
           )}
           <div className="flex items-end gap-1 h-14">
-            {outcome.quarters.map((q) => {
-              const maxAbs = Math.max(1, ...outcome.quarters.map((x) => Math.abs(x.p50)));
+            {(outcome.quarters ?? []).map((q) => {
+              const maxAbs = Math.max(1, ...(outcome.quarters ?? []).map((x) => Math.abs(x.p50)));
               const h = 8 + (Math.abs(q.p50) / maxAbs) * 40;
               return (
                 <div
                   key={q.q}
-                  className="flex-1 bg-gradient-to-t from-cyan-600/40 to-emerald-500/70 rounded-t"
+                  className="flex-1 bg-emerald-500/60 rounded-t"
                   style={{ height: `${h}px` }}
                   title={`Q${q.q} (m${q.month}): p10 ${q.p10.toFixed(1)} · p50 ${q.p50.toFixed(1)} · p90 ${q.p90.toFixed(1)}`}
                 />
@@ -353,7 +353,7 @@ export default function DigitalTwinPage() {
   const score = useMemo(() => healthScore(imp.labs), [imp.labs]);
 
   const outcomeFor = (realId: number) =>
-    result?.outcomes.find((o) => o.compound_id === realId && o.outcome_name === "weight_change_pct") ?? null;
+    result?.outcomes?.find((o) => o.compound_id === realId && o.outcome_name === "weight_change_pct") ?? null;
   const excludedFor = (realId: number) =>
     result?.excluded_priors?.find((e) => e.compound_id === realId)?.reason ?? null;
   const primaryOutcome =
@@ -417,16 +417,20 @@ export default function DigitalTwinPage() {
 
   return (
     <AppShell>
-      <div className="flex flex-row w-full h-full overflow-hidden">
+      <div className="h-16 flex items-center px-8 border-b border-zinc-800/60 shrink-0 z-10">
+        <h1 className="text-sm font-medium text-white tracking-tight flex items-center gap-2">
+          <Icon icon="solar:users-group-two-rounded-linear" className="text-emerald-500" /> Galleria
+        </h1>
+      </div>
+      <div className="flex flex-row w-full flex-1 overflow-hidden">
         {/* LEFT — inputs + simulation controls */}
-        <div className="w-[340px] flex-shrink-0 border-r border-zinc-800/50 flex flex-col bg-[#121214] h-full overflow-y-auto">
-          <div className="p-4 flex flex-col gap-4">
+        <div className="w-64 flex-shrink-0 border-r border-zinc-800/60 flex flex-col h-full overflow-y-auto">
+          <div className="p-3 flex flex-col gap-3">
             {/* Base Demographic (editable, explicit Save) */}
-            <div className="bg-[#121214]/50 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-4">
-              <div className="flex items-center gap-2.5 text-base font-medium text-zinc-100">
-                <Icon icon="lucide:user" className="w-5 h-5 text-zinc-400" />
-                Base Demographic (Twin)
-              </div>
+            <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-lg p-4 flex flex-col gap-3">
+              <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-widest flex items-center gap-2">
+                <Icon icon="lucide:user" className="text-zinc-500" /> Base Demographic
+              </h3>
               <div className="flex gap-3">
                 <div className="flex-1">
                   <label className="text-[12px] font-medium text-zinc-500 mb-1.5 block">Age</label>
@@ -507,11 +511,10 @@ export default function DigitalTwinPage() {
             </div>
 
             {/* Compound (multi-select) + Run */}
-            <div className="bg-[#121214]/50 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-4">
-              <div className="flex items-center gap-2.5 text-base font-medium text-zinc-100">
-                <Icon icon="lucide:test-tube" className="w-5 h-5 text-zinc-400" />
-                Compound
-              </div>
+            <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-lg p-4 flex flex-col gap-3">
+              <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-widest flex items-center gap-2">
+                <Icon icon="lucide:test-tube" className="text-zinc-500" /> Compound
+              </h3>
               {DEMO_COMPOUNDS.map((c) => {
                 const ex = compoundExtras[c.realId];
                 const added = inStack(c.realId);
@@ -665,8 +668,8 @@ export default function DigitalTwinPage() {
           </div>
 
           {/* RIGHT — link controls + health summary + (deferred) result */}
-          <div className="w-[480px] flex-shrink-0 bg-[#121214] h-full overflow-y-auto flex flex-col">
-            <div className="p-6 border-b border-zinc-800/50 bg-[#0a0a0a]">
+          <div className="w-[480px] flex-shrink-0 h-full overflow-y-auto flex flex-col border-l border-zinc-800/60">
+            <div className="p-6 border-b border-zinc-800/60">
               <div className="grid grid-cols-2 gap-3">
                 <SourceCard
                   title="Pull Blood Panels"

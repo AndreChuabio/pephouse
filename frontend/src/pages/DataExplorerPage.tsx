@@ -289,6 +289,57 @@ export default function DataExplorerPage() {
                     );
                   })()}
 
+                  <Section icon="solar:diagram-up-linear" title="Synthea modules" count={detail.modules.length}>
+                    <div className="space-y-3">
+                      {detail.modules.map((m) => {
+                        const k = `mod-${m.id}`;
+                        const inspectorKey = `${k}-inspect`;
+                        return (
+                          <div key={m.id} className="bg-zinc-950/50 rounded border border-zinc-800/60 p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <div className="min-w-0">
+                                <div className="text-sm text-zinc-200 truncate">{m.name}</div>
+                                <div className="text-[11px] text-zinc-500 font-mono">
+                                  outcome=<span className="text-zinc-300">{m.outcome_name}</span> · id={m.id}
+                                  {m.source && <span> · {m.source}</span>}
+                                </div>
+                              </div>
+                              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">
+                                {Object.keys(m.module?.states ?? {}).length} states
+                              </span>
+                            </div>
+                            <div className="overflow-x-auto -mx-2 px-2">
+                              <ModuleGraph states={m.module?.states ?? {}} />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => toggle(inspectorKey)}
+                              className="text-[10px] uppercase tracking-widest text-zinc-500 hover:text-zinc-200 flex items-center gap-1"
+                            >
+                              <Icon
+                                icon={open[inspectorKey] ? "solar:alt-arrow-down-linear" : "solar:alt-arrow-right-linear"}
+                                className="text-xs"
+                              />
+                              State inspector
+                            </button>
+                            {open[inspectorKey] && (
+                              <div className="pl-1">
+                                <ModuleStateInspector states={m.module?.states ?? {}} />
+                              </div>
+                            )}
+                            {m.module?.remarks && m.module.remarks.length > 0 && (
+                              <ul className="text-[11px] text-zinc-500 pl-4 list-disc space-y-0.5">
+                                {m.module.remarks.map((r, i) => (
+                                  <li key={i}>{r}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Section>
+
                   <TierHeader tier={4} label="Clinical RCTs" />
 
                   <Section icon="solar:document-text-linear" title="Clinical Trials" count={detail.trials.length}>
@@ -454,57 +505,6 @@ export default function DataExplorerPage() {
                   </Section>
                     );
                   })()}
-
-                  <Section icon="solar:diagram-up-linear" title="Synthea modules" count={detail.modules.length}>
-                    <div className="space-y-3">
-                      {detail.modules.map((m) => {
-                        const k = `mod-${m.id}`;
-                        const inspectorKey = `${k}-inspect`;
-                        return (
-                          <div key={m.id} className="bg-zinc-950/50 rounded border border-zinc-800/60 p-3 space-y-2">
-                            <div className="flex items-center justify-between gap-2 flex-wrap">
-                              <div className="min-w-0">
-                                <div className="text-sm text-zinc-200 truncate">{m.name}</div>
-                                <div className="text-[11px] text-zinc-500 font-mono">
-                                  outcome=<span className="text-zinc-300">{m.outcome_name}</span> · id={m.id}
-                                  {m.source && <span> · {m.source}</span>}
-                                </div>
-                              </div>
-                              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">
-                                {Object.keys(m.module?.states ?? {}).length} states
-                              </span>
-                            </div>
-                            <div className="overflow-x-auto -mx-2 px-2">
-                              <ModuleGraph states={m.module?.states ?? {}} />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => toggle(inspectorKey)}
-                              className="text-[10px] uppercase tracking-widest text-zinc-500 hover:text-zinc-200 flex items-center gap-1"
-                            >
-                              <Icon
-                                icon={open[inspectorKey] ? "solar:alt-arrow-down-linear" : "solar:alt-arrow-right-linear"}
-                                className="text-xs"
-                              />
-                              State inspector
-                            </button>
-                            {open[inspectorKey] && (
-                              <div className="pl-1">
-                                <ModuleStateInspector states={m.module?.states ?? {}} />
-                              </div>
-                            )}
-                            {m.module?.remarks && m.module.remarks.length > 0 && (
-                              <ul className="text-[11px] text-zinc-500 pl-4 list-disc space-y-0.5">
-                                {m.module.remarks.map((r, i) => (
-                                  <li key={i}>{r}</li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </Section>
 
                 </>
               )}
