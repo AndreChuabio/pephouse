@@ -342,6 +342,7 @@ export default function Simulation2Page() {
           open={reportOpen}
           onToggleOpen={() => setReportOpen((v) => !v)}
           chainReady={chainReady}
+          interactionPairs={interactions.pairs}
         />
       </div>
 

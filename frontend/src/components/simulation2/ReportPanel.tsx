@@ -5,6 +5,7 @@ import {
   type CompoundProfile,
   type SimulationSnapshot,
 } from "../../data/simulation2";
+import type { InteractionPair } from "../../lib/api";
 import { cn } from "../../lib/cn";
 
 type ReportPanelProps = {
@@ -16,12 +17,50 @@ type ReportPanelProps = {
   open: boolean;
   onToggleOpen: () => void;
   chainReady: boolean;
+  interactionPairs: InteractionPair[];
 };
 
 function confidenceColor(level: SimulationSnapshot["confidenceLevel"]) {
   if (level === "High") return "text-emerald-400";
   if (level === "Moderate") return "text-amber-500";
   return "text-red-400";
+}
+
+const SEVERITY_RANK: Record<string, number> = { major: 3, moderate: 2, minor: 1, unknown: 0 };
+
+function InteractionsCallout({ pairs }: { pairs: InteractionPair[] }) {
+  const documented = pairs.filter((p) => p.source_kind !== "no_data");
+  if (documented.length === 0) return null;
+  const counts: Record<string, number> = {};
+  let worst = "unknown";
+  for (const p of documented) {
+    counts[p.severity] = (counts[p.severity] ?? 0) + 1;
+    if ((SEVERITY_RANK[p.severity] ?? 0) > (SEVERITY_RANK[worst] ?? 0)) worst = p.severity;
+  }
+  const tone =
+    worst === "major"
+      ? "border-red-500/30 bg-red-500/10 text-red-300"
+      : worst === "moderate"
+        ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+        : "border-zinc-700/60 bg-zinc-800/40 text-zinc-300";
+  const summary = (["major", "moderate", "minor", "unknown"] as const)
+    .filter((s) => counts[s])
+    .map((s) => `${counts[s]} ${s}`)
+    .join(" · ");
+  return (
+    <div className={cn("rounded-lg border px-3 py-2.5 space-y-1.5", tone)}>
+      <div className="flex items-center gap-1.5 font-medium text-xs">
+        <Icon icon="solar:shield-warning-linear" className="text-sm" />
+        Drug interactions detected
+      </div>
+      <p className="text-[11px] leading-snug">
+        {documented.length} documented pair{documented.length === 1 ? "" : "s"} — {summary}
+      </p>
+      <p className="text-[11px] text-zinc-500">
+        See the Drug Interactions card in the chain for full mechanism + source citations.
+      </p>
+    </div>
+  );
 }
 
 export function ReportPanel({
@@ -33,6 +72,7 @@ export function ReportPanel({
   open,
   onToggleOpen,
   chainReady,
+  interactionPairs,
 }: ReportPanelProps) {
   if (!open) {
     return (
@@ -116,6 +156,7 @@ export function ReportPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8 min-h-0">
+        <InteractionsCallout pairs={interactionPairs} />
         {!hasRun ? (
           <div className="space-y-4">
             <div className="text-xs text-zinc-500 border border-dashed border-zinc-700 rounded-lg p-4 text-center leading-relaxed">

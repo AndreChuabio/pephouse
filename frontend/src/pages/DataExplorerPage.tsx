@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@iconify/react";
 import { AppShell } from "../components/layout/AppShell";
+import { VendorGlobe } from "../components/data-explorer/VendorGlobe";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { supabase } from "../lib/supabase";
 
@@ -45,7 +46,7 @@ function Badge({ tone, children }: { tone: "green" | "orange" | "zinc"; children
     zinc: "bg-zinc-800 text-zinc-400 border-zinc-700",
   } as const;
   return (
-    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border uppercase tracking-wider ${map[tone]}`}>
+    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border uppercase tracking-wider whitespace-nowrap shrink-0 ${map[tone]}`}>
       {children}
     </span>
   );
@@ -166,6 +167,8 @@ export default function DataExplorerPage() {
                 <p className="text-zinc-500 text-sm">Loading data&hellip;</p>
               ) : (
                 <>
+                  <VendorGlobe vendors={detail.vendors} compoundName={selected.name} />
+
                   <Section icon="solar:layers-linear" title="Case Studies" count={detail.caseStudies.length}>
                     <div className="space-y-1.5">
                       {detail.caseStudies.map((cs, i) => (
@@ -275,13 +278,13 @@ export default function DataExplorerPage() {
                         const labs = detail.labResults.filter((lr) => lr.vendor_name === v.name);
                         return (
                           <div key={k} className="bg-zinc-950/50 rounded">
-                            <button type="button" onClick={() => toggle(k)} className="w-full flex items-center justify-between text-sm px-3 py-2 hover:bg-zinc-900/60 rounded">
-                              <span className="flex items-center gap-2">
-                                <Icon icon={open[k] ? "solar:alt-arrow-down-linear" : "solar:alt-arrow-right-linear"} className="text-zinc-600 text-xs" />
-                                <span className="text-zinc-200">{v.name}</span>
+                            <button type="button" onClick={() => toggle(k)} className="w-full flex items-center justify-between gap-3 text-sm px-3 py-2 hover:bg-zinc-900/60 rounded">
+                              <span className="flex items-center gap-2 min-w-0 flex-1">
+                                <Icon icon={open[k] ? "solar:alt-arrow-down-linear" : "solar:alt-arrow-right-linear"} className="text-zinc-600 text-xs shrink-0" />
+                                <span className="text-zinc-200 truncate">{v.name}</span>
                                 <Badge tone={SOURCE_TONE[v.source_type] ?? "zinc"}>{SOURCE_LABEL[v.source_type] ?? v.source_type}</Badge>
                               </span>
-                              <span className="font-mono text-xs text-zinc-500">
+                              <span className="font-mono text-xs text-zinc-500 shrink-0 whitespace-nowrap">
                                 {v.finnrick_rating ? `rated ${v.finnrick_rating} · ` : ""}reliability {v.reliability_score}
                               </span>
                             </button>
