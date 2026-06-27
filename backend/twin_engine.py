@@ -89,6 +89,24 @@ def _percentiles(draws: np.ndarray) -> tuple[float, float, float]:
     return float(np.percentile(draws, 10)), float(np.percentile(draws, 50)), float(np.percentile(draws, 90))
 
 
+def _draw_potency(sp: dict, n_draws: int, rng: np.random.Generator) -> np.ndarray:
+    """The SOURCE axis: delivered/label potency as a mixture.
+
+    Most lots ~ N(potency_mean, potency_sd); a p_fail fraction are near-inert
+    "sugar water" lots ~ N(fail_mean, fail_sd). This is what makes a gray-market
+    twin's curve widen AND grow a fat left tail vs a compounding pharmacy.
+    """
+    mean = float(sp.get("potency_mean") or 1.0)
+    sd = float(sp.get("potency_sd") or 0.0)
+    p_fail = float(sp.get("p_fail") or 0.0)
+    fail_mean = 0.5 if sp.get("fail_mean") is None else float(sp.get("fail_mean"))
+    fail_sd = 0.15 if sp.get("fail_sd") is None else float(sp.get("fail_sd"))
+    good = rng.normal(mean, sd, n_draws)
+    bad = rng.normal(fail_mean, fail_sd, n_draws)
+    is_fail = rng.random(n_draws) < p_fail
+    return np.clip(np.where(is_fail, bad, good), 0.0, None)
+
+
 def _quarter_bands(terminal: np.ndarray) -> list[QuarterBand]:
     quarters = []
     for i, (month, ramp) in enumerate(zip(QUARTER_MONTHS, QUARTER_RAMP), start=1):
@@ -108,21 +126,35 @@ def _simulate_trial_outcome(
     seed: int,
     cohort_n: int,
     substrate_missing: bool,
+    source_prior: dict | None = None,
 ) -> OutcomeResult:
-    mean = float(prior["effect_mean"])
+    bio_mean = float(prior["effect_mean"])
     sd = float(prior["effect_sd"] or 0)
     if substrate_missing:
         sd *= SUBSTRATE_SD_INFLATE
 
     rng = np.random.default_rng(seed)
-    terminal = rng.normal(mean, sd, n_draws)
+    terminal = rng.normal(bio_mean, sd, n_draws)
+
+    # SOURCE axis: delivered_effect = biological_effect x potency_factor.
+    source_type = None
+    source_dud_pct = None
+    if source_prior:
+        terminal = terminal * _draw_potency(source_prior, n_draws, rng)
+        source_type = source_prior.get("source_type")
+        p_fail = float(source_prior.get("p_fail") or 0.0)
+        p_contam = float(source_prior.get("p_contam") or 0.0)
+        source_dud_pct = round(p_fail * 100, 1)
 
     p10, p50, p90 = _percentiles(terminal)
     confidence = float(cluster["confidence"]) if cluster else 0.65
     if substrate_missing:
         confidence = min(confidence, 0.52)
+    if source_prior:
+        # a sketchy source is itself uncertainty -> penalize confidence
+        confidence *= max(0.4, 1.0 - (p_fail + p_contam))
 
-    threshold = WEIGHT_LOSS_THRESHOLD if "weight" in outcome_name else mean - abs(sd)
+    threshold = WEIGHT_LOSS_THRESHOLD if "weight" in outcome_name else bio_mean - abs(sd)
     prob = float(np.mean(terminal <= threshold))
 
     return OutcomeResult(
@@ -133,13 +165,16 @@ def _simulate_trial_outcome(
         trial_backed=bool(cluster.get("trial_backed")) if cluster else True,
         confidence=round(confidence, 2),
         distribution_void=False,
-        mean=round(mean, 2),
-        sd=round(sd, 2),
+        mean=round(float(np.mean(terminal)), 2),
+        sd=round(float(np.std(terminal)), 2),
         n=int(prior.get("population_n") or n_draws),
         p10=round(p10, 2),
         p50=round(p50, 2),
         p90=round(p90, 2),
         prob_threshold=round(prob, 3),
+        biological_mean=round(bio_mean, 2),
+        source_type=source_type,
+        source_dud_pct=source_dud_pct,
         quarters=_quarter_bands(terminal),
     )
 
@@ -164,6 +199,7 @@ def run_simulation(
     outcomes: list[str],
     n_draws: int,
     seed: int,
+    source_type: str | None = None,
 ) -> SimulateResponse:
     cohort = match_cohort(patient)
     cohort_n = len(cohort)
@@ -187,6 +223,11 @@ def run_simulation(
         clusters = db.get_case_studies(compound.compound_id)
         priors = db.get_outcome_priors(compound.compound_id)
         priors_by_name = {p["outcome_name"]: p for p in priors}
+        source_prior = (
+            db.get_source_potency_prior(source_type, compound.compound_id)
+            if source_type
+            else None
+        )
 
         for outcome_name in outcomes:
             cluster = _pick_cluster(clusters, outcome_name)
@@ -220,6 +261,7 @@ def run_simulation(
                     seed + compound.compound_id,
                     cohort_n,
                     substrate_missing,
+                    source_prior,
                 )
             )
 

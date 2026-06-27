@@ -56,6 +56,8 @@ export type SimulateRequest = {
   n_draws?: number;
   horizon_months?: number;
   seed?: number;
+  // SOURCE axis: compounding_pharmacy | vendor_tested | gray_market | research_chem | brand
+  source_type?: string;
 };
 
 export type QuarterBand = {
@@ -80,6 +82,9 @@ export type OutcomeResult = {
   p50?: number | null;
   p90?: number | null;
   prob_threshold?: number | null;
+  biological_mean?: number | null;
+  source_type?: string | null;
+  source_dud_pct?: number | null;
   quarters: QuarterBand[];
 };
 
