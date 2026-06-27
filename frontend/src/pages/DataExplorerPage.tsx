@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { Icon } from "@iconify/react";
 import { AppShell } from "../components/layout/AppShell";
 import { VendorGlobe } from "../components/data-explorer/VendorGlobe";
+import { ModuleGraph, ModuleStateInspector } from "../components/simulation2/ModuleGraph";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { supabase } from "../lib/supabase";
 import { tweetsForCompound } from "../data/tweets";
+import type { SyntheaModuleRow } from "../lib/api";
 
 type Compound = {
   id: number;
@@ -22,6 +24,7 @@ type Detail = {
   sourcePriors: any[];
   labResults: any[];
   vendors: any[];
+  modules: SyntheaModuleRow[];
 };
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -53,7 +56,7 @@ function Badge({ tone, children }: { tone: "green" | "orange" | "yellow" | "zinc
   );
 }
 
-function Section({ icon, title, count, children }: { icon: string; title: string; count: number; tier?: number; children: React.ReactNode }) {
+function Section({ icon, title, count, children }: { icon: string; title: string; count: number; children: React.ReactNode }) {
   return (
     <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-lg p-4">
       <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-widest mb-3 flex items-center gap-2">
@@ -65,13 +68,16 @@ function Section({ icon, title, count, children }: { icon: string; title: string
   );
 }
 
-const TIER_STYLES: Record<1 | 2 | 3, { text: string; dot: string; hint: string }> = {
-  1: { text: "text-emerald-400", dot: "bg-emerald-400", hint: "Highest confidence — trial-grade" },
-  2: { text: "text-blue-400", dot: "bg-blue-400", hint: "Product reality — measured / sourced" },
-  3: { text: "text-amber-400", dot: "bg-amber-400", hint: "Anecdotal — community reports" },
+// Tier numbering follows the Sim2 convention (frontend/src/data/simulation2.ts):
+// higher number = more authoritative source.
+const TIER_STYLES: Record<1 | 2 | 3 | 4, { text: string; dot: string; hint: string }> = {
+  4: { text: "text-emerald-400", dot: "bg-emerald-400", hint: "Trial-grade — highest confidence" },
+  3: { text: "text-teal-400", dot: "bg-teal-400", hint: "Observational / published papers" },
+  2: { text: "text-blue-400", dot: "bg-blue-400", hint: "Verified real-world / lab data" },
+  1: { text: "text-amber-400", dot: "bg-amber-400", hint: "Anecdotal — forums / social" },
 };
 
-function TierHeader({ tier, label }: { tier: 1 | 2 | 3; label: string }) {
+function TierHeader({ tier, label }: { tier: 1 | 2 | 3 | 4; label: string }) {
   const s = TIER_STYLES[tier];
   return (
     <div className="flex items-center gap-3 pt-3 pb-1">
@@ -119,7 +125,8 @@ export default function DataExplorerPage() {
       supabase.from("source_potency_priors").select("source_type,potency_mean,potency_sd,p_fail,p_contam,quantity_variance_p95,compound_id,basis").or(`compound_id.eq.${id},compound_id.is.null`),
       supabase.from("vendor_lab_results").select("vendor_name,purity_pct,label_mg,tested_mg,quantity_variance_pct,potency_factor,test_lab,failed").eq("compound_id", id),
       supabase.from("vendors").select("*").order("reliability_score", { ascending: false }),
-    ]).then(([t, a, rp, sp, lr, v]) => {
+      supabase.from("synthea_modules").select("*").eq("compound_id", id).eq("active", true).order("id"),
+    ]).then(([t, a, rp, sp, lr, v, mod]) => {
       // prefer compound-specific prior over the NULL default, per source_type
       const bySource: Record<string, any> = {};
       for (const row of (sp.data ?? [])) {
@@ -134,6 +141,7 @@ export default function DataExplorerPage() {
         sourcePriors: order.map((k) => bySource[k]).filter(Boolean),
         labResults: lr.data ?? [],
         vendors: v.data ?? [],
+        modules: (mod.data ?? []) as SyntheaModuleRow[],
       });
       setLoading(false);
     });
@@ -281,9 +289,9 @@ export default function DataExplorerPage() {
                     );
                   })()}
 
-                  <TierHeader tier={1} label="Clinical evidence" />
+                  <TierHeader tier={4} label="Clinical RCTs" />
 
-                  <Section icon="solar:document-text-linear" title="Clinical Trials" count={detail.trials.length} tier={1}>
+                  <Section icon="solar:document-text-linear" title="Clinical Trials" count={detail.trials.length}>
                     <div className="space-y-1.5">
                       {detail.trials.map((t, i) => (
                         <a key={i} href={t.source_url} target="_blank" rel="noreferrer" className="flex items-center justify-between text-sm hover:bg-zinc-950/60 rounded px-2 py-1.5 group">
@@ -294,7 +302,9 @@ export default function DataExplorerPage() {
                     </div>
                   </Section>
 
-                  <Section icon="solar:book-linear" title="Research Papers" count={detail.papers.length} tier={1}>
+                  <TierHeader tier={3} label="Observational / papers" />
+
+                  <Section icon="solar:book-linear" title="Research Papers" count={detail.papers.length}>
                     <div className="space-y-1.5">
                       {detail.papers.map((p, i) => (
                         <a key={i} href={p.url} target="_blank" rel="noreferrer" className="flex items-start justify-between gap-3 text-sm hover:bg-zinc-950/60 rounded px-2 py-1.5 group">
@@ -308,9 +318,9 @@ export default function DataExplorerPage() {
                     </div>
                   </Section>
 
-                  <TierHeader tier={2} label="Product reality" />
+                  <TierHeader tier={2} label="Verified real-world / lab" />
 
-                  <Section icon="solar:shield-warning-linear" title="Source Quality — delivered-dose variance" count={detail.sourcePriors.length} tier={2}>
+                  <Section icon="solar:shield-warning-linear" title="Source Quality — delivered-dose variance" count={detail.sourcePriors.length}>
                     <p className="text-xs text-zinc-500 mb-3">delivered_dose = label &times; potency_factor. Where you source it shifts the curve.</p>
                     <div className="space-y-1.5">
                       {detail.sourcePriors.map((sp, i) => {
@@ -358,7 +368,7 @@ export default function DataExplorerPage() {
                     )}
                   </Section>
 
-                  <Section icon="solar:shop-2-linear" title="Vendors & Sellers" count={detail.vendors.length} tier={2}>
+                  <Section icon="solar:shop-2-linear" title="Vendors & Sellers" count={detail.vendors.length}>
                     <div className="space-y-1.5">
                       {detail.vendors.map((v) => {
                         const k = `v-${v.id}`;
@@ -398,9 +408,9 @@ export default function DataExplorerPage() {
                     </div>
                   </Section>
 
-                  <TierHeader tier={3} label="Community reports" />
+                  <TierHeader tier={1} label="Anecdotal / forums" />
 
-                  <Section icon="solar:chat-round-line-linear" title="Reddit Anecdotes" count={detail.anecdotes.length} tier={3}>
+                  <Section icon="solar:chat-round-line-linear" title="Reddit Anecdotes" count={detail.anecdotes.length}>
                     <div className="space-y-2">
                       {detail.anecdotes.map((a, i) => {
                         const s = (a.sentiment ?? "").toLowerCase();
@@ -423,7 +433,7 @@ export default function DataExplorerPage() {
                   {(() => {
                     const xTweets = tweetsForCompound(selected.name);
                     return (
-                  <Section icon="ri:twitter-x-line" title="X (Tweets)" count={xTweets.length} tier={3}>
+                  <Section icon="ri:twitter-x-line" title="X (Tweets)" count={xTweets.length}>
                     <div className="space-y-2">
                       {xTweets.map((t, i) => {
                         const s = (t.sentiment ?? "").toLowerCase();
@@ -444,6 +454,55 @@ export default function DataExplorerPage() {
                   </Section>
                     );
                   })()}
+
+                  <Section icon="solar:diagram-up-linear" title="Synthea modules" count={detail.modules.length}>
+                    <div className="space-y-3">
+                      {detail.modules.map((m) => {
+                        const k = `mod-${m.id}`;
+                        const inspectorKey = `${k}-inspect`;
+                        return (
+                          <div key={m.id} className="bg-zinc-950/50 rounded border border-zinc-800/60 p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <div className="min-w-0">
+                                <div className="text-sm text-zinc-200 truncate">{m.name}</div>
+                                <div className="text-[11px] text-zinc-500 font-mono">
+                                  outcome=<span className="text-zinc-300">{m.outcome_name}</span> · id={m.id}
+                                  {m.source && <span> · {m.source}</span>}
+                                </div>
+                              </div>
+                              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">
+                                {Object.keys(m.module?.states ?? {}).length} states
+                              </span>
+                            </div>
+                            <ModuleGraph states={m.module?.states ?? {}} />
+                            <button
+                              type="button"
+                              onClick={() => toggle(inspectorKey)}
+                              className="text-[10px] uppercase tracking-widest text-zinc-500 hover:text-zinc-200 flex items-center gap-1"
+                            >
+                              <Icon
+                                icon={open[inspectorKey] ? "solar:alt-arrow-down-linear" : "solar:alt-arrow-right-linear"}
+                                className="text-xs"
+                              />
+                              State inspector
+                            </button>
+                            {open[inspectorKey] && (
+                              <div className="pl-1">
+                                <ModuleStateInspector states={m.module?.states ?? {}} />
+                              </div>
+                            )}
+                            {m.module?.remarks && m.module.remarks.length > 0 && (
+                              <ul className="text-[11px] text-zinc-500 pl-4 list-disc space-y-0.5">
+                                {m.module.remarks.map((r, i) => (
+                                  <li key={i}>{r}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Section>
 
                 </>
               )}
