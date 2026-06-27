@@ -23,6 +23,7 @@ type Detail = {
   sourcePriors: any[];
   labResults: any[];
   vendors: any[];
+  runs: any[];
 };
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -100,7 +101,8 @@ export default function DataExplorerPage() {
       supabase.from("source_potency_priors").select("source_type,potency_mean,potency_sd,p_fail,p_contam,quantity_variance_p95,compound_id,basis").or(`compound_id.eq.${id},compound_id.is.null`),
       supabase.from("vendor_lab_results").select("vendor_name,purity_pct,label_mg,tested_mg,quantity_variance_pct,potency_factor,test_lab,failed").eq("compound_id", id),
       supabase.from("vendors").select("*").order("reliability_score", { ascending: false }),
-    ]).then(([p, cs, t, a, rp, s, sp, lr, v]) => {
+      supabase.from("simulation_runs").select("id,created_at,source_type,live_cohort,cohort_source,cohort_n,cohort_gen_ms,data_confidence,outcomes").eq("compound_id", id).order("created_at", { ascending: false }).limit(10),
+    ]).then(([p, cs, t, a, rp, s, sp, lr, v, runs]) => {
       // prefer compound-specific prior over the NULL default, per source_type
       const bySource: Record<string, any> = {};
       for (const row of (sp.data ?? [])) {
@@ -118,6 +120,7 @@ export default function DataExplorerPage() {
         sourcePriors: order.map((k) => bySource[k]).filter(Boolean),
         labResults: lr.data ?? [],
         vendors: v.data ?? [],
+        runs: runs.data ?? [],
       });
       setLoading(false);
     });
@@ -172,6 +175,46 @@ export default function DataExplorerPage() {
                 <p className="text-zinc-500 text-sm">Loading data&hellip;</p>
               ) : (
                 <>
+                  <Section icon="solar:history-2-linear" title="Recent Simulations" count={detail.runs.length}>
+                    {detail.runs.length === 0 ? (
+                      <p className="text-xs text-zinc-600">No runs yet &mdash; run this compound in the Simulation Arena.</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {detail.runs.map((r) => {
+                          const o = (r.outcomes && r.outcomes[0]) || null;
+                          return (
+                            <div key={r.id} className="flex items-center justify-between text-sm bg-zinc-950/50 rounded px-3 py-2">
+                              <span className="flex items-center gap-2 min-w-0">
+                                <span className="text-zinc-600 text-xs font-mono">#{r.id}</span>
+                                {r.source_type ? (
+                                  <Badge tone={SOURCE_TONE[r.source_type] ?? "zinc"}>{SOURCE_LABEL[r.source_type] ?? r.source_type}</Badge>
+                                ) : (
+                                  <span className="text-xs text-zinc-500">label dose</span>
+                                )}
+                                <span className="text-xs text-zinc-500 truncate">
+                                  {r.cohort_source === "synthea_live"
+                                    ? `Synthea live · ${r.cohort_n} in ${r.cohort_gen_ms}ms`
+                                    : `cohort ${r.cohort_n}`}
+                                </span>
+                              </span>
+                              <span className="font-mono text-xs text-zinc-400 shrink-0">
+                                {o && o.distribution_void ? (
+                                  <span className="text-orange-400">void</span>
+                                ) : o && o.p50 != null ? (
+                                  <>
+                                    p50 {o.p50}%
+                                    {o.source_dud_pct ? <span className="text-orange-400"> &middot; {o.source_dud_pct}% dud</span> : null}
+                                  </>
+                                ) : null}
+                                <span className="text-zinc-600"> &middot; {r.data_confidence}</span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Section>
+
                   <Section icon="solar:graph-new-linear" title="Seed Distribution (Monte Carlo priors)" count={detail.priors.length}>
                     <div className="space-y-2">
                       {detail.priors.map((p, i) => (
