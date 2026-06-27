@@ -287,6 +287,8 @@ export default function DigitalTwinPage() {
   const [draftDose, setDraftDose] = useState<Record<number, string>>({});
   const [draftSource, setDraftSource] = useState<Record<number, string>>({});
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [trackState, setTrackState] = useState<"idle" | "done">("idle");
+  const [resultSaved, setResultSaved] = useState<"idle" | "done">("idle");
 
   // Simulation defaults (controls UI removed; per-compound source comes from the stack).
   const tiers = ["trial"];
@@ -380,11 +382,35 @@ export default function DigitalTwinPage() {
         n_draws: nDraws,
       });
       setResult(data);
+      setResultSaved("idle");
     } catch {
       setResult(null);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Track / Save persist a snapshot to localStorage (a lightweight history).
+  const pushLocal = (key: string, entry: unknown) => {
+    try {
+      const prev = JSON.parse(localStorage.getItem(key) || "[]") as unknown[];
+      localStorage.setItem(key, JSON.stringify([...prev, entry]));
+    } catch {
+      /* storage disabled */
+    }
+  };
+  const handleTrack = () => {
+    pushLocal("pephouse_tracked", { stack, goals: patient.goals, at: new Date().toISOString() });
+    setTrackState("done");
+    window.setTimeout(() => setTrackState("idle"), 2000);
+  };
+  const handleSaveResult = () => {
+    pushLocal("pephouse_saved_results", { stack, result, at: new Date().toISOString() });
+    setResultSaved("done");
+  };
+  const handleExploreTrials = () => {
+    const term = stackReal.map((s) => s.def.name).join(" OR ") || "peptide";
+    window.open(`https://clinicaltrials.gov/search?term=${encodeURIComponent(term)}`, "_blank", "noopener,noreferrer");
   };
 
   const showResult = loading || result !== null;
@@ -728,6 +754,25 @@ export default function DigitalTwinPage() {
                   <Icon icon={loading ? "svg-spinners:180-ring" : "lucide:sparkles"} />
                   {loading ? "Predicting…" : `Predict my Result${stackReal.length > 1 ? ` (${stackReal.length})` : ""}`}
                 </button>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={handleTrack}
+                    disabled={stackReal.length === 0}
+                    className="rounded-lg border border-zinc-700 bg-zinc-950 hover:border-cyan-700 px-3 py-2 text-xs font-medium text-zinc-200 flex items-center justify-center gap-1.5 disabled:opacity-50 transition-colors"
+                  >
+                    <Icon icon={trackState === "done" ? "lucide:check" : "lucide:line-chart"} className={trackState === "done" ? "text-emerald-400" : "text-cyan-400"} />
+                    {trackState === "done" ? "Tracking" : "Track My Result"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExploreTrials}
+                    className="rounded-lg border border-zinc-700 bg-zinc-950 hover:border-cyan-700 px-3 py-2 text-xs font-medium text-zinc-200 flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <Icon icon="lucide:flask-conical" className="text-cyan-400" />
+                    Explore Clinical Trials
+                  </button>
+                </div>
               </div>
 
               {/* My Result — only after running */}
@@ -756,6 +801,19 @@ export default function DigitalTwinPage() {
                     <MetricChip icon="lucide:shield-check" label="Confidence" value={result?.data_confidence ?? "—"} />
                     <MetricChip icon="lucide:bar-chart-2" label="P(≥15% loss)" value={primaryOutcome?.prob_threshold != null ? `${Math.round(primaryOutcome.prob_threshold * 100)}%` : "—"} />
                   </div>
+                  {result && !loading && (
+                    <button
+                      type="button"
+                      onClick={handleSaveResult}
+                      disabled={resultSaved === "done"}
+                      className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${
+                        resultSaved === "done" ? "bg-emerald-600/90 text-white" : "bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700"
+                      }`}
+                    >
+                      <Icon icon={resultSaved === "done" ? "lucide:check" : "lucide:bookmark"} className="w-4 h-4" />
+                      {resultSaved === "done" ? "Result saved" : "Save Result"}
+                    </button>
+                  )}
                 </div>
               )}
 
