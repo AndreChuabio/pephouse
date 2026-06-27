@@ -88,9 +88,7 @@ export const MOCK_PROVENANCE: ProvenanceSource[] = [
 ];
 
 export const DEMOGRAPHICS: Demographics = {
-  ageRange: "50 - 60 yrs",
-  sex: "Male",
+  age: 55,
+  sex: "M",
   weightKg: 102,
-  weightPercent: 65,
-  extrapolateComorbidities: true,
 };

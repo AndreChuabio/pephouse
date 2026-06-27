@@ -20,7 +20,10 @@ function SidebarNavItem({ item, isActive }: SidebarNavItemProps) {
   if (item.to.startsWith("/")) {
     return (
       <Link to={item.to} className={className}>
-        <Icon icon={item.icon} className="text-zinc-400 text-base" />
+        <Icon
+          icon={item.icon}
+          className={cn("text-base shrink-0", isActive ? "text-blue-400" : "text-zinc-400")}
+        />
         {item.label}
       </Link>
     );
@@ -28,7 +31,7 @@ function SidebarNavItem({ item, isActive }: SidebarNavItemProps) {
 
   return (
     <a href={item.to} className={className}>
-      <Icon icon={item.icon} className="text-base" />
+      <Icon icon={item.icon} className="text-base shrink-0 text-zinc-400" />
       {item.label}
     </a>
   );
