@@ -18,6 +18,7 @@ import runs
 import summaries
 import tiers
 import user_data
+import user_stack
 from evidence import build_simulation_data
 from interactions import build_interactions
 from models import (
@@ -31,6 +32,8 @@ from models import (
     SimulateRequest,
     SimulateResponse,
     SimulationDataResponse,
+    StackAddRequest,
+    StackItem,
     TwinSimulateRequest,
     UserDataBundle,
     UserDataPatch,
@@ -281,6 +284,32 @@ def save_user_data(user_ref: str, body: UserDataPatch) -> UserDataBundle:
         raise HTTPException(status_code=400, detail="user_ref required")
     merged = user_data.save_user_data(user_ref, body.model_dump(exclude_none=True))
     return UserDataBundle(**merged)
+
+
+# ----------------------------------------------------------------- user stack
+# The compounds a user added to their stack (compound + dose + source).
+
+
+@app.get("/users/{user_ref}/stack", response_model=list[StackItem])
+def get_user_stack(user_ref: str) -> list[StackItem]:
+    """List the user's stacked compounds."""
+    return [StackItem(**row) for row in user_stack.get_stack(user_ref)]
+
+
+@app.post("/users/{user_ref}/stack", response_model=list[StackItem])
+def add_to_stack(user_ref: str, body: StackAddRequest) -> list[StackItem]:
+    """Add a compound (with dose + source) to the user's stack; returns the stack."""
+    if not user_ref:
+        raise HTTPException(status_code=400, detail="user_ref required")
+    user_stack.add_item(user_ref, body.model_dump())
+    return [StackItem(**row) for row in user_stack.get_stack(user_ref)]
+
+
+@app.delete("/users/{user_ref}/stack/{item_id}", response_model=list[StackItem])
+def remove_from_stack(user_ref: str, item_id: int) -> list[StackItem]:
+    """Remove a compound from the user's stack; returns the remaining stack."""
+    user_stack.remove_item(user_ref, item_id)
+    return [StackItem(**row) for row in user_stack.get_stack(user_ref)]
 
 
 # ------------------------------------------------------------------ twin sim

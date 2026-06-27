@@ -248,3 +248,24 @@ class TwinSimulateRequest(BaseModel):
     source_type: str | None = None  # compounding_pharmacy | vendor_tested | gray_market | ...
     n_draws: int = 5000
     seed: int = 42
+
+
+# --------------------------------------------------------------- user stack
+# The compounds a user has added to their stack (Digital Twin), with dose +
+# source. Backed by the user_stack table (see db/user_stack.sql).
+
+
+class StackAddRequest(BaseModel):
+    compound_id: int
+    compound_name: str | None = None
+    dose: str | None = None
+    source_type: str | None = None
+
+
+class StackItem(BaseModel):
+    id: int
+    compound_id: int
+    compound_name: str | None = None
+    dose: str | None = None
+    source_type: str | None = None
+    created_at: str | None = None

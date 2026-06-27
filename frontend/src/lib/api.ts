@@ -254,6 +254,42 @@ export async function importWearable(userRef: string): Promise<WearableResult> {
   return getJson<WearableResult>(`/import/wearable?user_ref=${encodeURIComponent(userRef)}`);
 }
 
+// ---- User stack (compounds the user added: compound + dose + source) ----
+
+export type StackItem = {
+  id: number;
+  compound_id: number;
+  compound_name?: string | null;
+  dose?: string | null;
+  source_type?: string | null;
+  created_at?: string | null;
+};
+
+export async function fetchStack(userRef: string): Promise<StackItem[]> {
+  return getJson<StackItem[]>(`/users/${encodeURIComponent(userRef)}/stack`);
+}
+
+export async function addStackItem(
+  userRef: string,
+  item: { compound_id: number; compound_name?: string; dose?: string; source_type?: string },
+): Promise<StackItem[]> {
+  const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userRef)}/stack`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(item),
+  });
+  if (!res.ok) throw new Error((await res.text()) || `add to stack failed (${res.status})`);
+  return res.json() as Promise<StackItem[]>;
+}
+
+export async function removeStackItem(userRef: string, id: number): Promise<StackItem[]> {
+  const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userRef)}/stack/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error((await res.text()) || `remove from stack failed (${res.status})`);
+  return res.json() as Promise<StackItem[]>;
+}
+
 // ---- User-data store (GET/POST /users/{user_ref}/data) ----
 
 export type UserDataBundle = {

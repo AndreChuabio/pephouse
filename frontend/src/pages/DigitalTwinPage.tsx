@@ -16,6 +16,7 @@ import {
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useImport } from "../hooks/useImport";
 import { useCompoundExtras } from "../hooks/useCompoundExtras";
+import { useStack } from "../hooks/useStack";
 import type { LabValue, OutcomeResult, PatientInput, SimulateResponse } from "../types/simulation";
 
 const GOAL_OPTIONS = [
@@ -34,6 +35,13 @@ const GOAL_OPTIONS = [
   "Support menopause / perimenopause",
   "Support my cardiovascular health",
   "Cellular rejuvenation (NAD+ / Glutathione)",
+];
+
+const SOURCE_OPTIONS = [
+  { value: "label_dose", label: "Label dose (no source modeling)" },
+  { value: "compounding_pharmacy", label: "Compounding pharmacy (clean)" },
+  { value: "vendor_tested", label: "Gray-market, lab-tested" },
+  { value: "gray_market", label: "Gray-market, untested" },
 ];
 
 const CONDITION_OPTIONS = [
@@ -280,7 +288,10 @@ export default function DigitalTwinPage() {
   const imp = useImport();
   const connected = imp.connected;
 
-  const [selectedCompounds, setSelectedCompounds] = useState<string[]>(["tirzepatide"]);
+  const { stack, add: addToStack, remove: removeFromStack } = useStack();
+  // Per-compound draft inputs (dose + source) before "Add to my Stack".
+  const [draftDose, setDraftDose] = useState<Record<number, string>>({});
+  const [draftSource, setDraftSource] = useState<Record<number, string>>({});
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   // Simulation controls (brought over from the Arena).
@@ -329,11 +340,20 @@ export default function DigitalTwinPage() {
     }
   };
 
-  const toggleCompound = (id: string) =>
-    setSelectedCompounds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const compoundExtras = useCompoundExtras(DEMO_COMPOUNDS.map((c) => c.realId));
 
-  const selectedReal = DEMO_COMPOUNDS.filter((c) => selectedCompounds.includes(c.id));
-  const compoundExtras = useCompoundExtras(selectedReal.map((c) => c.realId));
+  // The compounds in the stack, resolved to the demo metadata (for trajectories).
+  const stackReal = stack
+    .map((s) => ({ item: s, def: DEMO_COMPOUNDS.find((c) => c.realId === s.compound_id) }))
+    .filter((x): x is { item: typeof stack[number]; def: (typeof DEMO_COMPOUNDS)[number] } => Boolean(x.def));
+  const inStack = (realId: number) => stack.some((s) => s.compound_id === realId);
+
+  const handleAddToStack = (c: (typeof DEMO_COMPOUNDS)[number]) => {
+    const dose = draftDose[c.realId] ?? compoundExtras[c.realId]?.dose ?? "";
+    const source_type = draftSource[c.realId] ?? "label_dose";
+    addToStack({ compound_id: c.realId, compound_name: c.name, dose, source_type });
+  };
+
   const overallGrade = useMemo(() => gradeFor(imp.labs), [imp.labs]);
   const og = gradeMeta(overallGrade);
   const score = useMemo(() => healthScore(imp.labs), [imp.labs]);
@@ -343,8 +363,8 @@ export default function DigitalTwinPage() {
   const excludedFor = (realId: number) =>
     result?.excluded_priors?.find((e) => e.compound_id === realId)?.reason ?? null;
   const primaryOutcome =
-    selectedReal.map((c) => outcomeFor(c.realId)).find((o) => o && !o.distribution_void) ??
-    (selectedReal.length ? outcomeFor(selectedReal[0].realId) : null);
+    stackReal.map((s) => outcomeFor(s.def.realId)).find((o) => o && !o.distribution_void) ??
+    (stackReal.length ? outcomeFor(stackReal[0].def.realId) : null);
 
   const ageOptions = useMemo(
     () => Array.from(new Set([...AGE_PRESETS, patient.age])).sort((a, b) => a - b),
@@ -352,17 +372,19 @@ export default function DigitalTwinPage() {
   );
   const weightPct = Math.min(100, Math.max(0, (patient.weightKg / 300) * 100));
 
-  // Run the simulation through the backend /twin/simulate endpoint (full payload).
+  // Run the simulation over the user's STACK + the simulation controls.
   const handleRun = async () => {
-    if (!selectedReal.length) return;
+    if (!stackReal.length) return;
     setLoading(true);
     try {
+      // source for the run: a stacked non-label source (if any) or the controls' source.
+      const stackSource = stack.find((s) => s.source_type && s.source_type !== "label_dose")?.source_type;
       const data = await twinSimulate({
         user_ref: getUserRef(),
         patient: { age: patient.age, sex: patient.sex, weight_kg: patient.weightKg, conditions: patient.conditions },
-        compounds: selectedReal.map((c) => c.realId),
+        compounds: stackReal.map((s) => s.def.realId),
         tiers,
-        source_type: tiers.includes("quality") ? sourceType || "gray_market" : undefined,
+        source_type: tiers.includes("quality") ? sourceType || stackSource || "gray_market" : stackSource || undefined,
         n_draws: nDraws,
       });
       setResult(data);
@@ -473,66 +495,72 @@ export default function DigitalTwinPage() {
                 Compound
               </div>
               {DEMO_COMPOUNDS.map((c) => {
-                const sel = selectedCompounds.includes(c.id);
                 const ex = compoundExtras[c.realId];
+                const added = inStack(c.realId);
+                const dose = draftDose[c.realId] ?? ex?.dose ?? "";
+                const source = draftSource[c.realId] ?? "label_dose";
                 return (
-                  <div
-                    key={c.id}
-                    className={`rounded-xl transition-colors relative ${
-                      sel ? "border border-cyan-500 ring-1 ring-cyan-500" : "border border-zinc-700 hover:bg-zinc-800/30"
-                    }`}
-                  >
-                    <button type="button" onClick={() => toggleCompound(c.id)} aria-pressed={sel} className="w-full p-4 flex flex-col text-left">
-                      <span className={`absolute top-3 right-3 w-4 h-4 rounded border flex items-center justify-center ${sel ? "bg-cyan-500 border-cyan-500" : "border-zinc-600"}`}>
-                        {sel && <Icon icon="lucide:check" className="w-3 h-3 text-white" />}
-                      </span>
-                      <div className="flex items-center gap-3 mb-1 pr-6">
-                        <span className="text-[15px] font-medium text-zinc-100">{c.name}</span>
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded tracking-wider uppercase ${c.tagClass}`}>{c.tag}</span>
-                      </div>
-                      <div className="text-[13px] text-zinc-500">{c.desc}</div>
-                    </button>
-                    {sel && (
-                      <div className="px-4 pb-4 -mt-1 space-y-2">
-                        <div className="text-[12px] text-zinc-400 flex items-center gap-1.5">
-                          <Icon icon="lucide:pill" className="w-3.5 h-3.5 text-cyan-400" />
-                          Typical dose: <span className="text-zinc-200">{ex?.dose ?? "—"}</span>
+                  <div key={c.id} className={`rounded-xl border p-4 space-y-3 ${added ? "border-cyan-600/60 bg-cyan-950/10" : "border-zinc-700"}`}>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[15px] font-medium text-zinc-100">{c.name}</span>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded tracking-wider uppercase ${c.tagClass}`}>{c.tag}</span>
+                      {added && <span className="ml-auto text-[10px] text-cyan-300 flex items-center gap-1"><Icon icon="lucide:check" className="w-3 h-3" /> in stack</span>}
+                    </div>
+                    <div className="text-[13px] text-zinc-500">{c.desc}</div>
+
+                    {ex?.vendors && ex.vendors.length > 0 && (
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Where to get it</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {ex.vendors.map((v) => (
+                            <a key={v.name} href={v.url ?? "#"} target="_blank" rel="noopener noreferrer" className="text-[11px] px-2 py-1 rounded-lg border border-zinc-700 bg-zinc-950 text-cyan-300 hover:border-cyan-700 hover:bg-cyan-950/20 flex items-center gap-1">
+                              <Icon icon="lucide:external-link" className="w-3 h-3" />
+                              {v.name}
+                              {v.costPerVial ? <span className="text-zinc-500">${v.costPerVial}</span> : null}
+                            </a>
+                          ))}
                         </div>
-                        {ex?.vendors && ex.vendors.length > 0 && (
-                          <div>
-                            <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Where to get it</div>
-                            <div className="flex flex-wrap gap-1.5">
-                              {ex.vendors.map((v) => (
-                                <a
-                                  key={v.name}
-                                  href={v.url ?? "#"}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="text-[11px] px-2 py-1 rounded-lg border border-zinc-700 bg-zinc-950 text-cyan-300 hover:border-cyan-700 hover:bg-cyan-950/20 flex items-center gap-1"
-                                >
-                                  <Icon icon="lucide:external-link" className="w-3 h-3" />
-                                  {v.name}
-                                  {v.costPerVial ? <span className="text-zinc-500">${v.costPerVial}</span> : null}
-                                </a>
-                              ))}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     )}
+
+                    {/* dose + source inputs */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] text-zinc-500 mb-1 block">Dosage</label>
+                        <input
+                          value={dose}
+                          onChange={(e) => setDraftDose((d) => ({ ...d, [c.realId]: e.target.value }))}
+                          placeholder={ex?.dose ?? "e.g. 7.5mg"}
+                          className="w-full bg-[#0a0a0a] border border-zinc-700/80 rounded-lg py-1.5 px-2.5 text-sm text-zinc-200 outline-none focus:border-zinc-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-zinc-500 mb-1 block">Source</label>
+                        <select
+                          value={source}
+                          onChange={(e) => setDraftSource((d) => ({ ...d, [c.realId]: e.target.value }))}
+                          className="w-full bg-[#0a0a0a] border border-zinc-700/80 rounded-lg py-1.5 px-2 text-xs text-zinc-200 outline-none focus:border-zinc-500"
+                        >
+                          {SOURCE_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleAddToStack(c)}
+                      className={`w-full rounded-lg px-3 py-2 text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${
+                        added ? "bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700" : "bg-cyan-600 hover:bg-cyan-500 text-white"
+                      }`}
+                    >
+                      <Icon icon={added ? "lucide:refresh-cw" : "lucide:plus"} className="w-4 h-4" />
+                      {added ? "Update in Stack" : "Add to my Stack"}
+                    </button>
                   </div>
                 );
               })}
-              <button
-                type="button"
-                onClick={handleRun}
-                disabled={loading || selectedReal.length === 0}
-                className="w-full rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-3 text-sm font-semibold text-white flex items-center justify-center gap-2 transition-colors"
-              >
-                <Icon icon={loading ? "svg-spinners:180-ring" : "lucide:play"} />
-                {loading ? "Simulating…" : `See My Result${selectedReal.length > 1 ? ` (${selectedReal.length})` : ""}`}
-              </button>
             </div>
 
             {/* Simulation controls (from the Arena) */}
@@ -730,6 +758,38 @@ export default function DigitalTwinPage() {
                 )}
               </div>
 
+              {/* My Stack + Predict (right side) */}
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4">
+                <div className="text-[10px] font-semibold tracking-wider text-zinc-500 uppercase mb-2">My Stack</div>
+                {stackReal.length === 0 ? (
+                  <p className="text-xs text-zinc-500">Add compounds (with dose + source) on the left to build your stack.</p>
+                ) : (
+                  <div className="space-y-1.5 mb-3">
+                    {stackReal.map(({ item, def }) => (
+                      <div key={item.id} className="flex items-center gap-2 text-sm">
+                        <span className="text-zinc-200 font-medium">{def.name}</span>
+                        {item.dose && <span className="text-[11px] text-cyan-300">{item.dose}</span>}
+                        {item.source_type && item.source_type !== "label_dose" && (
+                          <span className="text-[10px] text-zinc-500">· {item.source_type.replace(/_/g, " ")}</span>
+                        )}
+                        <button type="button" onClick={() => removeFromStack(item.id)} className="ml-auto text-zinc-600 hover:text-rose-400">
+                          <Icon icon="lucide:x" className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleRun}
+                  disabled={loading || stackReal.length === 0}
+                  className="w-full rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-3 text-sm font-semibold text-white flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Icon icon={loading ? "svg-spinners:180-ring" : "lucide:sparkles"} />
+                  {loading ? "Predicting…" : `Predict my Result${stackReal.length > 1 ? ` (${stackReal.length})` : ""}`}
+                </button>
+              </div>
+
               {/* My Result — only after running */}
               {showResult && (
                 <div className="flex flex-col gap-3">
@@ -741,13 +801,13 @@ export default function DigitalTwinPage() {
                       </span>
                     )}
                   </div>
-                  {selectedReal.map((c) => (
+                  {stackReal.map(({ def }) => (
                     <ProjectedTrajectory
-                      key={c.id}
-                      outcome={outcomeFor(c.realId)}
+                      key={def.id}
+                      outcome={outcomeFor(def.realId)}
                       loading={loading}
-                      compoundName={c.name}
-                      excludedReason={excludedFor(c.realId)}
+                      compoundName={def.name}
+                      excludedReason={excludedFor(def.realId)}
                       baselineWeightKg={patient.weightKg}
                     />
                   ))}
