@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "../components/layout/AppShell";
 import { BodyVisualization } from "../components/twin/BodyVisualization";
 import { saveUserData } from "../lib/api";
@@ -104,10 +104,12 @@ function ProjectedTrajectory({
   outcome,
   loading,
   compoundName,
+  excludedReason,
 }: {
   outcome: OutcomeResult | null;
   loading: boolean;
   compoundName: string;
+  excludedReason?: string | null;
 }) {
   return (
     <div className="bg-zinc-800/30 border border-zinc-800/50 rounded-xl p-4">
@@ -121,6 +123,11 @@ function ProjectedTrajectory({
       {loading ? (
         <div className="text-sm text-zinc-400 flex items-center gap-2">
           <Icon icon="svg-spinners:180-ring" className="text-blue-400" /> Running Monte Carlo…
+        </div>
+      ) : excludedReason ? (
+        <div className="text-sm text-amber-300">
+          {compoundName} excluded — {excludedReason.replace(/_/g, " ")}. Patient is
+          outside the trial's eligibility window.
         </div>
       ) : !outcome ? (
         <div className="text-sm font-medium text-zinc-400">
@@ -175,12 +182,12 @@ export default function DigitalTwinPage() {
   useDocumentTitle("PepHouse | Digital Twin");
   const imp = useImport();
   const { result, loading, run } = useSimulation();
-  const [selectedCompound, setSelectedCompound] = useState<string>("tirzepatide");
+  const [selectedCompounds, setSelectedCompounds] = useState<string[]>(["tirzepatide"]);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   // Editable patient profile — seeded by DEMOGRAPHICS, overwritten by imports,
-  // editable by the user, and persisted to the user_profiles table.
+  // edited by the user, persisted to user_profiles via the explicit Save button.
   const [patient, setPatient] = useState<PatientInput>(DEMOGRAPHICS);
-  const saveTimer = useRef<number | undefined>(undefined);
 
   // Imported wearable profile flows into the editable demographics.
   useEffect(() => {
@@ -193,27 +200,46 @@ export default function DigitalTwinPage() {
     }));
   }, [imp.age, imp.sex, imp.weightKg, imp.conditions]);
 
-  // Edit a demographic field + debounce-save the profile (labs untouched).
+  // Local edit only — Save persists it.
   const editProfile = (partial: Partial<PatientInput>) => {
-    setPatient((prev) => {
-      const next = { ...prev, ...partial };
-      window.clearTimeout(saveTimer.current);
-      saveTimer.current = window.setTimeout(() => {
-        saveUserData(getUserRef(), {
-          age: next.age,
-          sex: next.sex,
-          weightKg: next.weightKg,
-          source: { kind: "reported", label: "Manual entry", at: new Date().toISOString() },
-        }).catch(() => {});
-      }, 600);
-      return next;
-    });
+    setPatient((prev) => ({ ...prev, ...partial }));
+    setSaveState("idle");
   };
 
-  const compound = DEMO_COMPOUNDS.find((c) => c.id === selectedCompound) ?? DEMO_COMPOUNDS[1];
+  // Explicit save -> POST /users/{ref}/data (labs untouched on a profile save).
+  const handleSave = async () => {
+    setSaveState("saving");
+    try {
+      await saveUserData(getUserRef(), {
+        age: patient.age,
+        sex: patient.sex,
+        weightKg: patient.weightKg,
+        conditions: patient.conditions,
+        source: { kind: "reported", label: "Manual entry", at: new Date().toISOString() },
+      });
+      setSaveState("saved");
+      window.setTimeout(() => setSaveState("idle"), 2000);
+    } catch {
+      setSaveState("error");
+    }
+  };
+
+  const toggleCompound = (id: string) =>
+    setSelectedCompounds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  const selectedReal = DEMO_COMPOUNDS.filter((c) => selectedCompounds.includes(c.id));
   const overallGrade = useMemo(() => gradeFor(imp.labs), [imp.labs]);
   const og = gradeMeta(overallGrade);
-  const weightOutcome = result?.outcomes.find((o) => o.outcome_name === "weight_change_pct") ?? null;
+
+  // Per-compound weight outcome / exclusion from the (possibly multi-compound) run.
+  const outcomeFor = (realId: number) =>
+    result?.outcomes.find((o) => o.compound_id === realId && o.outcome_name === "weight_change_pct") ?? null;
+  const excludedFor = (realId: number) =>
+    result?.excluded_priors?.find((e) => e.compound_id === realId)?.reason ?? null;
+  // Prefer a real (non-void) outcome for the headline P metric.
+  const primaryOutcome =
+    selectedReal.map((c) => outcomeFor(c.realId)).find((o) => o && !o.distribution_void) ??
+    (selectedReal.length ? outcomeFor(selectedReal[0].realId) : null);
 
   const ageOptions = useMemo(
     () => Array.from(new Set([...AGE_PRESETS, patient.age])).sort((a, b) => a - b),
@@ -221,7 +247,10 @@ export default function DigitalTwinPage() {
   );
   const weightPct = Math.min(100, Math.max(0, (patient.weightKg / 300) * 100));
 
-  const handleRun = () => run(compound.realId, patient, { tiers: ["trial"] });
+  const handleRun = () => {
+    if (!selectedReal.length) return;
+    run(selectedReal.map((c) => c.realId), patient, { tiers: ["trial"] });
+  };
   // Link Data → actually pull bloodwork (populates the biomarkers below) and
   // kick off the wearable connect (Junction Link) if not already linked.
   const handleLinkData = () => {
@@ -285,6 +314,36 @@ export default function DigitalTwinPage() {
                   style={{ background: `linear-gradient(to right, #3b82f6 ${weightPct}%, #27272a ${weightPct}%)` }}
                 />
               </div>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saveState === "saving"}
+                className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 ${
+                  saveState === "saved"
+                    ? "bg-emerald-600/90 text-white"
+                    : saveState === "error"
+                      ? "bg-amber-600/90 text-white"
+                      : "bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700"
+                }`}
+              >
+                <Icon
+                  icon={
+                    saveState === "saving"
+                      ? "svg-spinners:180-ring"
+                      : saveState === "saved"
+                        ? "lucide:check"
+                        : "lucide:save"
+                  }
+                  className="w-4 h-4"
+                />
+                {saveState === "saving"
+                  ? "Saving…"
+                  : saveState === "saved"
+                    ? "Saved to profile"
+                    : saveState === "error"
+                      ? "Retry save"
+                      : "Save to profile"}
+              </button>
             </div>
 
             {/* Compound */}
@@ -294,17 +353,25 @@ export default function DigitalTwinPage() {
                 Compound
               </div>
               {DEMO_COMPOUNDS.map((c) => {
-                const sel = selectedCompound === c.id;
+                const sel = selectedCompounds.includes(c.id);
                 return (
                   <button
                     key={c.id}
                     type="button"
-                    onClick={() => setSelectedCompound(c.id)}
-                    className={`bg-transparent rounded-xl p-4 flex flex-col text-left transition-colors ${
+                    onClick={() => toggleCompound(c.id)}
+                    aria-pressed={sel}
+                    className={`bg-transparent rounded-xl p-4 flex flex-col text-left transition-colors relative ${
                       sel ? "border border-blue-500 ring-1 ring-blue-500" : "border border-zinc-700 hover:bg-zinc-800/30"
                     }`}
                   >
-                    <div className="flex items-center gap-3 mb-1">
+                    <span
+                      className={`absolute top-3 right-3 w-4 h-4 rounded border flex items-center justify-center ${
+                        sel ? "bg-blue-500 border-blue-500" : "border-zinc-600"
+                      }`}
+                    >
+                      {sel && <Icon icon="lucide:check" className="w-3 h-3 text-white" />}
+                    </span>
+                    <div className="flex items-center gap-3 mb-1 pr-6">
                       <span className="text-[15px] font-medium text-zinc-100">{c.name}</span>
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded tracking-wider uppercase ${c.tagClass}`}>
                         {c.tag}
@@ -317,17 +384,20 @@ export default function DigitalTwinPage() {
               <div className="flex items-start gap-2.5 mt-1">
                 <Icon icon="lucide:info" className="w-[15px] h-[15px] text-zinc-500 shrink-0 mt-0.5" />
                 <span className="text-[13px] text-zinc-500 leading-snug">
-                  Try Tirzepatide (trial curve) vs BPC-157 (void). Age 10 → excluded.
+                  Select one or more to stack. {selectedReal.length} selected · Tirzepatide
+                  (trial curve) vs BPC-157 (void); age 10 → excluded.
                 </span>
               </div>
               <button
                 type="button"
                 onClick={handleRun}
-                disabled={loading}
+                disabled={loading || selectedReal.length === 0}
                 className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-3 text-sm font-semibold text-white flex items-center justify-center gap-2 transition-colors"
               >
                 <Icon icon={loading ? "svg-spinners:180-ring" : "lucide:play"} />
-                {loading ? "Simulating…" : "Run Simulation"}
+                {loading
+                  ? "Simulating…"
+                  : `Run Simulation${selectedReal.length > 1 ? ` (${selectedReal.length})` : ""}`}
               </button>
             </div>
           </div>
@@ -445,7 +515,34 @@ export default function DigitalTwinPage() {
                 </div>
               </div>
 
-              <ProjectedTrajectory outcome={weightOutcome} loading={loading} compoundName={compound.name} />
+              {/* My result — one trajectory per selected compound */}
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold tracking-wider text-zinc-500 uppercase">
+                    My Result
+                  </span>
+                  {result && !loading && (
+                    <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+                      <Icon icon="lucide:check" className="w-3 h-3" /> simulation complete
+                    </span>
+                  )}
+                </div>
+                {selectedReal.length === 0 ? (
+                  <div className="bg-zinc-800/30 border border-zinc-800/50 rounded-xl p-4 text-sm text-zinc-400">
+                    Select a compound on the left, then Run Simulation.
+                  </div>
+                ) : (
+                  selectedReal.map((c) => (
+                    <ProjectedTrajectory
+                      key={c.id}
+                      outcome={outcomeFor(c.realId)}
+                      loading={loading}
+                      compoundName={c.name}
+                      excludedReason={excludedFor(c.realId)}
+                    />
+                  ))
+                )}
+              </div>
 
               <div className="flex gap-3">
                 <MetricChip icon="lucide:users" label="Cohort match" value={result ? (result.cohort_n === 0 ? "No match" : `${result.cohort_n}`) : "—"} />
@@ -453,7 +550,7 @@ export default function DigitalTwinPage() {
                 <MetricChip
                   icon="lucide:bar-chart-2"
                   label="P(≥15% loss)"
-                  value={weightOutcome?.prob_threshold != null ? `${Math.round(weightOutcome.prob_threshold * 100)}%` : "—"}
+                  value={primaryOutcome?.prob_threshold != null ? `${Math.round(primaryOutcome.prob_threshold * 100)}%` : "—"}
                 />
               </div>
 

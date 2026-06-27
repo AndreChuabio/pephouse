@@ -9,15 +9,16 @@ export function useSimulation() {
 
   const run = useCallback(
     async (
-      compoundId: number,
+      compoundId: number | number[],
       patient: { age: number; sex: "M" | "F"; weightKg: number },
       options?: { sourceType?: string; liveCohort?: boolean; nDraws?: number; tiers?: string[] },
     ) => {
       setLoading(true);
       setError(null);
       try {
+        const ids = Array.isArray(compoundId) ? compoundId : [compoundId];
         const data = await postSimulate({
-          compounds: [{ compound_id: compoundId }],
+          compounds: ids.map((id) => ({ compound_id: id })),
           patient: {
             age: patient.age,
             sex: patient.sex,

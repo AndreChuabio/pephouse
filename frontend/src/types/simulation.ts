@@ -49,7 +49,7 @@ export type Demographics = {
 
 // ---- Patient data import (Junction wearable + bloodwork) ----
 
-export type ImportKind = "device" | "bloodwork" | "upload";
+export type ImportKind = "device" | "bloodwork" | "upload" | "reported";
 
 export type ImportSource = {
   kind: ImportKind;
