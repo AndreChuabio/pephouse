@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import db
 import modules
 import runs
+import summaries
 import tiers
 import user_data
 from evidence import build_simulation_data
@@ -61,6 +62,20 @@ def get_compound(compound_id: int) -> dict:
 def get_evidence(compound_id: int) -> dict:
     """Tier-1 evidence bundle the grader is allowed to cite."""
     return db.get_evidence(compound_id)
+
+
+@app.get("/evidence/summary")
+def evidence_summary(nct: str | None = None, pmid: str | None = None, llm: bool = False) -> dict:
+    """Tight summary of one evidence item for the Sim 2 side panel.
+
+    `?nct=NCT...` for a trial or `?pmid=...` for a paper. Structured/instant by
+    default; `&llm=true` condenses the live CT.gov/PubMed text with Claude
+    (needs ANTHROPIC_API_KEY on the backend, else it falls back to structured).
+    """
+    result = summaries.summarize(nct=nct, pmid=pmid, llm=llm)
+    if result is None:
+        raise HTTPException(status_code=400, detail="provide nct or pmid")
+    return result
 
 
 @app.get("/interactions", response_model=InteractionsResponse)
