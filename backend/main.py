@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 import db
+import runs
 from evidence import build_simulation_data
 from models import SimulateRequest, SimulateResponse, SimulationDataResponse
 from twin_engine import run_simulation
@@ -90,6 +91,21 @@ def simulate(body: SimulateRequest) -> SimulateResponse:
         source_type=body.source_type,
         live_cohort=body.live_cohort,
     )
+
+
+@app.get("/runs")
+def list_runs(limit: int = 20) -> list[dict]:
+    """Most-recent simulation runs (for the recent-runs list)."""
+    return runs.get_recent_runs(limit)
+
+
+@app.get("/runs/{run_id}")
+def get_run(run_id: int) -> dict:
+    """One saved run by id, including its live-generated cohort."""
+    record = runs.get_run(run_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    return record
 
 
 # TODO(grader): POST /grade -> score a clinician transcript against get_evidence()

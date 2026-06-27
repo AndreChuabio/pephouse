@@ -85,6 +85,7 @@ class SimulateResponse(BaseModel):
     excluded_priors: list[ExcludedPrior] = Field(default_factory=list)
     anecdotes: list[AnecdoteSnippet] = Field(default_factory=list)
     data_confidence: str
+    run_id: int | None = None  # persisted simulation_runs row, for recall / recent list
 
 
 class EvidenceSource(BaseModel):

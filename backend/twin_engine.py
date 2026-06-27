@@ -7,6 +7,7 @@ import time
 import numpy as np
 
 import db
+import runs
 import synthea_live
 from models import (
     AnecdoteSnippet,
@@ -295,7 +296,7 @@ def run_simulation(
     has_trial = any(o.trial_backed and not o.distribution_void for o in result_outcomes)
     data_confidence = "High" if has_trial and not substrate_missing else "Low"
 
-    return SimulateResponse(
+    response = SimulateResponse(
         cohort_n=cohort_n,
         cohort_source=cohort_source,
         cohort_gen_ms=cohort_gen_ms,
@@ -307,6 +308,22 @@ def run_simulation(
         anecdotes=anecdotes,
         data_confidence=data_confidence,
     )
+
+    # Persist the run (best-effort). Save the live-generated bodies only.
+    response.run_id = runs.save_run(
+        compound_id=compounds[0].compound_id if compounds else None,
+        patient=patient.model_dump(),
+        source_type=source_type,
+        n_draws=n_draws,
+        live_cohort=live_cohort,
+        cohort_source=cohort_source,
+        cohort_n=cohort_n,
+        cohort_gen_ms=cohort_gen_ms,
+        data_confidence=data_confidence,
+        outcomes=[o.model_dump() for o in result_outcomes],
+        cohort=cohort if cohort_source == "synthea_live" else None,
+    )
+    return response
 
 
 def _anecdote_snippets(compound_id: int, limit: int = 5) -> list[AnecdoteSnippet]:
