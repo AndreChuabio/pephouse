@@ -408,7 +408,7 @@ async def get_wearable_metrics(user_ref: str) -> dict:
         "mocked": mocked,
         "source": {
             "kind": "device",
-            "label": f"Wearable{' (demo)' if mocked else f' · {provider or 'linked'}'}",
+            "label": "Wearable (demo)" if mocked else f"Wearable · {provider or 'linked'}",
             "at": _now_iso(),
         },
     }
