@@ -153,41 +153,33 @@ export function useImport() {
       let res = await importWearable(getUserRef());
 
       if (res.mocked) {
-        // 2) open Junction Link (keep the handle so we can close it on success).
-        let popup: Window | null = null;
+        // 2) open Junction Link in a new tab. We do NOT close it — the user
+        //    needs time to log in to their provider (Garmin/Oura/…); they can
+        //    close it themselves once it says "Success".
         try {
           const { link_url } = await importLink(getUserRef());
-          popup = window.open(link_url, "junctionLink");
+          window.open(link_url, "_blank", "noopener,noreferrer");
         } catch {
           /* link unavailable — keep the mock fallback below */
         }
         cancelled.current = false;
-        // 3) poll for the provider to finish linking (~2min ceiling).
-        let linked = false;
-        for (let i = 0; i < 48; i++) {
+        // 3) poll for the provider to finish linking (~3min ceiling), then pull.
+        for (let i = 0; i < 72; i++) {
           await sleep(POLL_INTERVAL_MS);
           if (cancelled.current) break;
           try {
             const r = await importProfile(getUserRef());
             if (r.connected) {
-              linked = true;
+              // provider linked — pull; retry a few times while data backfills.
+              res = await importWearable(getUserRef());
+              for (let j = 0; j < 4 && res.mocked; j++) {
+                await sleep(POLL_INTERVAL_MS);
+                res = await importWearable(getUserRef());
+              }
               break;
             }
           } catch {
             /* keep polling */
-          }
-        }
-        if (linked) {
-          try {
-            popup?.close();
-          } catch {
-            /* cross-origin close best-effort */
-          }
-          // 4) provider linked — pull; a few retries while data backfills.
-          res = await importWearable(getUserRef());
-          for (let i = 0; i < 4 && res.mocked; i++) {
-            await sleep(POLL_INTERVAL_MS);
-            res = await importWearable(getUserRef());
           }
         }
       }

@@ -65,12 +65,6 @@ const DEMO_COMPOUNDS = [
 ] as const;
 
 const AGE_PRESETS = [10, 25, 35, 45, 55, 65, 75];
-const TIER_OPTIONS = [
-  { key: "trial", label: "Trial" },
-  { key: "quality", label: "Quality (source)" },
-  { key: "anecdote", label: "Anecdote" },
-  { key: "synthetic", label: "Synthetic (live)" },
-];
 
 function Sparkline({ tone }: { tone: string }) {
   const bars = [2, 3, 4, 5, 6];
@@ -294,11 +288,9 @@ export default function DigitalTwinPage() {
   const [draftSource, setDraftSource] = useState<Record<number, string>>({});
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
-  // Simulation controls (brought over from the Arena).
-  const [tiers, setTiers] = useState<string[]>(["trial"]);
-  const toggleTier = (k: string) => setTiers((ts) => (ts.includes(k) ? ts.filter((x) => x !== k) : [...ts, k]));
-  const [sourceType, setSourceType] = useState("");
-  const [nDraws, setNDraws] = useState(5000);
+  // Simulation defaults (controls UI removed; per-compound source comes from the stack).
+  const tiers = ["trial"];
+  const nDraws = 5000;
 
   // Simulation result — only populated after Run.
   const [result, setResult] = useState<SimulateResponse | null>(null);
@@ -377,14 +369,14 @@ export default function DigitalTwinPage() {
     if (!stackReal.length) return;
     setLoading(true);
     try {
-      // source for the run: a stacked non-label source (if any) or the controls' source.
+      // source for the run comes from the stack (per-compound "where it's from").
       const stackSource = stack.find((s) => s.source_type && s.source_type !== "label_dose")?.source_type;
       const data = await twinSimulate({
         user_ref: getUserRef(),
         patient: { age: patient.age, sex: patient.sex, weight_kg: patient.weightKg, conditions: patient.conditions },
         compounds: stackReal.map((s) => s.def.realId),
         tiers,
-        source_type: tiers.includes("quality") ? sourceType || stackSource || "gray_market" : stackSource || undefined,
+        source_type: stackSource || undefined,
         n_draws: nDraws,
       });
       setResult(data);
@@ -561,58 +553,6 @@ export default function DigitalTwinPage() {
                   </div>
                 );
               })}
-            </div>
-
-            {/* Simulation controls (from the Arena) */}
-            <div className="bg-[#121214]/50 border border-zinc-800 rounded-2xl p-5 space-y-4">
-              <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-widest flex items-center gap-2">
-                <Icon icon="lucide:sliders-horizontal" /> Simulation Controls
-              </h3>
-              <div>
-                <label className="text-[12px] text-zinc-500">Data tiers (what feeds the twin)</label>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {TIER_OPTIONS.map((t) => {
-                    const on = tiers.includes(t.key);
-                    return (
-                      <button
-                        key={t.key}
-                        type="button"
-                        onClick={() => toggleTier(t.key)}
-                        aria-pressed={on}
-                        className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${on ? "bg-cyan-500/20 border-cyan-500/50 text-cyan-200" : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-600"}`}
-                      >
-                        {t.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-[10px] text-zinc-600 mt-1">Anecdote widens the band + lowers confidence. Synthetic = live Synthea cohort (~7s).</p>
-              </div>
-              <div>
-                <label className="text-[12px] text-zinc-500">Source (where you bought it)</label>
-                <select
-                  value={sourceType}
-                  onChange={(e) => setSourceType(e.target.value)}
-                  className="mt-1 w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200"
-                >
-                  <option value="">Label dose (no source modeling)</option>
-                  <option value="compounding_pharmacy">Compounding pharmacy (clean)</option>
-                  <option value="vendor_tested">Gray-market, lab-tested</option>
-                  <option value="gray_market">Gray-market, untested (China)</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-[12px] text-zinc-500">Monte Carlo draws (statistical samples, not patients)</label>
-                <select
-                  value={nDraws}
-                  onChange={(e) => setNDraws(Number(e.target.value))}
-                  className="mt-1 w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200"
-                >
-                  <option value={1000}>1,000 runs (fast)</option>
-                  <option value={5000}>5,000 runs (default)</option>
-                  <option value={20000}>20,000 runs (smooth tails)</option>
-                </select>
-              </div>
             </div>
           </div>
         </div>

@@ -1,7 +1,6 @@
-// Digital-twin body. Prefers a real anatomical render dropped at
-// public/twin-body.png — its dark background is removed for free via
-// mix-blend-mode:screen on the dark dashboard. Falls back to the holographic
-// SVG figure when the image isn't present.
+// Digital-twin body. Prefers a real anatomical render at public/twin-body.png
+// (a transparent PNG), falling back to the holographic SVG figure when the
+// image isn't present.
 
 import { useState } from "react";
 
@@ -21,7 +20,6 @@ export function BodyVisualization({ active }: BodyVisualizationProps) {
           onError={() => setImageOk(false)}
           className="h-[600px] w-auto object-contain relative z-10 transition-all duration-700"
           style={{
-            mixBlendMode: "screen", // drops the image's black background
             filter: active ? "drop-shadow(0 0 14px rgba(56,189,248,0.5))" : "grayscale(0.7) brightness(0.55)",
             opacity: active ? 1 : 0.6,
           }}
