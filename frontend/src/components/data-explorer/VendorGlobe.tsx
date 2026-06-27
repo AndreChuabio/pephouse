@@ -377,34 +377,37 @@ export function VendorGlobe({ vendors, compoundName }: { vendors: Vendor[]; comp
         </div>
 
         <div className="border-t md:border-t-0 md:border-l border-zinc-800/60 p-3 space-y-1 max-h-[380px] overflow-y-auto">
-          <p className="text-[10px] uppercase tracking-widest text-zinc-600 px-1 pb-1">origins</p>
-          {byCountry.length === 0 ? (
+          <p className="text-[10px] uppercase tracking-widest text-zinc-600 px-1 pb-1">Vendors &amp; Sellers</p>
+          {vendors.length === 0 ? (
             <p className="text-xs text-zinc-600 italic px-1">none</p>
           ) : (
-            byCountry.map((c) => {
-              const isActive = activeCountry === c.display;
+            vendors.map((v) => {
+              const country = v.country?.trim();
+              const isActive = !!country && activeCountry === country;
               return (
                 <button
-                  key={c.display}
+                  key={v.id ?? v.name ?? Math.random()}
                   type="button"
-                  onClick={() => setActiveCountry(isActive ? null : c.display)}
-                  className={`w-full flex items-center justify-between text-xs px-1.5 py-1 rounded text-left transition-colors ${
+                  onClick={() => country && setActiveCountry(isActive ? null : country)}
+                  className={`w-full flex items-center justify-between gap-2 text-xs px-1.5 py-1 rounded text-left transition-colors ${
                     isActive ? "bg-emerald-500/10 ring-1 ring-emerald-400/30" : "hover:bg-zinc-800/80"
                   }`}
                 >
                   <span className="flex items-center gap-2 min-w-0">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/80 shrink-0" />
                     <span className={`truncate ${isActive ? "text-emerald-300" : "text-zinc-300"}`}>
-                      {c.display}
+                      {v.name ?? "unknown vendor"}
                     </span>
                   </span>
-                  <span className="font-mono text-zinc-500 shrink-0">{c.count}</span>
+                  <span className="text-[10px] font-mono text-zinc-500 shrink-0 uppercase tracking-wider">
+                    {country ?? "—"}
+                  </span>
                 </button>
               );
             })
           )}
           {unmapped > 0 && (
-            <p className="text-[10px] text-zinc-600 italic px-1 pt-1">+{unmapped} unmapped</p>
+            <p className="text-[10px] text-zinc-600 italic px-1 pt-1">+{unmapped} country unmapped on globe</p>
           )}
         </div>
       </div>
