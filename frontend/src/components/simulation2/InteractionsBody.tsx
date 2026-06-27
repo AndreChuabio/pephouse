@@ -24,8 +24,6 @@ function severityClasses(s: InteractionSeverity) {
 }
 
 function sourceLabel(kind: InteractionPair["source_kind"]): string {
-  if (kind === "fda_label") return "FDA label";
-  if (kind === "fda_label_live") return "FDA label (live)";
   if (kind === "drugbank_pubchem") return "DrugBank (live)";
   if (kind === "curated") return "curated";
   if (kind === "mechanistic") return "mechanistic";
@@ -40,7 +38,11 @@ export function InteractionsBody({
   onTogglePair,
 }: InteractionsBodyProps) {
   if (loading && pairs.length === 0) {
-    return <p className="text-[11px] text-zinc-600 italic">Checking interactions…</p>;
+    return (
+      <p className="text-[11px] text-zinc-600 italic">
+        Checking ~2.85M DrugBank pairs (via PubChem)…
+      </p>
+    );
   }
   if (error) {
     return (
@@ -57,9 +59,30 @@ export function InteractionsBody({
     );
   }
 
+  const documented = pairs.filter((p) => p.source_kind !== "no_data");
+  if (documented.length === 0) {
+    return (
+      <div className="text-[11px] text-zinc-400 bg-amber-500/5 border border-amber-500/20 rounded-md px-3 py-2.5 leading-relaxed space-y-1">
+        <div className="flex items-center gap-1.5 text-amber-400 font-medium">
+          <Icon icon="solar:danger-triangle-linear" className="text-sm" />
+          No documented interactions for this stack.
+        </div>
+        <p>
+          Checked {pairs.length} pair{pairs.length === 1 ? "" : "s"} against{" "}
+          <span className="text-zinc-300">~2.85M DrugBank rows</span> (via PubChem) — none
+          cite this combination.
+        </p>
+        <p className="text-zinc-500">
+          For research peptides, this usually means absence of public evidence, not
+          absence of risk. Curate cautiously.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <ul className="space-y-2">
-      {pairs.map((p) => {
+      {pairs.filter((p) => p.source_kind !== "no_data").map((p) => {
         const key = pairKey(p);
         const isExcluded = !!excluded[key];
         return (

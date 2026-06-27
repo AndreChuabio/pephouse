@@ -255,15 +255,13 @@ export default function Simulation2Page() {
     });
   }, [compoundIds, profileBySlug]);
 
-  // Interactions node only appears when we have at least one DOCUMENTED pair
-  // (i.e. the backend returned a row that isn't a no_data placeholder). With
-  // <2 compounds, or while the fetch is still in flight, or when every pair
-  // is no_data, the node stays out of the chain.
+  // Interactions node present iff >=2 compounds. The card body explains
+  // honestly whether anything was documented after the live lookup runs.
   useEffect(() => {
-    const hasDocumented = interactions.pairs.some((p) => p.source_kind !== "no_data");
+    const wantsInteractions = compoundIds.length >= 2;
     setNodes((prev) => {
       const hasNode = prev.some((n) => n.type === "interactions");
-      if (hasDocumented && !hasNode) {
+      if (wantsInteractions && !hasNode) {
         const compoundIdx = prev.findIndex((n) => n.type === "compound");
         const insertAt = compoundIdx === -1 ? 0 : compoundIdx + 1;
         return [
@@ -272,12 +270,12 @@ export default function Simulation2Page() {
           ...prev.slice(insertAt),
         ];
       }
-      if (!hasDocumented && hasNode) {
+      if (!wantsInteractions && hasNode) {
         return prev.filter((n) => n.type !== "interactions");
       }
       return prev;
     });
-  }, [interactions.pairs]);
+  }, [compoundIds]);
 
   useEffect(() => {
     if (!searchQuery.trim()) return;
