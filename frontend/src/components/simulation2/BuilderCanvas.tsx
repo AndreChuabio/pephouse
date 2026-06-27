@@ -483,21 +483,27 @@ function SourceBody({
                     <code className="text-zinc-200">{m.outcome_name}</code>
                     <span className="text-zinc-600"> · module #{m.id}</span>
                   </div>
-                  <ModuleGraph states={m.module.states} />
-                  <details>
-                    <summary className="cursor-pointer text-[9px] uppercase tracking-widest text-zinc-500 hover:text-zinc-200 select-none">
-                      State inspector
-                    </summary>
-                    <div className="mt-1.5">
-                      <ModuleStateInspector states={m.module.states} />
-                    </div>
-                  </details>
-                  {m.module.remarks && m.module.remarks.length > 0 && (
-                    <ul className="text-[9px] text-zinc-500 pl-3 list-disc space-y-0.5">
-                      {m.module.remarks.map((r, i) => (
-                        <li key={i}>{r}</li>
-                      ))}
-                    </ul>
+                  {m.module ? (
+                    <>
+                      <ModuleGraph states={m.module.states ?? {}} />
+                      <details>
+                        <summary className="cursor-pointer text-[9px] uppercase tracking-widest text-zinc-500 hover:text-zinc-200 select-none">
+                          State inspector
+                        </summary>
+                        <div className="mt-1.5">
+                          <ModuleStateInspector states={m.module.states ?? {}} />
+                        </div>
+                      </details>
+                      {m.module.remarks && m.module.remarks.length > 0 && (
+                        <ul className="text-[9px] text-zinc-500 pl-3 list-disc space-y-0.5">
+                          {m.module.remarks.map((r, i) => (
+                            <li key={i}>{r}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-[9px] text-zinc-600">Module JSON unavailable.</div>
                   )}
                 </div>
               ))}
