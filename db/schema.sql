@@ -36,6 +36,9 @@ create table if not exists trials (
   tier          data_tier default 'tier1_evidence'
 );
 
+-- nct_id is globally unique; lets trial ingestion be idempotent
+create unique index if not exists trials_nct_id_key on trials (nct_id);
+
 create table if not exists evidence_facts (
   id            bigint generated always as identity primary key,
   compound_id   bigint references compounds(id) on delete cascade,

@@ -4,6 +4,8 @@ Uses the service_role key, so this must only ever run server-side.
 The frontend talks to Supabase directly with the anon key instead.
 """
 
+from __future__ import annotations
+
 import os
 
 from dotenv import load_dotenv

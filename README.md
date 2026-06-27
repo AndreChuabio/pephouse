@@ -47,8 +47,19 @@ uvicorn main:app --reload
 ### Frontend
 Lovable export drops into `frontend/`. Use the Supabase `anon` key only.
 
+## Populating the registry (current task)
+
+Split by tier so nobody collides. The compound spine (12 compounds) is already seeded; everyone references compounds by name.
+
+- **Tier 1 (evidence) — Andre.** `python3 scripts/ingest_clinicaltrials.py > trials.sql`, paste into SQL Editor. Already loaded (~71 real trials). Next: openFDA + the verified `evidence_facts`.
+- **Tier 2 (quality) — Kien.** Finnrick + vendor scrape into `vendor_lab_results` (purity, label-vs-actual mg, batch variance).
+- **Tier 3 (anecdote) — Nikki.** Reddit JSON into `anecdotes` (body, claimed_effect, sentiment). Seeds personas only.
+- **Tier 4 (synthetic).** Synthea into `synthetic_patients`. Whoever finishes first.
+
+Add new ingestion scripts under `scripts/` that print idempotent SQL (`... on conflict do nothing`), the same pattern as `ingest_clinicaltrials.py`.
+
 ## Secrets
-`.env` is gitignored. The `service_role` key lives ONLY in `backend/.env`, never in the frontend.
+`.env` is gitignored. The `service_role` / secret key lives ONLY in `backend/.env`, never in the frontend.
 
 ## Ownership
 - Twin engine + sim — Andre

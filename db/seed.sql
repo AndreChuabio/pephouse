@@ -7,8 +7,28 @@ insert into compounds (name, aliases, drug_class, fda_status, approved, summary)
 ('Semaglutide', '{Wegovy,Ozempic}', 'GLP-1 receptor agonist', 'approved', true,
  'FDA-approved. Robust RCT base (SELECT). The benchmark every meme peptide is measured against.'),
 ('Tirzepatide', '{Mounjaro,Zepbound}', 'GLP-1/GIP agonist', 'approved', true,
- 'FDA-approved. Outperformed semaglutide head-to-head (SURMOUNT-5).')
+ 'FDA-approved. Outperformed semaglutide head-to-head (SURMOUNT-5).'),
+('TB-500', '{Thymosin beta-4,TB4}', 'peptide fragment', 'research_only', false,
+ 'Tissue-repair peptide. Only tiny early-phase ophthalmic trials; not approved. WADA-banned.'),
+('Ipamorelin', '{}', 'growth hormone secretagogue', 'research_only', false,
+ 'GH secretagogue. No registered human efficacy trials surfaced; not approved. WADA-banned (S2).'),
+('CJC-1295', '{CJC1295,DAC:GRF}', 'GHRH analogue', 'research_only', false,
+ 'GHRH analogue, often stacked with ipamorelin. Not approved. WADA-banned (S2).'),
+('Thymosin alpha-1', '{Thymalfasin,Zadaxin}', 'immunomodulatory peptide', 'research_only', false,
+ 'Approved in several countries (Zadaxin) but not FDA-approved. Phase 3 sepsis trial (TESTS) was negative.'),
+('Tesamorelin', '{Egrifta}', 'GHRH analogue', 'approved', true,
+ 'FDA-approved (Egrifta) for HIV lipodystrophy. Raises IGF-1 within normal range; no glycemic worsening.'),
+('Melanotan II', '{MT-II,MT2}', 'melanocortin agonist', 'research_only', false,
+ 'Tanning/libido peptide with documented harms (nausea, priapism, mole darkening). Not approved.'),
+('GHK-Cu', '{Copper peptide}', 'copper-binding peptide', 'research_only', false,
+ 'Copper tripeptide marketed cosmetically. Not approved as a drug for systemic use.'),
+('Sermorelin', '{Geref}', 'GHRH analogue', 'research_only', false,
+ 'Former FDA-approved GHRH analogue (Geref), withdrawn from US market; now compounded/research use.'),
+('Retatrutide', '{LY3437943}', 'GLP-1/GIP/glucagon agonist', 'research_only', false,
+ 'Investigational triple agonist (Eli Lilly). In Phase 3; not yet approved.')
 on conflict (name) do nothing;
+
+-- Tier-1 trials are loaded by scripts/ingest_clinicaltrials.py (real CT.gov data).
 
 insert into trials (compound_id, nct_id, phase, indication, status, n_enrolled, efficacy_summary, source_url) values
 ((select id from compounds where name='BPC-157'), 'NCT07437547', 'Phase 2', 'Grade II hamstring strain', 'recruiting (Feb 2026)', 120, 'First efficacy trial; no results yet', 'https://clinicaltrials.gov/study/NCT07437547'),
