@@ -15,6 +15,7 @@ type ReportPanelProps = {
   onOpenBreakdown: () => void;
   open: boolean;
   onToggleOpen: () => void;
+  chainReady: boolean;
 };
 
 function confidenceColor(level: SimulationSnapshot["confidenceLevel"]) {
@@ -31,6 +32,7 @@ export function ReportPanel({
   onOpenBreakdown,
   open,
   onToggleOpen,
+  chainReady,
 }: ReportPanelProps) {
   if (!open) {
     return (
@@ -43,17 +45,19 @@ export function ReportPanel({
         >
           <Icon icon="solar:alt-arrow-left-linear" className="text-sm" />
         </button>
-        <div className="mt-4 flex flex-col items-center gap-2">
-          <Icon icon="solar:chart-2-linear" className="text-zinc-500 text-base" />
-          <span
-            className={cn(
-              "text-[10px] font-mono font-medium",
-              confidenceColor(snapshot.confidenceLevel),
-            )}
-          >
-            {snapshot.confidenceScore}%
-          </span>
-        </div>
+        {chainReady && (
+          <div className="mt-4 flex flex-col items-center gap-2">
+            <Icon icon="solar:chart-2-linear" className="text-zinc-500 text-base" />
+            <span
+              className={cn(
+                "text-[10px] font-mono font-medium",
+                confidenceColor(snapshot.confidenceLevel),
+              )}
+            >
+              {snapshot.confidenceScore}%
+            </span>
+          </div>
+        )}
         <div
           className="mt-3 text-[10px] uppercase tracking-widest text-zinc-600"
           style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
@@ -61,6 +65,33 @@ export function ReportPanel({
           Projection Report
         </div>
       </aside>
+    );
+  }
+
+  if (!chainReady) {
+    return (
+      <div className="w-96 bg-[#121212] border-l border-zinc-800 flex flex-col shrink-0 z-20 min-h-0">
+        <div className="p-6 border-b border-zinc-800/50 shrink-0 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-xs text-zinc-500 uppercase tracking-widest font-medium mb-1">Generated Output</h3>
+            <h2 className="text-lg font-medium tracking-tight text-zinc-100">Projection Report</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onToggleOpen}
+            className="w-7 h-7 rounded hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-100 shrink-0"
+            title="Collapse report"
+          >
+            <Icon icon="solar:alt-arrow-right-linear" className="text-sm" />
+          </button>
+        </div>
+        <div className="flex-1 p-6 flex flex-col items-center justify-center text-center gap-3">
+          <Icon icon="solar:test-tube-linear" className="text-zinc-700 text-3xl" />
+          <p className="text-xs text-zinc-500 max-w-[240px] leading-relaxed">
+            Pick a compound and at least one evidence source in the chain to generate a projection.
+          </p>
+        </div>
+      </div>
     );
   }
   const opacity = barOpacity(snapshot.confidenceScore);

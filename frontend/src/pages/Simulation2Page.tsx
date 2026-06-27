@@ -160,6 +160,11 @@ export default function Simulation2Page() {
     return out;
   }, [compounds, bundles]);
 
+  const chainReady = useMemo(
+    () => compoundIds.length > 0 && nodes.some((n) => sourceTier(n.type)),
+    [compoundIds, nodes],
+  );
+
   const studiesLoadingByCompound = useMemo(() => {
     const out: Record<string, boolean> = {};
     for (const id of compoundIds) {
@@ -263,6 +268,7 @@ export default function Simulation2Page() {
           onOpenBreakdown={() => setBreakdownOpen(true)}
           open={reportOpen}
           onToggleOpen={() => setReportOpen((v) => !v)}
+          chainReady={chainReady}
         />
       </div>
 
