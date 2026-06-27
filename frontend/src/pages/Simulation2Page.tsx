@@ -251,24 +251,33 @@ export default function Simulation2Page() {
         next = [...next.slice(0, insertAt), ...newSources, ...next.slice(insertAt)];
       }
 
-      // Interactions node: present iff >=2 compounds selected. Slot right after Compound.
-      const wantsInteractions = compoundIds.length >= 2;
-      const hasInteractions = next.some((n) => n.type === "interactions");
-      if (wantsInteractions && !hasInteractions) {
-        const compoundIdx = next.findIndex((n) => n.type === "compound");
-        const insertAt = compoundIdx === -1 ? 0 : compoundIdx + 1;
-        next = [
-          ...next.slice(0, insertAt),
-          { id: "interactions", type: "interactions" },
-          ...next.slice(insertAt),
-        ];
-      } else if (!wantsInteractions && hasInteractions) {
-        next = next.filter((n) => n.type !== "interactions");
-      }
-
       return next.length === prev.length && next.every((n, i) => n === prev[i]) ? prev : next;
     });
   }, [compoundIds, profileBySlug]);
+
+  // Interactions node only appears when we have at least one DOCUMENTED pair
+  // (i.e. the backend returned a row that isn't a no_data placeholder). With
+  // <2 compounds, or while the fetch is still in flight, or when every pair
+  // is no_data, the node stays out of the chain.
+  useEffect(() => {
+    const hasDocumented = interactions.pairs.some((p) => p.source_kind !== "no_data");
+    setNodes((prev) => {
+      const hasNode = prev.some((n) => n.type === "interactions");
+      if (hasDocumented && !hasNode) {
+        const compoundIdx = prev.findIndex((n) => n.type === "compound");
+        const insertAt = compoundIdx === -1 ? 0 : compoundIdx + 1;
+        return [
+          ...prev.slice(0, insertAt),
+          { id: "interactions", type: "interactions" },
+          ...prev.slice(insertAt),
+        ];
+      }
+      if (!hasDocumented && hasNode) {
+        return prev.filter((n) => n.type !== "interactions");
+      }
+      return prev;
+    });
+  }, [interactions.pairs]);
 
   useEffect(() => {
     if (!searchQuery.trim()) return;
