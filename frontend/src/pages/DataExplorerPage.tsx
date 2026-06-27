@@ -65,7 +65,7 @@ function Section({ icon, title, count, children }: { icon: string; title: string
 }
 
 export default function DataExplorerPage() {
-  useDocumentTitle("PepHouse | PepBase");
+  useDocumentTitle("PepHouse | Cellar");
   const [compounds, setCompounds] = useState<Compound[]>([]);
   const [selected, setSelected] = useState<Compound | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -77,9 +77,10 @@ export default function DataExplorerPage() {
     supabase
       .from("compounds")
       .select("id,name,drug_class,fda_status,approved,summary")
-      .order("name")
       .then(({ data }) => {
-        const list = (data ?? []) as Compound[];
+        const list = ((data ?? []) as Compound[])
+          .slice()
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
         setCompounds(list);
         if (list.length) setSelected(list[0]);
       });
@@ -120,7 +121,7 @@ export default function DataExplorerPage() {
     <AppShell>
       <div className="h-16 flex items-center px-8 border-b border-zinc-800/60 shrink-0 z-10">
         <h1 className="text-sm font-medium text-white tracking-tight flex items-center gap-2">
-          <Icon icon="solar:database-linear" className="text-blue-500" /> PepBase
+          <Icon icon="solar:database-linear" className="text-blue-500" /> Cellar
         </h1>
       </div>
 

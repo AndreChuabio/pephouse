@@ -31,7 +31,7 @@ import type { StudyRef } from "../data/simulation2";
 const INITIAL_COMPOUND_ID = "bpc-157";
 
 export default function Simulation2Page() {
-  useDocumentTitle("PepHouse | Arena");
+  useDocumentTitle("PepHouse | Studio");
 
   const [compoundIds, setCompoundIds] = useState<string[]>([INITIAL_COMPOUND_ID]);
   const [searchQuery, setSearchQuery] = useState("");
