@@ -116,3 +116,63 @@ class SimulationDataResponse(BaseModel):
     studied_age_max: int | None = None
     cohort_total: int = 0
     tables: dict[str, list[dict]] = Field(default_factory=dict)
+
+
+# ----------------------------------------------------------------- user data
+# Persisted patient data a user connected (wearable / bloodwork) or reported.
+# Mirrors the Junction ProfilePatch shape so a live import and a mock are
+# interchangeable. Used by GET/POST /users/{user_ref}/data.
+
+
+class ImportSource(BaseModel):
+    kind: str | None = None  # device | bloodwork | upload
+    label: str | None = None
+    at: str | None = None  # ISO timestamp
+
+
+class LabValue(BaseModel):
+    name: str
+    slug: str | None = None
+    value: float | str | None = None
+    unit: str | None = None
+    flag: str | None = None
+    status: str | None = None  # optimal | high | low | abnormal
+    ref_low: float | None = None
+    ref_high: float | None = None
+
+
+class WearableMetric(BaseModel):
+    calendar_date: str
+    steps: int | None = None
+    resting_hr: int | None = None
+    hrv_ms: float | None = None
+    sleep_hours: float | None = None
+    calories: int | None = None
+    weight_kg: float | None = None
+    provider: str | None = None
+
+
+class UserDataPatch(BaseModel):
+    """Body for POST /users/{user_ref}/data — a connected/reported patch."""
+
+    age: int | None = None
+    sex: str | None = None  # M | F
+    weight_kg: float | None = None
+    conditions: list[str] = Field(default_factory=list)
+    labs: list[LabValue] | None = None
+    wearable: list[WearableMetric] | None = None
+    source: ImportSource | None = None
+
+
+class UserDataBundle(BaseModel):
+    """Response for GET/POST /users/{user_ref}/data — the full stored bundle."""
+
+    user_ref: str
+    connected: bool = False
+    age: int | None = None
+    sex: str | None = None
+    weight_kg: float | None = None
+    conditions: list[str] = Field(default_factory=list)
+    source: ImportSource | None = None
+    labs: list[LabValue] = Field(default_factory=list)
+    wearable: list[WearableMetric] = Field(default_factory=list)

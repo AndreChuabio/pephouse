@@ -14,8 +14,15 @@ from fastapi.middleware.cors import CORSMiddleware
 import db
 import modules
 import runs
+import user_data
 from evidence import build_simulation_data
-from models import SimulateRequest, SimulateResponse, SimulationDataResponse
+from models import (
+    SimulateRequest,
+    SimulateResponse,
+    SimulationDataResponse,
+    UserDataBundle,
+    UserDataPatch,
+)
 from twin_engine import run_simulation
 
 app = FastAPI(title="pephouse")
@@ -143,6 +150,29 @@ def get_module(module_id: int) -> dict:
     if record is None:
         raise HTTPException(status_code=404, detail="module not found")
     return record
+
+
+# ------------------------------------------------------------------- user data
+# Persisted patient data a user connected (wearable / bloodwork) or reported.
+# Mirrors the Junction import shape; mock today, live-Junction-swappable later.
+
+
+@app.get("/users/{user_ref}/data", response_model=UserDataBundle)
+def get_user_data(user_ref: str) -> UserDataBundle:
+    """getUserData — the full stored bundle (profile + wearable + labs) for a user."""
+    bundle = user_data.get_user_data(user_ref)
+    if bundle is None:
+        raise HTTPException(status_code=404, detail="no data for this user")
+    return UserDataBundle(**bundle)
+
+
+@app.post("/users/{user_ref}/data", response_model=UserDataBundle)
+def save_user_data(user_ref: str, body: UserDataPatch) -> UserDataBundle:
+    """Save a connected/reported patch (upsert profile; replace labs/wearable)."""
+    if not user_ref:
+        raise HTTPException(status_code=400, detail="user_ref required")
+    merged = user_data.save_user_data(user_ref, body.model_dump(exclude_none=True))
+    return UserDataBundle(**merged)
 
 
 # TODO(grader): POST /grade -> score a clinician transcript against get_evidence()
