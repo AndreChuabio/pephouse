@@ -4,6 +4,9 @@
 !.env.example
 *.key
 
+# Tavus PAL config (contains resource ids for the private sandbox)
+scripts/persona_config.json
+
 # Python
 __pycache__/
 *.py[cod]
@@ -28,3 +31,6 @@ synthea/visualizer_out/
 .DS_Store
 .idea/
 .vscode/
+
+# Generated Tavus KB dossiers (regenerable via scripts/generate_dossiers.py)
+scripts/dossiers/

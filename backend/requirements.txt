@@ -6,3 +6,6 @@ pydantic
 numpy
 scipy
 httpx
+python-multipart
+pypdf
+pytest

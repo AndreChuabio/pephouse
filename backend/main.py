@@ -8,9 +8,12 @@ Run locally:
     uvicorn main:app --reload
 """
 
-from fastapi import FastAPI, HTTPException
+import anyio
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 
+import consult
 import db
 import junction
 import modules
@@ -22,18 +25,25 @@ import user_stack
 from evidence import build_simulation_data
 from interactions import build_interactions
 from models import (
+    CompoundEvidenceRequest,
     CompoundInput,
+    ConsultSessionRequest,
+    ConsultSessionResponse,
     InteractionsResponse,
+    IntakeResult,
+    LabUploadResponse,
     LinkRequest,
     LinkResponse,
     PatientProfile,
     ProfilePatch,
     ProfileResponse,
+    ScreenEligibilityRequest,
     SimulateRequest,
     SimulateResponse,
     SimulationDataResponse,
     StackAddRequest,
     StackItem,
+    TrialIntake,
     TwinSimulateRequest,
     UserDataBundle,
     UserDataPatch,
@@ -353,6 +363,82 @@ def twin_simulate(body: TwinSimulateRequest) -> SimulateResponse:
         live_cohort="synthetic" in (body.tiers or []),
         tiers=body.tiers,
     )
+
+
+# -------------------------------------------------------------------- consult
+# The Tavus CVI clinician front. POST /consult/session mints a conversation
+# seeded with a PHI-minimized context. Tools are delivered as app_message, so the
+# tool_call events are handled client-side and forwarded to the plain tool-backing
+# endpoints below (get_compound_evidence / screen_eligibility / intake). There is
+# no Tavus webhook to expose. The Tavus key stays server-side in consult.py.
+
+
+@app.post("/consult/session", response_model=ConsultSessionResponse)
+async def consult_session(body: ConsultSessionRequest) -> ConsultSessionResponse:
+    """Mint a Tavus conversation seeded with the member's PHI-minimized context."""
+    try:
+        return await consult.start_session(body)
+    except Exception as exc:  # noqa: BLE001 - surface Tavus/config failures as 502
+        raise HTTPException(status_code=502, detail=f"consult session failed: {exc}")
+
+
+@app.post("/consult/tools/get_compound_evidence")
+def consult_get_compound_evidence(body: CompoundEvidenceRequest) -> dict:
+    """Tool backing: the tier ladder + demographic-filtered narratives for a compound."""
+    return consult.get_compound_evidence(body)
+
+
+@app.post("/consult/tools/screen_eligibility")
+def consult_screen_eligibility(body: ScreenEligibilityRequest) -> dict:
+    """Tool backing: run the twin over the full tier ladder; void returns lower-tier signal."""
+    return consult.screen_eligibility(body)
+
+
+@app.post("/consult/intake", response_model=IntakeResult)
+def consult_intake(body: TrialIntake) -> IntakeResult:
+    """Capture a trial-referral intake row after the consult."""
+    if not body.user_ref:
+        raise HTTPException(status_code=400, detail="user_ref required")
+    try:
+        result = consult.insert_intake(body)
+    except Exception as exc:  # noqa: BLE001 - surface Supabase failures as 502
+        raise HTTPException(status_code=502, detail=f"intake insert failed: {exc}")
+    return IntakeResult(**result)
+
+
+@app.get("/consult/intakes")
+def consult_intakes(limit: int = 100) -> list[dict]:
+    """Coordinator queue: intakes, most recent first."""
+    return consult.list_intakes(limit)
+
+
+@app.get("/consult/dossiers/{slug}", response_class=PlainTextResponse)
+def consult_dossier(slug: str) -> PlainTextResponse:
+    """Serve a public evidence dossier as text/plain for the Tavus knowledge base.
+
+    Exposes only already-public registry data (no PHI). Unknown slugs 404.
+    """
+    text = consult.get_dossier_text(slug)
+    if text is None:
+        raise HTTPException(status_code=404, detail=f"no dossier for '{slug}'")
+    return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
+
+
+@app.post("/consult/labs/upload", response_model=LabUploadResponse)
+async def consult_labs_upload(user_ref: str = Form(...), file: UploadFile = File(...)) -> LabUploadResponse:
+    """Extract biomarkers from a lab PDF and merge them onto the user's stored data."""
+    if not user_ref:
+        raise HTTPException(status_code=400, detail="user_ref required")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="empty file")
+    try:
+        # upload_labs blocks (pypdf parse, a synchronous 45s Anthropic call, and
+        # Supabase writes); offload it so it never stalls the event loop for other
+        # requests while one member's PDF is processed.
+        return await anyio.to_thread.run_sync(consult.upload_labs, user_ref, data)
+    except Exception as exc:  # noqa: BLE001 - surface extraction/store failures as 502
+        raise HTTPException(status_code=502, detail=f"lab upload failed: {exc}")
 
 
 # TODO(grader): POST /grade -> score a clinician transcript against get_evidence()
