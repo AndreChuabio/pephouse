@@ -46,6 +46,11 @@ logger = logging.getLogger("pephouse.consult")
 
 TAVUS_HOST = "https://tavusapi.com"
 DOCUMENT_TAGS = ["pephouse-evidence"]
+# Public evidence dossiers live alongside their generator in scripts/dossiers.
+DOSSIER_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "dossiers"
+)
+DOSSIER_SUFFIX = " evidence dossier.md"
 # Full tier ladder for a consult screen: trial-grade first, then quality (source
 # axis), anecdote (illustrative), and a live synthetic cohort as last resort.
 SCREEN_TIERS = ["trial", "quality", "anecdote", "synthetic"]
@@ -76,6 +81,52 @@ def _tavus_ids() -> tuple[str, str]:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# ============================================================ dossier serving
+# The Tavus knowledge base ingests each dossier by URL, so the backend exposes
+# the already-public registry markdown as text/plain. Only public registry data
+# is served (no PHI); missing slugs are a 404 for the caller to handle.
+
+
+def _dossier_slug_map() -> dict[str, str]:
+    """Map a compound slug to its dossier filename by scanning ``DOSSIER_DIR``.
+
+    The slug is the lower-cased compound name (e.g. ``bpc-157`` ->
+    ``BPC-157 evidence dossier.md``). Scanning avoids reconstructing the exact
+    on-disk casing from the slug.
+    """
+    mapping: dict[str, str] = {}
+    if not os.path.isdir(DOSSIER_DIR):
+        logger.warning("consult: dossier directory not found at %s", DOSSIER_DIR)
+        return mapping
+    for fname in os.listdir(DOSSIER_DIR):
+        if fname.endswith(DOSSIER_SUFFIX):
+            compound = fname[: -len(DOSSIER_SUFFIX)]
+            mapping[compound.lower()] = fname
+    return mapping
+
+
+def get_dossier_text(slug: str) -> str | None:
+    """Return the raw dossier markdown for a compound slug, or None if unknown.
+
+    ``slug`` is matched case-insensitively against the compound name. Returns None
+    (the caller renders a 404) when the slug is empty, unmapped, or unreadable.
+    """
+    slug_norm = (slug or "").strip().lower()
+    if not slug_norm:
+        return None
+    fname = _dossier_slug_map().get(slug_norm)
+    if not fname:
+        logger.warning("consult: no dossier for slug '%s'", slug_norm)
+        return None
+    path = os.path.join(DOSSIER_DIR, fname)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read()
+    except OSError:
+        logger.error("consult: could not read dossier %s", path, exc_info=True)
+        return None
 
 
 # =============================================================== PHI minimize
@@ -392,11 +443,60 @@ def screen_eligibility(req: ScreenEligibilityRequest) -> dict:
 # ================================================================ tool: intake
 
 
+# Keys that must never reach the coordinator-visible snapshot, at any nesting
+# depth: raw lab measurements and direct/contact identifiers. The privacy
+# invariant (module docstring, TrialIntake docstring) is enforced here on the
+# backend trust boundary rather than trusting the persona to self-minimize.
+_SNAPSHOT_BLOCKED_KEYS = frozenset(
+    {
+        "value",
+        "values",
+        "raw_value",
+        "measurement",
+        "name",
+        "full_name",
+        "first_name",
+        "last_name",
+        "patient_name",
+        "email",
+        "phone",
+        "phone_number",
+        "address",
+        "dob",
+        "date_of_birth",
+        "mrn",
+        "ssn",
+        "contact",
+    }
+)
+
+
+def minimize_context_snapshot(snapshot: object) -> object:
+    """Recursively strip raw values / identifiers / contact details from a snapshot.
+
+    Any blocked key (see ``_SNAPSHOT_BLOCKED_KEYS``) is dropped at every depth so
+    the stored ``context_snapshot`` keeps only triage context (flags / ranges /
+    goal / eligibility). Non-dict/list values pass through unchanged.
+    """
+    if isinstance(snapshot, dict):
+        cleaned: dict = {}
+        for key, val in snapshot.items():
+            if isinstance(key, str) and key.strip().lower() in _SNAPSHOT_BLOCKED_KEYS:
+                logger.info("consult: stripped blocked context_snapshot key '%s'", key)
+                continue
+            cleaned[key] = minimize_context_snapshot(val)
+        return cleaned
+    if isinstance(snapshot, list):
+        return [minimize_context_snapshot(item) for item in snapshot]
+    return snapshot
+
+
 def insert_intake(intake: TrialIntake) -> dict:
     """Insert a trial_intakes row and return ``{id, status}``.
 
-    Resolves the compound name to an id when possible; persists only the minimized
-    context_snapshot passed in (the caller is responsible for keeping it PHI-free).
+    Resolves the compound name to an id when possible and enforces the PHI
+    invariant on ``context_snapshot`` via ``minimize_context_snapshot`` before it
+    is persisted to the coordinator-visible table.
     """
     compound_id = resolve_compound(intake.compound_name)
     row = {
@@ -406,7 +506,7 @@ def insert_intake(intake: TrialIntake) -> dict:
         "compound_name": intake.compound_name,
         "eligibility": intake.eligibility,
         "eligibility_reason": intake.eligibility_reason,
-        "context_snapshot": intake.context_snapshot,
+        "context_snapshot": minimize_context_snapshot(intake.context_snapshot),
         "counsel_summary": intake.counsel_summary,
         "consent": bool(intake.consent),
     }
@@ -547,17 +647,29 @@ def extract_biomarkers(text: str) -> list[LabValue]:
 
 
 def upload_labs(user_ref: str, data: bytes) -> LabUploadResponse:
-    """Extract biomarkers from a lab PDF and merge them onto the user's stored data."""
+    """Extract biomarkers from a lab PDF and merge them onto the user's stored data.
+
+    A failed or empty extraction (unset key, transient API error, scanned/blank
+    PDF, non-JSON reply) yields no biomarkers. In that case the ``labs`` key is
+    omitted from the patch so ``save_user_data`` leaves the user's existing lab
+    rows untouched -- an empty list would otherwise delete them all silently.
+    """
     text = _extract_pdf_text(data)
     labs = extract_biomarkers(text)
-    patch = {
-        "labs": [l.model_dump() for l in labs],
+    patch: dict = {
         "source": {
             "kind": "upload",
             "label": f"Lab PDF - {len(labs)} biomarkers",
             "at": _now_iso(),
         },
     }
+    if labs:
+        patch["labs"] = [l.model_dump() for l in labs]
+    else:
+        logger.warning(
+            "consult: biomarker extraction yielded 0 labs for %s; leaving stored labs untouched",
+            user_ref,
+        )
     merged = user_data.save_user_data(user_ref, patch)
     return LabUploadResponse(
         connected=bool(merged.get("connected", True)),

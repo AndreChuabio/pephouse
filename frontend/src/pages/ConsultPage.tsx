@@ -67,6 +67,11 @@ export default function ConsultPage() {
 
   const callRef = useRef<DailyCall | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // Holds the in-flight destroy() of a prior frame. daily-js forbids two live
+  // DailyIframe instances, so a re-mount (React 18 StrictMode double-invoke, or
+  // any effect re-run) must wait for the previous frame to finish tearing down
+  // before creating the next one.
+  const teardownRef = useRef<Promise<void>>(Promise.resolve());
 
   const addSources = useCallback((events: RagObservabilityEvent[]) => {
     if (events.length === 0) return;
@@ -114,7 +119,7 @@ export default function ConsultPage() {
         });
       } catch (err) {
         const detail = err instanceof Error ? err.message : "tool failed";
-        sendToolResult(call, evt.tool_call_id, { error: detail });
+        sendToolResult(call, evt.tool_call_id, { error: detail }, "error");
         upsertActivity({
           id: evt.tool_call_id,
           name: evt.name,
@@ -164,30 +169,41 @@ export default function ConsultPage() {
   }, [session, starting]);
 
   // Mount the Daily frame once we have a session and the container is rendered.
+  // Creation is chained onto any prior frame's teardown so two DailyIframe
+  // instances never overlap (see teardownRef).
   useEffect(() => {
-    if (!session || !containerRef.current || callRef.current) return;
+    if (!session) return;
+    const container = containerRef.current;
+    if (!container) return;
 
-    const call = DailyIframe.createFrame(containerRef.current, {
-      showLeaveButton: true,
-      iframeStyle: {
-        width: "100%",
-        height: "100%",
-        border: "0",
-        borderRadius: "12px",
-      },
-    });
-    callRef.current = call;
-    call.on("app-message", handleAppMessage);
-    call.join({ url: session.conversation_url }).catch((err: unknown) => {
-      setError(err instanceof Error ? err.message : "could not join conversation");
+    let cancelled = false;
+    teardownRef.current = teardownRef.current.then(() => {
+      if (cancelled || callRef.current) return;
+      const call = DailyIframe.createFrame(container, {
+        showLeaveButton: true,
+        iframeStyle: {
+          width: "100%",
+          height: "100%",
+          border: "0",
+          borderRadius: "12px",
+        },
+      });
+      callRef.current = call;
+      call.on("app-message", handleAppMessage);
+      call.join({ url: session.conversation_url }).catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : "could not join conversation");
+      });
     });
 
     return () => {
+      cancelled = true;
+      const call = callRef.current;
+      callRef.current = null;
+      if (!call) return;
       call.off("app-message", handleAppMessage);
-      call.destroy().catch(() => {
+      teardownRef.current = call.destroy().catch(() => {
         // frame already torn down; nothing to recover
       });
-      callRef.current = null;
     };
   }, [session, handleAppMessage]);
 

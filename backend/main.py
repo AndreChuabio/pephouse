@@ -8,8 +8,10 @@ Run locally:
     uvicorn main:app --reload
 """
 
+import anyio
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 
 import consult
 import db
@@ -410,6 +412,18 @@ def consult_intakes(limit: int = 100) -> list[dict]:
     return consult.list_intakes(limit)
 
 
+@app.get("/consult/dossiers/{slug}", response_class=PlainTextResponse)
+def consult_dossier(slug: str) -> PlainTextResponse:
+    """Serve a public evidence dossier as text/plain for the Tavus knowledge base.
+
+    Exposes only already-public registry data (no PHI). Unknown slugs 404.
+    """
+    text = consult.get_dossier_text(slug)
+    if text is None:
+        raise HTTPException(status_code=404, detail=f"no dossier for '{slug}'")
+    return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
+
+
 @app.post("/consult/labs/upload", response_model=LabUploadResponse)
 async def consult_labs_upload(user_ref: str = Form(...), file: UploadFile = File(...)) -> LabUploadResponse:
     """Extract biomarkers from a lab PDF and merge them onto the user's stored data."""
@@ -419,7 +433,10 @@ async def consult_labs_upload(user_ref: str = Form(...), file: UploadFile = File
     if not data:
         raise HTTPException(status_code=400, detail="empty file")
     try:
-        return consult.upload_labs(user_ref, data)
+        # upload_labs blocks (pypdf parse, a synchronous 45s Anthropic call, and
+        # Supabase writes); offload it so it never stalls the event loop for other
+        # requests while one member's PDF is processed.
+        return await anyio.to_thread.run_sync(consult.upload_labs, user_ref, data)
     except Exception as exc:  # noqa: BLE001 - surface extraction/store failures as 502
         raise HTTPException(status_code=502, detail=f"lab upload failed: {exc}")
 

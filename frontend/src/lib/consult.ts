@@ -15,6 +15,7 @@
 // DailyIframe.createFrame; this module only produces/consumes the payloads.
 
 import type { DailyCall } from "@daily-co/daily-js";
+import { dossierTiers } from "../data/dossierTiers";
 
 const API_BASE =
   import.meta.env.VITE_API_URL ??
@@ -56,9 +57,10 @@ export async function startConsultSession(
 
 // ============================================================ evidence tiers
 // Tavus rag.observability events carry only document_ids and document_names -
-// no tier, tag, or score (see gap research). We therefore classify tier from
-// the document name client-side. Dossiers are named with a tier keyword; the
-// ladder runs tier 4 (RCT, strongest) down to tier 1 (anecdote, weakest).
+// no tier, tag, or score (see gap research). We classify tier client-side,
+// preferring the registry-derived dossierTiers map (document_name -> top
+// available tier) and only falling back to a name heuristic for unknown docs.
+// The ladder runs tier 4 (RCT, strongest) down to tier 1 (anecdote, weakest).
 
 export type ConsultTierLevel = 1 | 2 | 3 | 4;
 
@@ -96,14 +98,31 @@ const TIER_UNKNOWN: ConsultTier = {
   className: "bg-zinc-800 text-zinc-400 border border-zinc-700/60",
 };
 
+const LEVEL_TIERS: Record<ConsultTierLevel, ConsultTier> = {
+  4: TIER_RCT,
+  3: TIER_TRIAL,
+  2: TIER_CASE,
+  1: TIER_ANECDOTE,
+};
+
 /**
- * Best-effort tier classification from a cited document's name. Tavus does not
- * hand us a tier on the event, so we key off dossier naming conventions and fall
- * back to "Unrated" when nothing matches.
+ * Tier classification for a cited document's name. Tavus does not hand us a tier
+ * on the event, so we first consult the registry-derived dossierTiers map
+ * (document_name -> top available evidence tier, emitted by scripts/register_kb.py).
+ * Only when the name is not a known dossier do we fall back to a name heuristic,
+ * and to "Unrated" when even that matches nothing.
  */
 export function classifyDocumentTier(documentName: string | null | undefined): ConsultTier {
-  const name = (documentName ?? "").toLowerCase();
-  if (!name) return TIER_UNKNOWN;
+  const raw = (documentName ?? "").trim();
+  if (!raw) return TIER_UNKNOWN;
+
+  // Registry-derived tier map wins: it is grounded in the dossier's actual tier
+  // availability rather than substrings in the name. Tolerate a trailing ".md".
+  const key = raw.replace(/\.md$/i, "").trim();
+  const mapped = dossierTiers[key];
+  if (mapped) return LEVEL_TIERS[mapped.level];
+
+  const name = raw.toLowerCase();
   if (/\brct\b|randomi[sz]ed|placebo|double-?blind/.test(name)) return TIER_RCT;
   if (/\btrial\b|cohort|clinical|phase\s?[i1-4]|observational/.test(name)) return TIER_TRIAL;
   if (/case[\s_-]?study|case[\s_-]?report|case[\s_-]?series/.test(name)) return TIER_CASE;
@@ -185,7 +204,11 @@ function coerceStringArray(raw: unknown): string[] {
 export function parseToolCall(data: unknown): ToolCallEvent | null {
   const msg = asTavusMessage(data);
   if (!msg) return null;
-  if (!eventType(msg).includes("tool_call")) return null;
+  // Only real LLM function calls. Match the tool_call suffix (prefix-agnostic) but
+  // exclude conversation.perception_tool_call, which the raven/perception layer
+  // emits and which our backend dispatcher does not answer.
+  const type = eventType(msg);
+  if (!type.endsWith("tool_call") || type.includes("perception")) return null;
 
   const props = msg.properties ?? {};
   const name = typeof props.name === "string" ? props.name : "";
@@ -275,21 +298,26 @@ export async function dispatchToolCall(evt: ToolCallEvent): Promise<unknown> {
 
 /**
  * Return a tool result to the running conversation over the Daily data channel.
- * Tavus consumes a `conversation.respond` interaction as fresh context for the
- * LLM turn; we serialize the backend result and tag it with the tool_call_id so
- * the persona can tie the answer back to its request.
+ * Tavus pairs the in-flight tool call to its answer via the tool_call_id and then
+ * resumes the persona's turn. The correct interaction is `conversation.tool_result`
+ * with { tool_call_id, output, status } (docs.tavus.io/sections/event-schemas/
+ * conversation-tool-result) -- NOT `conversation.respond`, which injects text as a
+ * fresh user utterance and carries no tool_call_id, leaving the tool call unfulfilled.
+ * `output` accepts a string or object; we serialize to a string for a stable shape.
  */
 export function sendToolResult(
   call: DailyCall,
   toolCallId: string,
   result: unknown,
+  status: "success" | "error" = "success",
 ): void {
   const message = {
     message_type: "conversation",
-    event_type: "conversation.respond",
+    event_type: "conversation.tool_result",
     properties: {
       tool_call_id: toolCallId,
-      text: JSON.stringify(result),
+      output: JSON.stringify(result),
+      status,
     },
   };
   call.sendAppMessage(message, "*");
