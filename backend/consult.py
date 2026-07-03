@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 
 import httpx
@@ -167,10 +168,20 @@ def render_dossier_text(data: dict) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _canon_slug(text: str) -> str:
+    """Canonical dossier slug: lower-cased with whitespace collapsed to hyphens.
+
+    The KB register script derives slugs from hyphenated dossier filenames
+    (``Melanotan II`` -> ``melanotan-ii``), so the registry name must be
+    normalized the same way or multi-word compounds would 404.
+    """
+    return re.sub(r"\s+", "-", (text or "").strip().lower())
+
+
 def _slug_to_compound_id(slug_norm: str) -> int | None:
-    """Resolve a lower-cased compound-name slug to its registry id."""
+    """Resolve a canonical compound-name slug to its registry id."""
     for compound in db.get_compounds():
-        if str(compound.get("name", "")).strip().lower() == slug_norm:
+        if _canon_slug(str(compound.get("name", ""))) == slug_norm:
             return int(compound["id"])
     return None
 
@@ -182,7 +193,7 @@ def get_dossier_text(slug: str) -> str | None:
     the registry. The dossier is rendered from the database so it works in the
     deployed container. Returns None (caller renders a 404) for empty/unknown slugs.
     """
-    slug_norm = (slug or "").strip().lower()
+    slug_norm = _canon_slug(slug)
     if not slug_norm:
         return None
     compound_id = _slug_to_compound_id(slug_norm)
