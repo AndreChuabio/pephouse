@@ -4,6 +4,9 @@
 !.env.example
 *.key
 
+# Tavus PAL config (contains resource ids for the private sandbox)
+scripts/persona_config.json
+
 # Python
 __pycache__/
 *.py[cod]
