@@ -46,11 +46,6 @@ logger = logging.getLogger("pephouse.consult")
 
 TAVUS_HOST = "https://tavusapi.com"
 DOCUMENT_TAGS = ["pephouse-evidence"]
-# Public evidence dossiers live alongside their generator in scripts/dossiers.
-DOSSIER_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "dossiers"
-)
-DOSSIER_SUFFIX = " evidence dossier.md"
 # Full tier ladder for a consult screen: trial-grade first, then quality (source
 # axis), anecdote (illustrative), and a live synthetic cohort as last resort.
 SCREEN_TIERS = ["trial", "quality", "anecdote", "synthetic"]
@@ -85,48 +80,120 @@ def _now_iso() -> str:
 
 # ============================================================ dossier serving
 # The Tavus knowledge base ingests each dossier by URL, so the backend exposes
-# the already-public registry markdown as text/plain. Only public registry data
-# is served (no PHI); missing slugs are a 404 for the caller to handle.
+# the already-public registry evidence as text/plain. The text is rendered from
+# the database on demand (build_simulation_data), NOT read from scripts/dossiers
+# -- the deployed container copies only backend/, so a file path would 404 in
+# production. Only public registry data is served (no PHI); missing slugs 404.
+
+# Nested-table sections rendered into a dossier, in evidence-tier order.
+_DOSSIER_SECTIONS: list[tuple[str, str]] = [
+    ("trials", "Registered human trials"),
+    ("evidence_facts", "Tier-graded evidence facts"),
+    ("research_papers", "Research papers"),
+    ("case_studies", "Case studies (cohort reports)"),
+    ("outcome_priors", "Outcome priors (simulation inputs)"),
+    ("anecdotes", "Community anecdotes (lowest tier)"),
+    ("sourcing", "Sourcing reality"),
+    ("vendors", "Vendors"),
+    ("vendor_lab_results", "Vendor lab results"),
+    ("source_potency_priors", "Source potency priors"),
+]
+# Vector embeddings are not human-readable and must never reach the dossier text.
+_DOSSIER_DROP_FIELDS = {"embedding"}
 
 
-def _dossier_slug_map() -> dict[str, str]:
-    """Map a compound slug to its dossier filename by scanning ``DOSSIER_DIR``.
+def _fmt_cell(value: object) -> str:
+    """Render one record value as compact, readable text."""
+    if value is None or value == "":
+        return "-"
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value).replace("\n", " ").strip()
 
-    The slug is the lower-cased compound name (e.g. ``bpc-157`` ->
-    ``BPC-157 evidence dossier.md``). Scanning avoids reconstructing the exact
-    on-disk casing from the slug.
+
+def render_dossier_text(data: dict) -> str:
+    """Render a compound's registry bundle as a readable evidence dossier.
+
+    ``data`` is a ``SimulationDataResponse`` dumped to a dict. The output mirrors
+    scripts/generate_dossiers.py so knowledge-base citations read the same whether
+    seeded locally or served live, but sources from the DB rather than a file.
     """
-    mapping: dict[str, str] = {}
-    if not os.path.isdir(DOSSIER_DIR):
-        logger.warning("consult: dossier directory not found at %s", DOSSIER_DIR)
-        return mapping
-    for fname in os.listdir(DOSSIER_DIR):
-        if fname.endswith(DOSSIER_SUFFIX):
-            compound = fname[: -len(DOSSIER_SUFFIX)]
-            mapping[compound.lower()] = fname
-    return mapping
+    name = data.get("name", "Unknown compound")
+    lines: list[str] = [
+        f"# {name} evidence dossier",
+        "",
+        "Source: PepHouse evidence registry (synthetic and public-literature "
+        "derived). Education, not medical advice.",
+        "",
+        "## Overview",
+        f"- Drug class: {_fmt_cell(data.get('drug_class'))}",
+        f"- FDA status: {_fmt_cell(data.get('fda_status'))}",
+        f"- Approved: {_fmt_cell(data.get('approved'))}",
+        f"- Cohort total (registered trial enrollment): {_fmt_cell(data.get('cohort_total'))}",
+        f"- Studied age range: {_fmt_cell(data.get('studied_age_min'))} to "
+        f"{_fmt_cell(data.get('studied_age_max'))}",
+        "",
+        f"Summary: {_fmt_cell(data.get('summary'))}",
+        "",
+    ]
+
+    sources = data.get("evidence_sources") or []
+    if sources:
+        lines.append("## Evidence tiers available")
+        for src in sources:
+            avail = "available" if src.get("available") else "none"
+            lines.append(
+                f"- {src.get('label', src.get('id'))} "
+                f"(tier {src.get('display_tier')}): {src.get('count')} items, {avail}"
+            )
+        lines.append("")
+
+    tables = data.get("tables") or {}
+    for key, heading in _DOSSIER_SECTIONS:
+        rows = tables.get(key) or []
+        if not rows:
+            continue
+        lines.append(f"## {heading}")
+        for idx, row in enumerate(rows, start=1):
+            lines.append(f"**{idx}.**")
+            for field, value in row.items():
+                if field in _DOSSIER_DROP_FIELDS:
+                    continue
+                lines.append(f"- {field}: {_fmt_cell(value)}")
+            lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _slug_to_compound_id(slug_norm: str) -> int | None:
+    """Resolve a lower-cased compound-name slug to its registry id."""
+    for compound in db.get_compounds():
+        if str(compound.get("name", "")).strip().lower() == slug_norm:
+            return int(compound["id"])
+    return None
 
 
 def get_dossier_text(slug: str) -> str | None:
-    """Return the raw dossier markdown for a compound slug, or None if unknown.
+    """Return the evidence dossier text for a compound slug, or None if unknown.
 
-    ``slug`` is matched case-insensitively against the compound name. Returns None
-    (the caller renders a 404) when the slug is empty, unmapped, or unreadable.
+    ``slug`` is the lower-cased compound name (e.g. ``bpc-157``), matched against
+    the registry. The dossier is rendered from the database so it works in the
+    deployed container. Returns None (caller renders a 404) for empty/unknown slugs.
     """
     slug_norm = (slug or "").strip().lower()
     if not slug_norm:
         return None
-    fname = _dossier_slug_map().get(slug_norm)
-    if not fname:
-        logger.warning("consult: no dossier for slug '%s'", slug_norm)
+    compound_id = _slug_to_compound_id(slug_norm)
+    if compound_id is None:
+        logger.warning("consult: no compound for dossier slug '%s'", slug_norm)
         return None
-    path = os.path.join(DOSSIER_DIR, fname)
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            return handle.read()
-    except OSError:
-        logger.error("consult: could not read dossier %s", path, exc_info=True)
+    bundle = build_simulation_data(compound_id)
+    if bundle is None:
+        logger.warning("consult: no registry data for compound %s", compound_id)
         return None
+    return render_dossier_text(bundle.model_dump())
 
 
 # =============================================================== PHI minimize
