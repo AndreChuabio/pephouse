@@ -36,10 +36,10 @@ export default function LandingPage() {
     setAuthPending(true);
     setAuthError(null);
     try {
-      // On success this redirects the browser to Google, so the navigate below
-      // is a fallback for the rare case the OAuth call resolves in place.
+      // On success the OAuth call redirects the whole browser to Google and
+      // returns to the post-auth route, so there is no in-page navigation to
+      // do here; navigating before the redirect only flashes the twin page.
       await signInWithGoogle();
-      navigate("/digital-twin");
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : "Sign-in failed. Try again.");
       setAuthPending(false);

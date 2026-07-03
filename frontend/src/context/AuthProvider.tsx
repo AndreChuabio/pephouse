@@ -121,9 +121,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [applySession, startAnonymous, applyFallback]);
 
   const signInWithGoogle = useCallback(async (): Promise<void> => {
-    const redirectTo = window.location.origin;
-    const current = stateRef.current;
-    if (current?.isAnonymous) {
+    // Land on the twin after OAuth: "/" renders the marketing LandingPage
+    // unconditionally, which reads as a failed sign-in to a returning user.
+    const redirectTo = `${window.location.origin}/digital-twin`;
+    // linkIdentity requires a live Supabase session. In the localStorage
+    // fallback state isAnonymous is true with NO session, so linking would
+    // always fail with AuthSessionMissingError; check for a real session and
+    // sign in outright when there is none.
+    const { data } = await supabase.auth.getSession();
+    if (data.session && stateRef.current?.isAnonymous) {
       // Link so the existing uid (and its data) carries over to Google.
       const { error } = await supabase.auth.linkIdentity({
         provider: "google",

@@ -12,9 +12,18 @@ here calls a live service.
 
 from __future__ import annotations
 
+import asyncio
+
+import httpx
+import pytest
+
 import consult
 from models import (
     AnecdoteSnippet,
+    CompoundEvidenceRequest,
+    ConsultSessionRequest,
+    ExcludedPrior,
+    LabValue,
     OutcomeResult,
     QuarterBand,
     ScreenEligibilityRequest,
@@ -77,6 +86,11 @@ def test_context_withholds_raw_lab_values_but_keeps_flags():
     # raw measured lab values are never injected
     assert "6.1" not in ctx
     assert "172" not in ctx
+    # the wearable branch fires, but raw measurements and dates are withheld
+    # exactly like lab values (the bundle carries resting_hr 61 on 2026-06-30)
+    assert "Wearable data is connected" in ctx
+    assert "61" not in ctx
+    assert "2026-06-30" not in ctx
 
 
 def test_context_handles_missing_bundle():
@@ -302,3 +316,242 @@ def test_coerce_labs_skips_malformed_items():
     parsed = consult.extract_biomarkers.__globals__["json"].loads(payload)
     labs = consult._coerce_labs(parsed)
     assert [l.name for l in labs] == ["LDL"]
+
+
+# --------------------------------------------- snapshot free-text scrubbing
+
+
+def test_snapshot_scrubs_measurements_and_contacts_from_free_text():
+    snapshot = {
+        "goal": "fat loss. LDL was 190 mg/dL, call me at 555-1234",
+        "conditions": ["prediabetes, phone 555-987-6543", "email me at a@b.com"],
+        "eligibility_reason": "age 61 outside studied range 18-55",
+    }
+    cleaned = consult.minimize_context_snapshot(snapshot)
+    text = str(cleaned)
+    # raw measurement and contact details are redacted from allowlisted strings
+    assert "190" not in text
+    assert "555-1234" not in text
+    assert "555-987-6543" not in text
+    assert "a@b.com" not in text
+    # the useful framing survives
+    assert "fat loss" in cleaned["goal"]
+    assert "prediabetes" in cleaned["conditions"][0]
+    # unit-less short ranges (studied age spans) are NOT measurements
+    assert cleaned["eligibility_reason"] == "age 61 outside studied range 18-55"
+
+
+def test_snapshot_flag_container_keeps_marker_name():
+    snapshot = {
+        "lab_flags": [{"name": "ApoB", "flag": "high", "value": 130}],
+        "flags": [{"patient_name": "Bob Smith", "name": "LDL", "flag": "high"}],
+    }
+    cleaned = consult.minimize_context_snapshot(snapshot)
+    # inside flag containers "name" is the biomarker label and must survive;
+    # raw values and person-name keys are still stripped
+    assert cleaned["lab_flags"] == [{"name": "ApoB", "flag": "high"}]
+    assert cleaned["flags"] == [{"name": "LDL", "flag": "high"}]
+
+
+def test_intake_insert_scrubs_free_text_fields(monkeypatch):
+    fake = _FakeSupabase()
+    monkeypatch.setattr(consult, "supabase", fake)
+    monkeypatch.setattr(consult, "resolve_compound", lambda name: 7)
+
+    intake = TrialIntake(
+        user_ref="browser-abc",
+        goal="fat loss, LDL was 190 mg/dL",
+        compound_name="Semaglutide",
+        eligibility="excluded",
+        eligibility_reason="age 61 outside studied range 18-55",
+        consent=True,
+        counsel_summary="Member said A1c hit 6.1 %; wants a callback at 555-1234.",
+    )
+    consult.insert_intake(intake)
+
+    row = fake.table("trial_intakes").inserted[0]
+    text = str(row)
+    assert "190" not in text
+    assert "6.1" not in text
+    assert "555-1234" not in text
+    # non-measurement content survives
+    assert "fat loss" in row["goal"]
+    assert row["eligibility_reason"] == "age 61 outside studied range 18-55"
+
+
+# --------------------------------------------------- labs upload (mocked I/O)
+
+
+def test_upload_labs_zero_extraction_leaves_stored_labs_untouched(monkeypatch):
+    captured: dict = {}
+    monkeypatch.setattr(consult, "_extract_pdf_text", lambda data: "some text")
+    monkeypatch.setattr(consult, "extract_biomarkers", lambda text: [])
+
+    def _spy_save(user_ref, patch):
+        captured["user_ref"] = user_ref
+        captured["patch"] = patch
+        return {"connected": True}
+
+    monkeypatch.setattr(consult.user_data, "save_user_data", _spy_save)
+
+    result = consult.upload_labs("u1", b"%PDF")
+
+    # a zero-biomarker extraction must OMIT the labs key: an empty list would
+    # silently delete every stored lab row for the member
+    assert "labs" not in captured["patch"]
+    assert captured["patch"]["source"]["kind"] == "upload"
+    assert result.extracted_count == 0
+
+
+def test_upload_labs_saves_extracted_labs(monkeypatch):
+    captured: dict = {}
+    monkeypatch.setattr(consult, "_extract_pdf_text", lambda data: "some text")
+    monkeypatch.setattr(
+        consult, "extract_biomarkers", lambda text: [LabValue(name="LDL", status="high")]
+    )
+
+    def _spy_save(user_ref, patch):
+        captured["patch"] = patch
+        return {"connected": True}
+
+    monkeypatch.setattr(consult.user_data, "save_user_data", _spy_save)
+
+    result = consult.upload_labs("u1", b"%PDF")
+
+    assert len(captured["patch"]["labs"]) == 1
+    assert captured["patch"]["labs"][0]["name"] == "LDL"
+    assert result.extracted_count == 1
+
+
+# ------------------------------------------------- session mint (mocked Tavus)
+
+
+def test_start_session_survives_user_data_failure(monkeypatch):
+    recorded: dict = {}
+
+    def _boom(user_ref):
+        raise RuntimeError("supabase blip")
+
+    async def _fake_create(context, tags):
+        recorded["context"] = context
+        recorded["tags"] = tags
+        return {"conversation_url": "https://u", "conversation_id": "c1", "pal_id": "pal"}
+
+    monkeypatch.setattr(consult.user_data, "get_user_data", _boom)
+    monkeypatch.setattr(consult, "_tavus_ids", lambda: ("pal", "face"))
+    monkeypatch.setattr(consult, "create_conversation", _fake_create)
+
+    result = asyncio.run(
+        consult.start_session(ConsultSessionRequest(user_ref="u1", goal="fat loss"))
+    )
+
+    # a data-store failure degrades to the no-data context; the session still mints
+    assert result.conversation_url == "https://u"
+    assert result.conversation_id == "c1"
+    assert result.pal_id == "pal"
+    assert "No connected member data" in recorded["context"]
+    assert recorded["tags"] == consult.DOCUMENT_TAGS
+
+
+def test_start_session_propagates_tavus_http_error(monkeypatch):
+    async def _fail(context, tags):
+        req = httpx.Request("POST", "https://tavusapi.com/v2/conversations")
+        res = httpx.Response(500, request=req, text="boom")
+        raise httpx.HTTPStatusError("boom", request=req, response=res)
+
+    monkeypatch.setattr(consult.user_data, "get_user_data", lambda ref: None)
+    monkeypatch.setattr(consult, "_tavus_ids", lambda: ("pal", "face"))
+    monkeypatch.setattr(consult, "create_conversation", _fail)
+
+    # main.py maps this to a 502; the exception type must keep propagating
+    with pytest.raises(httpx.HTTPStatusError):
+        asyncio.run(consult.start_session(ConsultSessionRequest(user_ref="u1")))
+
+
+# ------------------------------------------------ eligibility: excluded branch
+
+
+def test_screen_eligibility_excluded_returns_reason(monkeypatch):
+    resp = _void_response()
+    resp.excluded_priors = [
+        ExcludedPrior(
+            compound_id=99,
+            outcome_name="weight_change_pct",
+            reason="age 61 outside studied range 18-55",
+        )
+    ]
+    monkeypatch.setattr(consult, "resolve_compound", lambda name: 99)
+    monkeypatch.setattr(consult.db, "get_outcome_priors", lambda cid: [])
+    monkeypatch.setattr(consult, "run_simulation", lambda **kwargs: resp)
+
+    req = ScreenEligibilityRequest(age=61, sex="M", weight_kg=90.0, compound_name="X")
+    result = consult.screen_eligibility(req)
+
+    assert result["eligibility"] == "excluded"
+    assert result["eligibility_reason"] == "age 61 outside studied range 18-55"
+    assert result["distribution_void"] is True
+    # the lower-tier signal still ships alongside the exclusion
+    assert len(result["anecdotes"]) > 0
+
+
+# ---------------------------------------------------- dossier slug resolution
+
+
+class _StubDossierBundle:
+    def model_dump(self):
+        return {"name": "Melanotan II", "tables": {}, "evidence_sources": []}
+
+
+def test_dossier_slug_resolves_multiword_compound(monkeypatch):
+    monkeypatch.setattr(
+        consult.db,
+        "get_compounds",
+        lambda: [{"id": 5, "name": "Melanotan II"}, {"id": 6, "name": "BPC-157"}],
+    )
+    monkeypatch.setattr(consult, "build_simulation_data", lambda cid: _StubDossierBundle())
+
+    text = consult.get_dossier_text("melanotan-ii")
+    assert text is not None
+    assert text.startswith("# Melanotan II evidence dossier")
+    assert consult.get_dossier_text("bpc-157") is not None
+    # unknown and empty slugs must not match anything
+    assert consult.get_dossier_text("unknown-thing") is None
+    assert consult.get_dossier_text("") is None
+    # pin the filename convention shared with scripts/register_kb.py
+    assert consult._canon_slug("Melanotan II") == "melanotan-ii"
+
+
+# ------------------------------------------- evidence: demographic filtering
+
+
+class _StubEvidenceBundle:
+    name = "X"
+    summary = "test summary"
+    evidence_sources: list = []
+    outcome_names = ["weight_change_pct"]
+    studied_age_min = 18
+    studied_age_max = 55
+    tables = {
+        "case_studies": [{"text": "female, 45"}, {"text": "male, 30"}],
+        "anecdotes": [{"claimed_effect": "female lost 3kg"}],
+    }
+
+
+def test_get_compound_evidence_demographic_filter_and_fallback(monkeypatch):
+    monkeypatch.setattr(consult, "resolve_compound", lambda name: 7)
+    monkeypatch.setattr(consult, "build_simulation_data", lambda cid: _StubEvidenceBundle())
+
+    # matching rows only, case-insensitive
+    result = consult.get_compound_evidence(
+        CompoundEvidenceRequest(compound_name="X", demographic="Female")
+    )
+    assert result["found"] is True
+    assert result["case_studies"] == [{"text": "female, 45"}]
+    assert result["anecdotes"] == [{"claimed_effect": "female lost 3kg"}]
+
+    # a filter that matches nothing falls back to the unfiltered rows, never []
+    result = consult.get_compound_evidence(
+        CompoundEvidenceRequest(compound_name="X", demographic="martian")
+    )
+    assert len(result["case_studies"]) == 2
+    assert len(result["anecdotes"]) == 1

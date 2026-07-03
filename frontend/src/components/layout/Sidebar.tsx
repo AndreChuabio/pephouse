@@ -70,13 +70,17 @@ export function Sidebar() {
   const { isAnonymous, signInWithGoogle, signOut } = useAuth();
   const [showAccount, setShowAccount] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const accountRef = useRef<HTMLDivElement>(null);
 
   const handleSignIn = async () => {
     setAuthBusy(true);
+    setAuthError(null);
     try {
+      // On success the browser redirects to Google; authBusy stays set.
       await signInWithGoogle();
-    } catch {
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "Sign-in failed. Try again.");
       setAuthBusy(false);
     }
   };
@@ -84,8 +88,11 @@ export function Sidebar() {
   const handleSignOut = async () => {
     setShowAccount(false);
     setAuthBusy(true);
+    setAuthError(null);
     try {
       await signOut();
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "Sign-out failed. Try again.");
     } finally {
       setAuthBusy(false);
     }
@@ -166,6 +173,11 @@ export function Sidebar() {
             <span className="text-sm font-medium text-white truncate flex-1">Account</span>
             <Icon icon="solar:alt-arrow-up-linear" className="text-zinc-500 shrink-0" />
           </button>
+        )}
+        {authError && (
+          <p className="mt-2 px-1 text-[11px] leading-snug text-amber-400" role="alert">
+            {authError}
+          </p>
         )}
       </div>
     </aside>

@@ -67,6 +67,11 @@ export default function ConsultPage() {
 
   const callRef = useRef<DailyCall | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // Identity the consult was started (and its data bundle seeded) with. Tool
+  // calls key intake rows to THIS value, not a fresh getUserRef(), so an auth
+  // state change mid-consult (late anonymous sign-in resolving, sign-out) can
+  // never flip the intake to a different user than the one counseled.
+  const consultUserRef = useRef<string | null>(null);
   // Holds the in-flight destroy() of a prior frame. daily-js forbids two live
   // DailyIframe instances, so a re-mount (React 18 StrictMode double-invoke, or
   // any effect re-run) must wait for the previous frame to finish tearing down
@@ -108,7 +113,7 @@ export default function ConsultPage() {
         at: nowLabel(),
       });
       try {
-        const result = await dispatchToolCall(evt, getUserRef());
+        const result = await dispatchToolCall(evt, consultUserRef.current ?? getUserRef());
         sendToolResult(call, evt.tool_call_id, result);
         upsertActivity({
           id: evt.tool_call_id,
@@ -156,10 +161,14 @@ export default function ConsultPage() {
     setError(null);
     setStarting(true);
     try {
-      const s = await startConsultSession(getUserRef());
+      // Capture the identity once: the session context and every later tool
+      // call (including the trial intake) are keyed to the same user_ref.
+      const ref = getUserRef();
+      const s = await startConsultSession(ref);
       if (!s.conversation_url) {
         throw new Error("consult session returned no conversation_url");
       }
+      consultUserRef.current = ref;
       setSession(s);
     } catch (err) {
       setError(err instanceof Error ? err.message : "could not start consult");

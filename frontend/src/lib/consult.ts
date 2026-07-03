@@ -15,7 +15,7 @@
 // DailyIframe.createFrame; this module only produces/consumes the payloads.
 
 import type { DailyCall } from "@daily-co/daily-js";
-import { dossierTiers } from "../data/dossierTiers";
+import { dossierTiers, type DossierTierEntry } from "../data/dossierTiers";
 
 const API_BASE =
   import.meta.env.VITE_API_URL ??
@@ -105,6 +105,29 @@ const LEVEL_TIERS: Record<ConsultTierLevel, ConsultTier> = {
   1: TIER_ANECDOTE,
 };
 
+/** Canonical form for a dossier document name: registered names derive from
+ * hyphenated filenames ("Melanotan-II evidence dossier") while dossier titles
+ * use the registry name ("Melanotan II evidence dossier"). Unifying case and
+ * whitespace/hyphens lets the tier lookup hit whichever form Tavus echoes. */
+function canonicalDocKey(name: string): string {
+  return name.toLowerCase().replace(/[\s-]+/g, "-");
+}
+
+// Lazily built canonical-key index over dossierTiers (see canonicalDocKey).
+let canonicalTiers: Record<string, DossierTierEntry> | null = null;
+
+function lookupDossierTier(key: string): DossierTierEntry | undefined {
+  const direct = dossierTiers[key];
+  if (direct) return direct;
+  if (!canonicalTiers) {
+    canonicalTiers = {};
+    for (const [name, entry] of Object.entries(dossierTiers)) {
+      canonicalTiers[canonicalDocKey(name)] = entry;
+    }
+  }
+  return canonicalTiers[canonicalDocKey(key)];
+}
+
 /**
  * Tier classification for a cited document's name. Tavus does not hand us a tier
  * on the event, so we first consult the registry-derived dossierTiers map
@@ -117,9 +140,10 @@ export function classifyDocumentTier(documentName: string | null | undefined): C
   if (!raw) return TIER_UNKNOWN;
 
   // Registry-derived tier map wins: it is grounded in the dossier's actual tier
-  // availability rather than substrings in the name. Tolerate a trailing ".md".
+  // availability rather than substrings in the name. Tolerate a trailing ".md"
+  // and the space vs hyphen divergence for multi-word compounds.
   const key = raw.replace(/\.md$/i, "").trim();
-  const mapped = dossierTiers[key];
+  const mapped = lookupDossierTier(key);
   if (mapped) return LEVEL_TIERS[mapped.level];
 
   const name = raw.toLowerCase();

@@ -572,19 +572,65 @@ _SNAPSHOT_ALLOWED_KEYS = frozenset(
     }
 )
 
+# Containers whose items legitimately use "name" as the biomarker label
+# (LabValue.name is the canonical marker key across the codebase). Inside them
+# "name" identifies the marker, not a person, so it must survive; the global
+# strip would otherwise leave flags a coordinator cannot act on.
+_SNAPSHOT_FLAG_CONTAINERS = frozenset({"flags", "lab_flags", "biomarker_flags", "wearable_trends"})
+_FLAG_CONTAINER_BLOCKED_KEYS = _SNAPSHOT_BLOCKED_KEYS - {"name"}
 
-def _strip_blocked(value: object) -> object:
-    """Recursively drop blocked keys (raw values / identifiers) at any depth."""
+# Free-text scrubbing: key filtering alone cannot hold the PHI invariant when a
+# raw lab value or callback number is embedded in an allowlisted string field
+# ("LDL was 190 mg/dL, call me at 555-1234" under "goal"). Emails, phone-like
+# digit runs, and unit-bearing measurements are redacted; unit-less short ranges
+# such as "ages 18-55" survive.
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]*\w")
+_PHONE_RE = re.compile(r"\+?\d[\d\s().-]{6,}\d")
+_MEASUREMENT_RE = re.compile(
+    r"\d+(?:\.\d+)?\s*(?:mg/dl|mmol/l|ng/ml|pg/ml|g/dl|miu/l|iu/l|u/l|meq/l|mcg|ug|%)",
+    re.IGNORECASE,
+)
+
+
+def _scrub_text(text: str) -> str:
+    """Redact contact details and unit-bearing measurements from free text."""
+    scrubbed = _EMAIL_RE.sub("[contact withheld]", text)
+    scrubbed = _PHONE_RE.sub("[contact withheld]", scrubbed)
+    scrubbed = _MEASUREMENT_RE.sub("[value withheld]", scrubbed)
+    if scrubbed != text:
+        logger.info("consult: scrubbed contact/measurement text from an intake field")
+    return scrubbed
+
+
+def _scrub_optional(text: str | None) -> str | None:
+    """Scrub a nullable free-text field, passing None through unchanged."""
+    return _scrub_text(text) if text else text
+
+
+def _strip_blocked(value: object, in_flag_container: bool = False) -> object:
+    """Recursively drop blocked keys and scrub string leaves at any depth.
+
+    Inside a flag container (lab_flags and friends) the "name" key is kept as
+    the biomarker label; raw values, person-name keys, and contact keys are
+    dropped everywhere. String leaves are scrubbed for embedded contact
+    details and measurements, which key filtering alone cannot catch.
+    """
     if isinstance(value, dict):
+        blocked = _FLAG_CONTAINER_BLOCKED_KEYS if in_flag_container else _SNAPSHOT_BLOCKED_KEYS
         cleaned: dict = {}
         for key, val in value.items():
-            if isinstance(key, str) and key.strip().lower() in _SNAPSHOT_BLOCKED_KEYS:
+            key_norm = key.strip().lower() if isinstance(key, str) else ""
+            if key_norm in blocked:
                 logger.info("consult: stripped blocked context_snapshot key '%s'", key)
                 continue
-            cleaned[key] = _strip_blocked(val)
+            cleaned[key] = _strip_blocked(
+                val, in_flag_container or key_norm in _SNAPSHOT_FLAG_CONTAINERS
+            )
         return cleaned
     if isinstance(value, list):
-        return [_strip_blocked(item) for item in value]
+        return [_strip_blocked(item, in_flag_container) for item in value]
+    if isinstance(value, str):
+        return _scrub_text(value)
     return value
 
 
@@ -593,7 +639,8 @@ def minimize_context_snapshot(snapshot: object) -> object:
 
     Top level: keep only allowlisted keys (goal / eligibility inputs / flags).
     Within kept values: recursively drop blocked keys (raw lab values,
-    identifiers, contact details). The backend is the trust boundary; the
+    identifiers, contact details) and scrub free-text strings for embedded
+    measurements and contact details. The backend is the trust boundary; the
     persona is never trusted to self-minimize.
     """
     if isinstance(snapshot, dict):
@@ -603,30 +650,30 @@ def minimize_context_snapshot(snapshot: object) -> object:
             if key_norm not in _SNAPSHOT_ALLOWED_KEYS:
                 logger.info("consult: dropped non-allowlisted context_snapshot key '%s'", key)
                 continue
-            cleaned[key] = _strip_blocked(val)
+            cleaned[key] = _strip_blocked(val, key_norm in _SNAPSHOT_FLAG_CONTAINERS)
         return cleaned
-    if isinstance(snapshot, list):
-        return [_strip_blocked(item) for item in snapshot]
-    return snapshot
+    return _strip_blocked(snapshot)
 
 
 def insert_intake(intake: TrialIntake) -> dict:
     """Insert a trial_intakes row and return ``{id, status}``.
 
     Resolves the compound name to an id when possible and enforces the PHI
-    invariant on ``context_snapshot`` via ``minimize_context_snapshot`` before it
-    is persisted to the coordinator-visible table.
+    invariant before persisting to the coordinator-visible table:
+    ``context_snapshot`` goes through ``minimize_context_snapshot`` and the
+    persona-authored free-text fields (goal, eligibility_reason,
+    counsel_summary) are scrubbed for embedded measurements and contact details.
     """
     compound_id = resolve_compound(intake.compound_name)
     row = {
         "user_ref": intake.user_ref,
-        "goal": intake.goal,
+        "goal": _scrub_optional(intake.goal),
         "compound_id": compound_id,
         "compound_name": intake.compound_name,
         "eligibility": intake.eligibility,
-        "eligibility_reason": intake.eligibility_reason,
+        "eligibility_reason": _scrub_optional(intake.eligibility_reason),
         "context_snapshot": minimize_context_snapshot(intake.context_snapshot),
-        "counsel_summary": intake.counsel_summary,
+        "counsel_summary": _scrub_optional(intake.counsel_summary),
         "consent": bool(intake.consent),
     }
     res = supabase.table("trial_intakes").insert(row).execute()

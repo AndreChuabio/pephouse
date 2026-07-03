@@ -116,13 +116,23 @@ export default function CoordinatorPage() {
       <div className="flex-1 min-h-0 overflow-y-auto p-6">
         {error && (
           <Panel className="p-4 mb-4">
-            <p className="text-sm text-red-400">{error}</p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-red-400">{error}</p>
+              <button
+                type="button"
+                onClick={() => void load()}
+                disabled={loading}
+                className="text-xs font-medium text-zinc-300 hover:text-white border border-zinc-700 rounded px-2 py-1 transition-colors disabled:opacity-60 shrink-0"
+              >
+                Retry
+              </button>
+            </div>
           </Panel>
         )}
 
         {loading && rows.length === 0 ? (
           <p className="text-sm text-zinc-500">Loading intake queue…</p>
-        ) : rows.length === 0 ? (
+        ) : error && rows.length === 0 ? null : rows.length === 0 ? (
           <Panel className="p-8">
             <div className="flex flex-col items-center text-center gap-2">
               <Icon icon="solar:inbox-linear" className="text-3xl text-zinc-600" />
