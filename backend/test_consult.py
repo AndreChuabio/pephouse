@@ -277,3 +277,28 @@ def test_extract_biomarkers_strips_markdown_fence(monkeypatch):
 def test_extract_biomarkers_empty_on_no_key(monkeypatch):
     monkeypatch.setattr(consult, "_claude_json", lambda prompt, max_tokens=1200: None)
     assert consult.extract_biomarkers("anything") == []
+
+
+def test_snapshot_allowlist_drops_unknown_and_blocked_keys():
+    snapshot = {
+        "goal": "recovery",
+        "eligibility": "excluded",
+        "lab_flags": [{"marker": "ApoB", "flag": "high", "value": 130}],
+        "summary": "LDL was 190 mg/dL, call me at 555-1234",
+        "phone": "+15551234",
+    }
+    cleaned = consult.minimize_context_snapshot(snapshot)
+    assert cleaned["goal"] == "recovery"
+    assert cleaned["eligibility"] == "excluded"
+    # allowlisted container kept, but the raw value inside is stripped
+    assert cleaned["lab_flags"] == [{"marker": "ApoB", "flag": "high"}]
+    # non-allowlisted free text and identifiers are dropped wholesale
+    assert "summary" not in cleaned
+    assert "phone" not in cleaned
+
+
+def test_coerce_labs_skips_malformed_items():
+    payload = '[{"name": "A1c", "value": {"result": 6.1}}, {"name": "LDL", "status": "high"}]'
+    parsed = consult.extract_biomarkers.__globals__["json"].loads(payload)
+    labs = consult._coerce_labs(parsed)
+    assert [l.name for l in labs] == ["LDL"]

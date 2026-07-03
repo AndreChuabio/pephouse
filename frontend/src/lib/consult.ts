@@ -244,7 +244,9 @@ export function parseRagObservability(data: unknown): RagObservabilityEvent[] | 
   for (let i = 0; i < count; i += 1) {
     const documentName = names[i] ?? "Untitled document";
     events.push({
-      documentId: ids[i] ?? `doc-${i}`,
+      // Fall back to the document name, not an index: `doc-${i}` repeats across
+      // separate events and would make the Sources dedup drop distinct citations.
+      documentId: ids[i] ?? documentName,
       documentName,
       tier: classifyDocumentTier(documentName),
     });
@@ -257,19 +259,25 @@ export function parseRagObservability(data: unknown): RagObservabilityEvent[] | 
 export type ConsultToolName =
   | "get_compound_evidence"
   | "screen_eligibility"
+  | "submit_trial_intake"
   | "submit_intake"
   | "intake";
 
-/** Map a persona tool name to the backend endpoint that answers it. */
+const INTAKE_ENDPOINT = `${API_BASE}/consult/intake`;
+
+/** Map a persona tool name to the backend endpoint that answers it.
+ * The persona registers the intake tool as `submit_trial_intake`
+ * (scripts/persona_config.json); the aliases are kept for compatibility. */
 function toolEndpoint(name: string): string | null {
   switch (name) {
     case "get_compound_evidence":
       return `${API_BASE}/consult/tools/get_compound_evidence`;
     case "screen_eligibility":
       return `${API_BASE}/consult/tools/screen_eligibility`;
+    case "submit_trial_intake":
     case "submit_intake":
     case "intake":
-      return `${API_BASE}/consult/intake`;
+      return INTAKE_ENDPOINT;
     default:
       return null;
   }
@@ -279,16 +287,27 @@ function toolEndpoint(name: string): string | null {
  * Forward a tool call to its backend endpoint and return the parsed JSON result.
  * Throws when the tool name is unknown or the request fails, so the caller can
  * surface an error rather than silently drop the persona's request.
+ *
+ * For the intake tool the authenticated `userRef` is injected AFTER the persona
+ * args, so the stored trial_intakes row is keyed to the real signed-in user and
+ * a persona-invented user_ref can never win.
  */
-export async function dispatchToolCall(evt: ToolCallEvent): Promise<unknown> {
+export async function dispatchToolCall(
+  evt: ToolCallEvent,
+  userRef?: string,
+): Promise<unknown> {
   const endpoint = toolEndpoint(evt.name);
   if (!endpoint) {
     throw new Error(`Unknown consult tool: ${evt.name}`);
   }
+  const body: Record<string, unknown> =
+    endpoint === INTAKE_ENDPOINT && userRef
+      ? { ...evt.args, user_ref: userRef }
+      : evt.args;
   const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(evt.args),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     throw new Error((await res.text()) || `tool ${evt.name} failed (${res.status})`);

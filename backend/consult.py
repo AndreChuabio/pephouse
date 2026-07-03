@@ -25,6 +25,7 @@ import re
 from datetime import datetime, timezone
 
 import httpx
+from pydantic import ValidationError
 
 import db
 import user_data
@@ -549,23 +550,63 @@ _SNAPSHOT_BLOCKED_KEYS = frozenset(
 )
 
 
-def minimize_context_snapshot(snapshot: object) -> object:
-    """Recursively strip raw values / identifiers / contact details from a snapshot.
+# Top-level keys a coordinator actually needs to triage an intake. Anything the
+# persona sends outside this allowlist is dropped wholesale -- a denylist of key
+# names cannot hold the invariant, because a raw value tucked under any novel
+# key ("summary", "notes", "extra") would pass straight through.
+_SNAPSHOT_ALLOWED_KEYS = frozenset(
+    {
+        "goal",
+        "compound",
+        "compound_name",
+        "eligibility",
+        "eligibility_reason",
+        "age",
+        "sex",
+        "weight_kg",
+        "conditions",
+        "flags",
+        "lab_flags",
+        "biomarker_flags",
+        "wearable_trends",
+    }
+)
 
-    Any blocked key (see ``_SNAPSHOT_BLOCKED_KEYS``) is dropped at every depth so
-    the stored ``context_snapshot`` keeps only triage context (flags / ranges /
-    goal / eligibility). Non-dict/list values pass through unchanged.
+
+def _strip_blocked(value: object) -> object:
+    """Recursively drop blocked keys (raw values / identifiers) at any depth."""
+    if isinstance(value, dict):
+        cleaned: dict = {}
+        for key, val in value.items():
+            if isinstance(key, str) and key.strip().lower() in _SNAPSHOT_BLOCKED_KEYS:
+                logger.info("consult: stripped blocked context_snapshot key '%s'", key)
+                continue
+            cleaned[key] = _strip_blocked(val)
+        return cleaned
+    if isinstance(value, list):
+        return [_strip_blocked(item) for item in value]
+    return value
+
+
+def minimize_context_snapshot(snapshot: object) -> object:
+    """Reduce a persona-supplied snapshot to coordinator triage context only.
+
+    Top level: keep only allowlisted keys (goal / eligibility inputs / flags).
+    Within kept values: recursively drop blocked keys (raw lab values,
+    identifiers, contact details). The backend is the trust boundary; the
+    persona is never trusted to self-minimize.
     """
     if isinstance(snapshot, dict):
         cleaned: dict = {}
         for key, val in snapshot.items():
-            if isinstance(key, str) and key.strip().lower() in _SNAPSHOT_BLOCKED_KEYS:
-                logger.info("consult: stripped blocked context_snapshot key '%s'", key)
+            key_norm = key.strip().lower() if isinstance(key, str) else ""
+            if key_norm not in _SNAPSHOT_ALLOWED_KEYS:
+                logger.info("consult: dropped non-allowlisted context_snapshot key '%s'", key)
                 continue
-            cleaned[key] = minimize_context_snapshot(val)
+            cleaned[key] = _strip_blocked(val)
         return cleaned
     if isinstance(snapshot, list):
-        return [minimize_context_snapshot(item) for item in snapshot]
+        return [_strip_blocked(item) for item in snapshot]
     return snapshot
 
 
@@ -672,18 +713,24 @@ def _coerce_labs(raw: object) -> list[LabValue]:
         name = item.get("name") or item.get("marker") or item.get("slug")
         if not name:
             continue
-        labs.append(
-            LabValue(
-                name=str(name),
-                slug=item.get("slug"),
-                value=item.get("value"),
-                unit=item.get("unit"),
-                flag=item.get("flag"),
-                status=item.get("status"),
-                ref_low=_as_float(item.get("ref_low")),
-                ref_high=_as_float(item.get("ref_high")),
+        try:
+            labs.append(
+                LabValue(
+                    name=str(name),
+                    slug=item.get("slug"),
+                    value=item.get("value"),
+                    unit=item.get("unit"),
+                    flag=item.get("flag"),
+                    status=item.get("status"),
+                    ref_low=_as_float(item.get("ref_low")),
+                    ref_high=_as_float(item.get("ref_high")),
+                )
             )
-        )
+        except ValidationError:
+            # Valid JSON, wrong shape (dict for value, int for unit, ...). Skip
+            # the item so extraction degrades to fewer/zero labs instead of the
+            # error escaping as a 502; the graceful path leaves stored labs alone.
+            logger.warning("consult: skipped malformed biomarker item '%s'", name)
     return labs
 
 

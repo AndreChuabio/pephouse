@@ -385,13 +385,19 @@ async def consult_session(body: ConsultSessionRequest) -> ConsultSessionResponse
 @app.post("/consult/tools/get_compound_evidence")
 def consult_get_compound_evidence(body: CompoundEvidenceRequest) -> dict:
     """Tool backing: the tier ladder + demographic-filtered narratives for a compound."""
-    return consult.get_compound_evidence(body)
+    try:
+        return consult.get_compound_evidence(body)
+    except Exception as exc:  # noqa: BLE001 - surface data-layer failures as 502
+        raise HTTPException(status_code=502, detail=f"evidence lookup failed: {exc}")
 
 
 @app.post("/consult/tools/screen_eligibility")
 def consult_screen_eligibility(body: ScreenEligibilityRequest) -> dict:
     """Tool backing: run the twin over the full tier ladder; void returns lower-tier signal."""
-    return consult.screen_eligibility(body)
+    try:
+        return consult.screen_eligibility(body)
+    except Exception as exc:  # noqa: BLE001 - surface engine failures as 502
+        raise HTTPException(status_code=502, detail=f"eligibility screen failed: {exc}")
 
 
 @app.post("/consult/intake", response_model=IntakeResult)

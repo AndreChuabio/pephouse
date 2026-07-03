@@ -108,7 +108,7 @@ export default function ConsultPage() {
         at: nowLabel(),
       });
       try {
-        const result = await dispatchToolCall(evt);
+        const result = await dispatchToolCall(evt, getUserRef());
         sendToolResult(call, evt.tool_call_id, result);
         upsertActivity({
           id: evt.tool_call_id,
@@ -192,6 +192,9 @@ export default function ConsultPage() {
       call.on("app-message", handleAppMessage);
       call.join({ url: session.conversation_url }).catch((err: unknown) => {
         setError(err instanceof Error ? err.message : "could not join conversation");
+        // A failed join leaves a dead frame with no controls. Clear the session
+        // so the effect cleanup destroys the frame and the Start button returns.
+        setSession(null);
       });
     });
 

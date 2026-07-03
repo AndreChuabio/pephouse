@@ -41,6 +41,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // localStorage id so the app still renders and works, instead of hanging
     // on the loader forever. A real session, if one arrives later, overrides.
     const ref = getUserRef();
+    // Cache the fallback id so every later getUserRef() caller sees the same
+    // identity this session (a late-arriving real session overrides via
+    // applySession -> setUserRef).
+    setUserRef(ref);
     const next: AuthState = { userRef: ref, isAnonymous: true };
     stateRef.current = next;
     setState(next);
