@@ -587,7 +587,7 @@ _FLAG_CONTAINER_BLOCKED_KEYS = _SNAPSHOT_BLOCKED_KEYS - {"name"}
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]*\w")
 _PHONE_RE = re.compile(r"\+?\d[\d\s().-]{6,}\d")
 _MEASUREMENT_RE = re.compile(
-    r"\d+(?:\.\d+)?\s*(?:mg/dl|mmol/l|ng/ml|pg/ml|g/dl|miu/l|iu/l|u/l|meq/l|mcg|ug|%)",
+    r"\d+(?:\.\d+)?\s*(?:mg/dl|mmol/l|ng/ml|pg/ml|g/dl|miu/l|iu/l|u/l|meq/l|mcg|ug|%|(?:percent|pct)\b)",
     re.IGNORECASE,
 )
 
