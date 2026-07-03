@@ -3,6 +3,7 @@ import { Icon } from "@iconify/react";
 import { Link, useLocation } from "react-router-dom";
 import { PLATFORM_NAV, SETTINGS_NAV } from "../../config/navigation";
 import { cn } from "../../lib/cn";
+import { useAuth } from "../../context/AuthProvider";
 import type { NavItem } from "../../types/navigation";
 
 type SidebarNavItemProps = {
@@ -66,8 +67,29 @@ function NavSection({ title, items, pathname, className }: NavSectionProps) {
 
 export function Sidebar() {
   const { pathname } = useLocation();
+  const { isAnonymous, signInWithGoogle, signOut } = useAuth();
   const [showAccount, setShowAccount] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
+
+  const handleSignIn = async () => {
+    setAuthBusy(true);
+    try {
+      await signInWithGoogle();
+    } catch {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    setShowAccount(false);
+    setAuthBusy(true);
+    try {
+      await signOut();
+    } finally {
+      setAuthBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!showAccount) return;
@@ -104,20 +126,47 @@ export function Sidebar() {
                 isActive={item.to.startsWith("/") && pathname === item.to}
               />
             ))}
+            {!isAnonymous && (
+              <button
+                type="button"
+                onClick={handleSignOut}
+                disabled={authBusy}
+                className="w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors disabled:opacity-50"
+              >
+                <Icon icon="solar:logout-3-linear" className="text-base" />
+                Sign out
+              </button>
+            )}
           </div>
         )}
-        <button
-          type="button"
-          onClick={() => setShowAccount(true)}
-          className="w-full flex items-center gap-3 px-2 py-2 rounded-md hover:bg-zinc-900 transition-colors text-left"
-          aria-expanded={showAccount}
-        >
-          <div className="h-8 w-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-medium text-white shrink-0">
-            KN
-          </div>
-          <span className="text-sm font-medium text-white truncate flex-1">Kien</span>
-          <Icon icon="solar:alt-arrow-up-linear" className="text-zinc-500 shrink-0" />
-        </button>
+        {isAnonymous ? (
+          <button
+            type="button"
+            onClick={handleSignIn}
+            disabled={authBusy}
+            className="w-full flex items-center gap-3 px-2 py-2 rounded-md border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900 transition-colors text-left disabled:opacity-50"
+          >
+            <div className="h-8 w-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0">
+              <Icon icon="solar:login-3-linear" className="text-base text-blue-400" />
+            </div>
+            <span className="text-sm font-medium text-white truncate flex-1">
+              {authBusy ? "Redirecting" : "Sign in with Google"}
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowAccount(true)}
+            className="w-full flex items-center gap-3 px-2 py-2 rounded-md hover:bg-zinc-900 transition-colors text-left"
+            aria-expanded={showAccount}
+          >
+            <div className="h-8 w-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0">
+              <Icon icon="solar:user-linear" className="text-base text-white" />
+            </div>
+            <span className="text-sm font-medium text-white truncate flex-1">Account</span>
+            <Icon icon="solar:alt-arrow-up-linear" className="text-zinc-500 shrink-0" />
+          </button>
+        )}
       </div>
     </aside>
   );
