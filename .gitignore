@@ -28,3 +28,6 @@ synthea/visualizer_out/
 .DS_Store
 .idea/
 .vscode/
+
+# Generated Tavus KB dossiers (regenerable via scripts/generate_dossiers.py)
+scripts/dossiers/
