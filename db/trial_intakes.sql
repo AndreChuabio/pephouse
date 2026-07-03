@@ -10,7 +10,10 @@ create table if not exists trial_intakes (
   created_at         timestamptz not null default now(),
   user_ref           text not null,
   goal               text,
-  compound_id        int references compounds(id),
+  -- compounds.id is bigint identity; match it (all sibling FKs in schema.sql are
+  -- bigint). ON DELETE SET NULL: retiring a compound from the registry must not
+  -- destroy or block a patient intake record (compound_name is denormalized).
+  compound_id        bigint references compounds(id) on delete set null,
   compound_name      text,
   eligibility        text check (eligibility in ('eligible', 'excluded', 'no_trial', 'unknown')),
   eligibility_reason text,
