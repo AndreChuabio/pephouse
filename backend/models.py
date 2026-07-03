@@ -269,3 +269,77 @@ class StackItem(BaseModel):
     dose: str | None = None
     source_type: str | None = None
     created_at: str | None = None
+
+
+# ------------------------------------------------------------------- consult
+# The Consult layer (Tavus CVI). A session mints a Tavus conversation seeded with
+# a PHI-minimized context; three tool-backing endpoints answer conversation
+# tool_call events the frontend forwards over the Daily data channel; an intake
+# captures a trial-referral row; a lab PDF upload extracts biomarkers.
+
+
+class ConsultSessionRequest(BaseModel):
+    """Body for POST /consult/session.
+
+    ``user_ref`` (when given) loads the stored bundle and PHI-minimizes it into
+    the conversational context. ``goal`` / ``compound_name`` frame the consult.
+    """
+
+    user_ref: str | None = None
+    goal: str | None = None
+    compound_name: str | None = None
+
+
+class ConsultSessionResponse(BaseModel):
+    conversation_url: str
+    conversation_id: str
+    pal_id: str
+
+
+class CompoundEvidenceRequest(BaseModel):
+    """Body for the get_compound_evidence tool call."""
+
+    compound_name: str
+    demographic: str | None = None
+
+
+class ScreenEligibilityRequest(BaseModel):
+    """Body for the screen_eligibility tool call."""
+
+    age: int
+    sex: str  # M | F
+    weight_kg: float | None = None
+    compound_name: str
+    conditions: list[str] | None = None
+
+
+# Allowed eligibility reads (mirrors the trial_intakes.eligibility CHECK).
+ELIGIBILITY_VALUES = ("eligible", "excluded", "no_trial", "unknown")
+
+
+class TrialIntake(BaseModel):
+    """Body for POST /consult/intake — a trial-referral capture after the consult.
+
+    PHI minimization: ``context_snapshot`` must hold only the minimized triage
+    context a coordinator needs (flags / ranges / goal), never raw lab values,
+    identifiers, or contact details.
+    """
+
+    user_ref: str
+    goal: str | None = None
+    compound_name: str | None = None
+    eligibility: str  # eligible | excluded | no_trial | unknown
+    eligibility_reason: str | None = None
+    consent: bool = False
+    context_snapshot: dict | None = None
+    counsel_summary: str | None = None
+
+
+class IntakeResult(BaseModel):
+    id: int | None = None
+    status: str
+
+
+class LabUploadResponse(BaseModel):
+    connected: bool
+    extracted_count: int
