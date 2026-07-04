@@ -11,6 +11,7 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { getUserRef } from "../lib/userRef";
 import {
   dispatchToolCall,
+  parseEvidenceSources,
   parseRagObservability,
   parseToolCall,
   sendToolResult,
@@ -46,11 +47,23 @@ function nowLabel(): string {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+// Tavus packs internal fields into the tool args (an inference id and a
+// response_to_user field carrying the persona's spoken line wrapped in an
+// <emotion .../> tag). Those are noise in the activity feed, so we drop them and
+// keep only the meaningful arguments (compound_name, age, sex, conditions, ...).
+const NOISE_ARG_KEYS = new Set(["response_to_user", "inference_id"]);
+const EMOTION_TAG_RE = /<emotion\b[^>]*\/?>/gi;
+
 function summarizeArgs(args: Record<string, unknown>): string {
   const parts: string[] = [];
   for (const [key, value] of Object.entries(args)) {
     if (value === null || value === undefined || value === "") continue;
-    const rendered = typeof value === "object" ? JSON.stringify(value) : String(value);
+    if (NOISE_ARG_KEYS.has(key)) continue;
+    const raw = typeof value === "object" ? JSON.stringify(value) : String(value);
+    // Drop any arg the persona stuffs an inline emotion tag into (a spoken line).
+    if (/<emotion\b/i.test(raw)) continue;
+    const rendered = raw.replace(EMOTION_TAG_RE, "").replace(/\s+/g, " ").trim();
+    if (!rendered) continue;
     parts.push(`${key}: ${rendered}`);
   }
   return parts.join(", ");
@@ -115,6 +128,11 @@ export default function ConsultPage() {
       try {
         const result = await dispatchToolCall(evt, consultUserRef.current ?? getUserRef());
         sendToolResult(call, evt.tool_call_id, result);
+        // rag.observability may not fire for a tool-sourced answer, so populate the
+        // Sources panel from the evidence tiers this tool returned as well.
+        if (evt.name === "get_compound_evidence") {
+          addSources(parseEvidenceSources(result));
+        }
         upsertActivity({
           id: evt.tool_call_id,
           name: evt.name,
@@ -134,7 +152,7 @@ export default function ConsultPage() {
         });
       }
     },
-    [upsertActivity],
+    [addSources, upsertActivity],
   );
 
   const handleAppMessage = useCallback(

@@ -278,6 +278,84 @@ export function parseRagObservability(data: unknown): RagObservabilityEvent[] | 
   return events;
 }
 
+// ------------------------------------------------------- tool-sourced citations
+// get_compound_evidence returns the tier ladder (evidence_sources) plus the
+// underlying tables, but Tavus does not reliably fire a rag.observability event
+// for a tool-sourced answer -- so the Sources panel would stay empty even though
+// the persona just cited evidence. parseEvidenceSources maps each AVAILABLE tier
+// from the tool result into a citation event, phrasing the document name so
+// classifyDocumentTier lands on the same level the backend assigned (display_tier)
+// and keying the id to compound + tier so repeat lookups for one compound dedup.
+
+interface RawEvidenceSource {
+  id?: unknown;
+  label?: unknown;
+  display_tier?: unknown;
+  count?: unknown;
+  available?: unknown;
+}
+
+interface RawEvidenceResult {
+  found?: unknown;
+  compound_id?: unknown;
+  name?: unknown;
+  compound_name?: unknown;
+  evidence_sources?: unknown;
+}
+
+// Tier-aligned phrasing per evidence-source id (see evidence.py _evidence_sources).
+// Each phrase is chosen so classifyDocumentTier's name heuristic returns the tier
+// the backend already assigned: rct -> 4, observational -> 3, quality -> 2 (case
+// series), anecdote -> 1.
+const EVIDENCE_SOURCE_PHRASES: Record<string, string> = {
+  rct: "randomized controlled trials",
+  observational: "observational studies and papers",
+  quality: "verified real-world case series",
+  anecdote: "community anecdotes and forum reports",
+};
+
+/**
+ * Map a get_compound_evidence tool result into RAG citation events, one per
+ * available evidence tier. Returns [] when the compound was not found or no tier
+ * has evidence, so the caller can hand the result straight to addSources.
+ */
+export function parseEvidenceSources(result: unknown): RagObservabilityEvent[] {
+  const rec = asRecord(result) as RawEvidenceResult | null;
+  if (!rec || rec.found !== true) return [];
+
+  const rawSources = Array.isArray(rec.evidence_sources) ? rec.evidence_sources : [];
+  if (rawSources.length === 0) return [];
+
+  const compoundName =
+    (typeof rec.name === "string" && rec.name) ||
+    (typeof rec.compound_name === "string" && rec.compound_name) ||
+    "Compound";
+  // Prefer the numeric compound id for a stable dedup key; fall back to the name.
+  const compoundKey =
+    rec.compound_id !== undefined && rec.compound_id !== null
+      ? String(rec.compound_id)
+      : compoundName.toLowerCase();
+
+  const events: RagObservabilityEvent[] = [];
+  for (const raw of rawSources) {
+    const src = asRecord(raw) as RawEvidenceSource | null;
+    if (!src || src.available !== true) continue;
+    const id = typeof src.id === "string" ? src.id : "";
+    if (!id) continue;
+    const phrase =
+      EVIDENCE_SOURCE_PHRASES[id] ?? (typeof src.label === "string" ? src.label : id);
+    const count = typeof src.count === "number" ? src.count : 0;
+    const documentName =
+      count > 0 ? `${compoundName}: ${phrase} (${count})` : `${compoundName}: ${phrase}`;
+    events.push({
+      documentId: `evidence:${compoundKey}:${id}`,
+      documentName,
+      tier: classifyDocumentTier(documentName),
+    });
+  }
+  return events;
+}
+
 // ============================================================ tool dispatch
 
 export type ConsultToolName =
