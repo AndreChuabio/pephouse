@@ -9,6 +9,8 @@ interface AuthContextValue {
   userRef: string;
   /** True while the user is on an anonymous session (no linked provider yet). */
   isAnonymous: boolean;
+  /** Email of the signed-in user; null for anonymous / fallback sessions. */
+  email: string | null;
   /** Link Google to the current anonymous user, or sign in with Google outright. */
   signInWithGoogle: () => Promise<void>;
   /** Sign out; the app drops back to a fresh anonymous session. */
@@ -20,6 +22,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 interface AuthState {
   userRef: string;
   isAnonymous: boolean;
+  email: string | null;
 }
 
 interface AuthProviderProps {
@@ -45,7 +48,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // identity this session (a late-arriving real session overrides via
     // applySession -> setUserRef).
     setUserRef(ref);
-    const next: AuthState = { userRef: ref, isAnonymous: true };
+    const next: AuthState = { userRef: ref, isAnonymous: true, email: null };
     stateRef.current = next;
     setState(next);
   }, []);
@@ -71,9 +74,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         void startAnonymous();
         return;
       }
+      const anonymous = session.user.is_anonymous ?? false;
       const next: AuthState = {
         userRef: session.user.id,
-        isAnonymous: session.user.is_anonymous ?? false,
+        isAnonymous: anonymous,
+        email: anonymous ? null : session.user.email ?? null,
       };
       setUserRef(next.userRef);
       stateRef.current = next;
@@ -161,6 +166,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const value: AuthContextValue = {
     userRef: state.userRef,
     isAnonymous: state.isAnonymous,
+    email: state.email,
     signInWithGoogle,
     signOut,
   };

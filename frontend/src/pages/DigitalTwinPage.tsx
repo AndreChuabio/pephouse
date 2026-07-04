@@ -6,6 +6,7 @@ import { MultiSelectDropdown } from "../components/twin/MultiSelectDropdown";
 import { saveUserData, twinSimulate } from "../lib/api";
 import { getUserRef } from "../lib/userRef";
 import { DEMOGRAPHICS } from "../data/mockSimulation";
+import { CONDITION_OPTIONS, GOAL_OPTIONS } from "../data/profileOptions";
 import {
   BODY_SYSTEMS,
   gradeFor,
@@ -19,43 +20,11 @@ import { useCompoundExtras } from "../hooks/useCompoundExtras";
 import { useStack } from "../hooks/useStack";
 import type { LabValue, OutcomeResult, PatientInput, SimulateResponse } from "../types/simulation";
 
-const GOAL_OPTIONS = [
-  "More energy",
-  "More healthy years",
-  "Prevent chronic illness",
-  "Support peak performance",
-  "Proactive healthcare",
-  "Optimize my biomarkers",
-  "Mental clarity",
-  "To look my best",
-  "Support my metabolism",
-  "Revitalize my sexual health",
-  "Lose weight",
-  "Optimize muscle composition",
-  "Support menopause / perimenopause",
-  "Support my cardiovascular health",
-  "Cellular rejuvenation (NAD+ / Glutathione)",
-];
-
 const SOURCE_OPTIONS = [
   { value: "label_dose", label: "Label dose (no source modeling)" },
   { value: "compounding_pharmacy", label: "Compounding pharmacy (clean)" },
   { value: "vendor_tested", label: "Gray-market, lab-tested" },
   { value: "gray_market", label: "Gray-market, untested" },
-];
-
-const CONDITION_OPTIONS = [
-  "Diabetes",
-  "High cholesterol",
-  "Prediabetes",
-  "Hypertension",
-  "Obesity",
-  "Hypothyroidism",
-  "PCOS",
-  "Fatty liver",
-  "Low testosterone",
-  "Anxiety",
-  "Insomnia",
 ];
 
 // realId = registry compound_id used by /twin/simulate (BPC-157=1, Tirzepatide=3).

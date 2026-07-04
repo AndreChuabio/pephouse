@@ -10,5 +10,5 @@ export const PLATFORM_NAV: NavItem[] = [
 // Route still mounted in App.tsx so the URL isn't broken.
 
 export const SETTINGS_NAV: NavItem[] = [
-  { label: "Configuration", icon: "solar:settings-linear", to: "#" },
+  { label: "Configuration", icon: "solar:settings-linear", to: "/settings" },
 ];

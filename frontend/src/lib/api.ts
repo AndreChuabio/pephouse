@@ -313,6 +313,39 @@ export async function fetchUserData(userRef: string): Promise<UserDataBundle | n
   return res.json() as Promise<UserDataBundle>;
 }
 
+export type LabUploadResult = {
+  connected: boolean;
+  extracted_count: number;
+};
+
+/** Upload a lab report PDF; the backend extracts biomarkers and merges them
+ * onto the user's stored data. Multipart form: user_ref + file. */
+export async function uploadLabReport(userRef: string, file: File): Promise<LabUploadResult> {
+  const form = new FormData();
+  form.append("user_ref", userRef);
+  form.append("file", file);
+  const res = await fetch(`${API_BASE}/consult/labs/upload`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) throw new Error((await res.text()) || `lab upload failed (${res.status})`);
+  return res.json() as Promise<LabUploadResult>;
+}
+
+export type DeleteUserDataResult = {
+  deleted: boolean;
+  tables: Record<string, number>;
+};
+
+/** Delete everything stored for a user. Returns per-table row counts removed. */
+export async function deleteUserData(userRef: string): Promise<DeleteUserDataResult> {
+  const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userRef)}/data`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error((await res.text()) || `delete user data failed (${res.status})`);
+  return res.json() as Promise<DeleteUserDataResult>;
+}
+
 /** Persist a connected/reported patch (camelCase weightKg -> snake weight_kg).
  *
  * `labs` is only sent when explicitly provided — the backend fully replaces
