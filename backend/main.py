@@ -8,6 +8,8 @@ Run locally:
     uvicorn main:app --reload
 """
 
+import logging
+
 import anyio
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,6 +51,8 @@ from models import (
     UserDataPatch,
 )
 from twin_engine import run_simulation
+
+logger = logging.getLogger("pephouse.main")
 
 app = FastAPI(title="pephouse")
 
@@ -294,6 +298,28 @@ def save_user_data(user_ref: str, body: UserDataPatch) -> UserDataBundle:
         raise HTTPException(status_code=400, detail="user_ref required")
     merged = user_data.save_user_data(user_ref, body.model_dump(exclude_none=True))
     return UserDataBundle(**merged)
+
+
+@app.delete("/users/{user_ref}/data")
+def delete_user_data(user_ref: str) -> dict:
+    """Delete every stored row for this user across all user-keyed tables.
+
+    The settings-page "delete my data" control. Removes the user's rows from
+    user_profiles, user_lab_results, user_wearable_metrics, user_stack and
+    trial_intakes, returning per-table counts. Deleting a user_ref with no
+    rows is a success (all counts zero), not an error.
+    """
+    if not user_ref or not user_ref.strip():
+        raise HTTPException(status_code=400, detail="user_ref required")
+    try:
+        tables = user_data.delete_user_data(user_ref)
+        tables["user_stack"] = user_stack.delete_stack(user_ref)
+        tables["trial_intakes"] = consult.delete_intakes(user_ref)
+    except Exception as exc:  # noqa: BLE001 - surface Supabase failures as 502
+        logger.error("data deletion failed for %s", user_ref, exc_info=True)
+        raise HTTPException(status_code=502, detail=f"data deletion failed: {exc}")
+    logger.info("deleted all data for %s: %s", user_ref, tables)
+    return {"deleted": True, "tables": tables}
 
 
 # ----------------------------------------------------------------- user stack

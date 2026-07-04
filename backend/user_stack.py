@@ -44,3 +44,16 @@ def remove_item(user_ref: str, item_id: int) -> None:
         supabase.table("user_stack").delete().eq("user_ref", user_ref).eq("id", item_id).execute()
     except Exception:  # noqa: BLE001
         pass
+
+
+def delete_stack(user_ref: str) -> int:
+    """Delete every stack row for ``user_ref``; returns the rows removed.
+
+    Unlike the read/add paths this does NOT swallow errors: a data-deletion
+    request must never fail silently, so Supabase errors propagate to the
+    caller. Raises ValueError on an empty user_ref.
+    """
+    if not user_ref:
+        raise ValueError("user_ref required")
+    res = supabase.table("user_stack").delete().eq("user_ref", user_ref).execute()
+    return len(res.data or [])

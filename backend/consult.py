@@ -693,6 +693,21 @@ def list_intakes(limit: int = 100) -> list[dict]:
     )
 
 
+def delete_intakes(user_ref: str) -> int:
+    """Delete every trial_intakes row for ``user_ref``; returns the rows removed.
+
+    Part of the member's delete-my-data path. A user_ref with no intakes is a
+    success (zero). Raises ValueError on an empty user_ref; Supabase errors
+    propagate so the caller can surface them rather than fail silently.
+    """
+    if not user_ref:
+        raise ValueError("user_ref required")
+    res = supabase.table("trial_intakes").delete().eq("user_ref", user_ref).execute()
+    count = len(res.data or [])
+    logger.info("consult: deleted %d trial_intakes rows for %s", count, user_ref)
+    return count
+
+
 # =============================================================== labs: upload
 
 

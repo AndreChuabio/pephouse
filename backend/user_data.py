@@ -12,7 +12,14 @@ Tables (see db/user_data.sql):
 
 from __future__ import annotations
 
+import logging
+
 from db import supabase
+
+logger = logging.getLogger("pephouse.user_data")
+
+# Tables this module owns that key rows by user_ref (see db/user_data.sql).
+_USER_DATA_TABLES = ("user_profiles", "user_lab_results", "user_wearable_metrics")
 
 
 def _profile_row(user_ref: str) -> dict | None:
@@ -123,3 +130,21 @@ def save_user_data(user_ref: str, patch: dict) -> dict:
             ).execute()
 
     return get_user_data(user_ref) or {"user_ref": user_ref, "connected": True}
+
+
+def delete_user_data(user_ref: str) -> dict[str, int]:
+    """Delete every stored row for ``user_ref`` across the user-data tables.
+
+    Returns per-table deleted-row counts for user_profiles, user_lab_results
+    and user_wearable_metrics. A user_ref with no rows is a success (all zero).
+    Raises ValueError on an empty user_ref; Supabase errors propagate so the
+    caller can surface them (a data-deletion request must never fail silently).
+    """
+    if not user_ref:
+        raise ValueError("user_ref required")
+    counts: dict[str, int] = {}
+    for table in _USER_DATA_TABLES:
+        res = supabase.table(table).delete().eq("user_ref", user_ref).execute()
+        counts[table] = len(res.data or [])
+    logger.info("user_data: deleted rows for %s: %s", user_ref, counts)
+    return counts
