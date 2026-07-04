@@ -48,12 +48,14 @@ function StatusDot({ on }: { on: boolean }) {
   return <span className={`w-2 h-2 rounded-full shrink-0 ${on ? "bg-emerald-500" : "bg-zinc-600"}`} />;
 }
 
-// Human labels for the per-table delete counts (fall back to the raw key).
+// Human labels for the per-table delete counts, matching the keys the backend
+// returns from DELETE /users/{ref}/data (fall back to the raw key).
 const TABLE_LABELS: Record<string, string> = {
-  user_data: "Profile and biomarkers",
+  user_profiles: "Profile",
+  user_lab_results: "Lab results",
+  user_wearable_metrics: "Wearable metrics",
   user_stack: "Stack items",
-  consult_intake: "Consult intake notes",
-  consult_sessions: "Consult sessions",
+  trial_intakes: "Trial intakes",
 };
 
 export default function SettingsPage() {
