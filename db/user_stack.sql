@@ -3,7 +3,8 @@
 create table if not exists user_stack (
   id            bigint generated always as identity primary key,
   user_ref      text not null,
-  compound_id   int  not null,
+  -- compounds.id is bigint identity; match it (see trial_intakes).
+  compound_id   bigint not null,
   compound_name text,
   dose          text,                  -- e.g. "7.5mg"
   source_type   text,                  -- label_dose | compounding_pharmacy | vendor_tested | gray_market
