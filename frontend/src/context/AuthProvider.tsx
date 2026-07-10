@@ -129,20 +129,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Land on the twin after OAuth: "/" renders the marketing LandingPage
     // unconditionally, which reads as a failed sign-in to a returning user.
     const redirectTo = `${window.location.origin}/digital-twin`;
-    // linkIdentity requires a live Supabase session. In the localStorage
-    // fallback state isAnonymous is true with NO session, so linking would
-    // always fail with AuthSessionMissingError; check for a real session and
-    // sign in outright when there is none.
-    const { data } = await supabase.auth.getSession();
-    if (data.session && stateRef.current?.isAnonymous) {
-      // Link so the existing uid (and its data) carries over to Google.
-      const { error } = await supabase.auth.linkIdentity({
-        provider: "google",
-        options: { redirectTo },
-      });
-      if (error) throw error;
-      return;
-    }
+    // Always sign in with Google outright. Linking Google to an anonymous
+    // session (the old upgrade path) breaks for any returning user: their
+    // Google identity is already linked to their real account, so linkIdentity
+    // fails with identity_already_exists. A plain OAuth sign-in resolves to the
+    // existing Google-linked account, or creates one for a first-time user.
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },
