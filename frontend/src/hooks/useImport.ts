@@ -16,8 +16,6 @@ export type FlowState = "idle" | "working" | "done" | "error";
 const POLL_INTERVAL_MS = 2_500;
 const MAX_POLLS = 16;
 
-// New users start with these conditions (persisted to the DB).
-const DEFAULT_CONDITIONS = ["High cholesterol", "Obesity"];
 // Connection state persisted device-side so a refresh doesn't disconnect.
 const BLOOD_KEY = "pephouse_blood";
 const WEARABLE_KEY = "pephouse_wearable";
@@ -108,16 +106,14 @@ export function useImport() {
         if (bundle?.sex) setSex(bundle.sex);
         if (bundle?.weight_kg != null) setWeightKg(bundle.weight_kg);
         if (bundle?.goals?.length) setGoals(bundle.goals);
+        // Hydrate conditions from the DB only. New users start with none -
+        // never auto-assign clinical conditions the user did not report.
         if (bundle?.conditions?.length) {
           setConditions(bundle.conditions);
-        } else {
-          // default + persist to the DB
-          setConditions(DEFAULT_CONDITIONS);
-          saveUserData(getUserRef(), { conditions: DEFAULT_CONDITIONS }).catch(() => {});
         }
       })
       .catch(() => {
-        if (alive) setConditions(DEFAULT_CONDITIONS);
+        /* leave conditions empty on a fetch miss */
       });
     return () => {
       alive = false;

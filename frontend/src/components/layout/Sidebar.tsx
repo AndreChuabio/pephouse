@@ -113,9 +113,12 @@ export function Sidebar() {
     <aside className="w-64 border-r border-zinc-800/60 bg-zinc-950 flex flex-col justify-between shrink-0 hidden md:flex h-full z-10">
       <div>
         <div className="h-16 flex items-center px-6 border-b border-zinc-800/60">
-          <div className="flex items-center text-white font-medium tracking-tighter uppercase text-sm">
+          <Link
+            to="/"
+            className="flex items-center text-white font-medium tracking-tighter uppercase text-sm hover:text-blue-400 transition-colors"
+          >
             PEPHOUSE
-          </div>
+          </Link>
         </div>
 
         <nav className="p-4 space-y-1">
