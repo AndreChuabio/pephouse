@@ -2,7 +2,7 @@
 
 Health AI Hackathon (NYC, June 2026).
 
-A voice-first simulator for the hardest conversations in medicine: counseling on hyped, under-evidenced compounds (peptides, then psychedelics). One evidence registry powers two front doors:
+A simulator for the hardest conversations in medicine: counseling on hyped, under-evidenced compounds (peptides, then psychedelics). One evidence registry powers two front doors:
 
 - **Clinician door** — interview an AI patient by voice; an evidence-grounded attending grades you, citing the real trial and regulatory record.
 - **Patient door (Simulation Arena)** — enter your profile; `POST /simulate` returns quarter-by-quarter outcome bands from Tier-1 priors, with void/excluded paths for honest compounds. Education, not prediction.
