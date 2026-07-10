@@ -1,4 +1,4 @@
-# pephouse — Team Wegovy
+# Pephouse 
 
 Health AI Hackathon (NYC, June 2026).
 
