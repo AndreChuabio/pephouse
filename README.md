@@ -9,6 +9,19 @@ A voice-first simulator for the hardest conversations in medicine: counseling on
 
 The shared asset is a **tiered evidence registry** that grounds both, so the AI cites real sources and cannot make things up.
 
+---
+
+## PepHouse Consult — real-time, evidence-grounded video concierge
+
+**[Consult](CONSULT.md)** is a Tavus CVI video agent (Maya) layered on the evidence registry below. A user talks to her by video about a compound they are curious about; every claim she makes is grounded in the registry and cited on screen, and the session ends by referring them to a licensed provider. She educates and screens — she never sells and never prescribes.
+
+- **Live demo:** https://frontend-andre-chuabios-projects.vercel.app/consult (click *Start consult*, allow camera + mic)
+- **Architecture + reproduction steps:** [`CONSULT.md`](CONSULT.md)
+
+Consult reuses the same backend the rest of the product uses as its tools — `get_compound_evidence`, `screen_eligibility`, `submit_trial_intake` — delivered client-side as `app_message`, so tool calls and citations surface live in the browser with no webhook to host. The tiered evidence registry documented below is exactly what grounds it.
+
+---
+
 ## v1: `POST /simulate` (implemented)
 
 Monte Carlo twin engine — **does not invoke Synthea at request time**. Bodies come from pre-loaded `synthetic_patients` in Supabase; effects come from `outcome_priors`.
