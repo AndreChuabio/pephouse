@@ -32,6 +32,7 @@ import user_data
 from evidence import build_simulation_data
 from db import supabase
 from models import (
+    ELIGIBILITY_VALUES,
     CompoundEvidenceRequest,
     CompoundInput,
     ConsultSessionRequest,
@@ -655,6 +656,31 @@ def minimize_context_snapshot(snapshot: object) -> object:
     return _strip_blocked(snapshot)
 
 
+def _coerce_eligibility(value: str | None) -> tuple[str, str | None]:
+    """Map a possibly-verbose LLM eligibility string to the allowed enum.
+
+    The persona sometimes crams a whole sentence into this field (e.g.
+    "eligible - no active cancer, no diabetes, passed pre-screen"), which
+    violates the trial_intakes.eligibility CHECK. Return the strict enum plus
+    any trailing descriptive text so it can seed eligibility_reason.
+    """
+    if not value:
+        return "unknown", None
+    raw = value.strip()
+    low = raw.lower()
+    for enum in ELIGIBILITY_VALUES:
+        if low.startswith(enum) or low.startswith(enum.replace("_", " ")):
+            overflow = raw[len(enum):].lstrip(" -:,.").strip() or None
+            return enum, overflow
+    if "ineligible" in low or "not eligible" in low or "exclud" in low:
+        return "excluded", raw
+    if "no trial" in low or "no_trial" in low:
+        return "no_trial", raw
+    if "eligible" in low:
+        return "eligible", raw
+    return "unknown", raw
+
+
 def insert_intake(intake: TrialIntake) -> dict:
     """Insert a trial_intakes row and return ``{id, status}``.
 
@@ -663,15 +689,19 @@ def insert_intake(intake: TrialIntake) -> dict:
     ``context_snapshot`` goes through ``minimize_context_snapshot`` and the
     persona-authored free-text fields (goal, eligibility_reason,
     counsel_summary) are scrubbed for embedded measurements and contact details.
+    ``eligibility`` is coerced to the allowed enum so a chatty persona value
+    cannot violate the CHECK constraint and drop the referral.
     """
     compound_id = resolve_compound(intake.compound_name)
+    eligibility, overflow = _coerce_eligibility(intake.eligibility)
+    reason = _scrub_optional(intake.eligibility_reason) or _scrub_optional(overflow)
     row = {
         "user_ref": intake.user_ref,
         "goal": _scrub_optional(intake.goal),
         "compound_id": compound_id,
         "compound_name": intake.compound_name,
-        "eligibility": intake.eligibility,
-        "eligibility_reason": _scrub_optional(intake.eligibility_reason),
+        "eligibility": eligibility,
+        "eligibility_reason": reason,
         "context_snapshot": minimize_context_snapshot(intake.context_snapshot),
         "counsel_summary": _scrub_optional(intake.counsel_summary),
         "consent": bool(intake.consent),
