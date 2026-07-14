@@ -23,9 +23,40 @@ def _parse_int(text) -> int | None:
     return int(s) if s.lstrip("-").isdigit() else None
 
 
+# A trial is evidence only once it has produced a result. Registering a study
+# proves nothing: BPC-157 has two registered trials and zero completed ones, and
+# counting those as trial-grade evidence made it read identically to a drug with
+# finished Phase 3 outcomes. Melanotan II, CJC-1295 and GHK-Cu had the same
+# problem. Status is therefore load-bearing, not decoration.
+COMPLETED_TRIAL_STATUSES = frozenset({"COMPLETED"})
+
+
+def completed_trials(trials: list[dict]) -> list[dict]:
+    """The trials that actually finished and can be cited as evidence."""
+    return [
+        trial
+        for trial in trials
+        if str(trial.get("status") or "").strip().upper() in COMPLETED_TRIAL_STATUSES
+    ]
+
+
+def unfinished_trials(trials: list[dict]) -> list[dict]:
+    """Registered trials with no result yet. Real information, but never evidence."""
+    return [
+        trial
+        for trial in trials
+        if str(trial.get("status") or "").strip().upper() not in COMPLETED_TRIAL_STATUSES
+    ]
+
+
 def _evidence_sources(tables: dict[str, list[dict]]) -> list[EvidenceSource]:
-    """Map DB tiers to the Arena 2 evidence-map rows (4 strongest .. 1 weakest)."""
-    rct = len(tables.get("trials", [])) + len(tables.get("outcome_priors", []))
+    """Map DB tiers to the evidence-map rows (4 strongest .. 1 weakest).
+
+    The top rung counts only COMPLETED trials plus the outcome priors derived from
+    them. An in-progress trial does not raise a compound's evidence tier.
+    """
+    trials = tables.get("trials", [])
+    rct = len(completed_trials(trials)) + len(tables.get("outcome_priors", []))
     observational = len(tables.get("research_papers", []))
     quality = len(tables.get("vendor_lab_results", [])) + len(tables.get("sourcing", []))
     anecdote = len(tables.get("anecdotes", []))

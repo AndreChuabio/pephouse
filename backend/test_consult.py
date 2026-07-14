@@ -426,15 +426,29 @@ def test_upload_labs_saves_extracted_labs(monkeypatch):
 # ------------------------------------------------- session mint (mocked Tavus)
 
 
+def _allow_budget(monkeypatch) -> list[tuple]:
+    """Neutralize the spend meter and capture what it would have recorded."""
+    recorded: list[tuple] = []
+    monkeypatch.setattr(consult, "_budget_guard", lambda user_ref: None)
+    monkeypatch.setattr(
+        consult,
+        "_record_session",
+        lambda user_ref, cid, cap: recorded.append((user_ref, cid, cap)),
+    )
+    return recorded
+
+
 def test_start_session_survives_user_data_failure(monkeypatch):
     recorded: dict = {}
+    metered = _allow_budget(monkeypatch)
 
     def _boom(user_ref):
         raise RuntimeError("supabase blip")
 
-    async def _fake_create(context, tags):
+    async def _fake_create(context, tags, name):
         recorded["context"] = context
         recorded["tags"] = tags
+        recorded["name"] = name
         return {"conversation_url": "https://u", "conversation_id": "c1", "pal_id": "pal"}
 
     monkeypatch.setattr(consult.user_data, "get_user_data", _boom)
@@ -451,10 +465,14 @@ def test_start_session_survives_user_data_failure(monkeypatch):
     assert result.pal_id == "pal"
     assert "No connected member data" in recorded["context"]
     assert recorded["tags"] == consult.DOCUMENT_TAGS
+    # and the session was booked against the spend meter
+    assert metered == [("u1", "c1", 300)]
 
 
 def test_start_session_propagates_tavus_http_error(monkeypatch):
-    async def _fail(context, tags):
+    _allow_budget(monkeypatch)
+
+    async def _fail(context, tags, name):
         req = httpx.Request("POST", "https://tavusapi.com/v2/conversations")
         res = httpx.Response(500, request=req, text="boom")
         raise httpx.HTTPStatusError("boom", request=req, response=res)
@@ -466,6 +484,72 @@ def test_start_session_propagates_tavus_http_error(monkeypatch):
     # main.py maps this to a 502; the exception type must keep propagating
     with pytest.raises(httpx.HTTPStatusError):
         asyncio.run(consult.start_session(ConsultSessionRequest(user_ref="u1")))
+
+
+# ------------------------------------------------------------ the spend meter
+# Tavus bills per wall-clock minute, enforces no ceiling of its own, and exposes
+# no usage API. These tests are the guard on the only thing that stops a
+# runaway bill.
+
+
+def test_conversation_is_created_with_hard_cost_bounds():
+    props = consult._cost_properties()
+
+    # Left to Tavus's defaults, max_call_duration is 3600s and
+    # participant_left_timeout is undocumented — an abandoned tab can bill for an
+    # hour. All three ceilings must be set explicitly.
+    assert props["max_call_duration"] <= 600
+    assert props["participant_left_timeout"] <= 60
+    assert props["participant_absent_timeout"] <= 120
+    assert props["enable_recording"] is False
+
+
+def test_budget_refusal_stops_the_session_before_tavus_is_called(monkeypatch):
+    called = False
+
+    async def _must_not_run(context, tags, name):
+        nonlocal called
+        called = True
+        return {}
+
+    def _spent(user_ref):
+        raise consult.BudgetExceeded("video consults are at capacity for this month")
+
+    monkeypatch.setattr(consult, "_budget_guard", _spent)
+    monkeypatch.setattr(consult, "create_conversation", _must_not_run)
+
+    with pytest.raises(consult.BudgetExceeded):
+        asyncio.run(consult.start_session(ConsultSessionRequest(user_ref="u1")))
+
+    # the refusal must land before we spend a minute, not after
+    assert called is False
+
+
+def test_unmeterable_session_is_ended_rather_than_left_running(monkeypatch):
+    ended: list[str] = []
+
+    async def _fake_create(context, tags, name):
+        return {"conversation_url": "https://u", "conversation_id": "c9", "pal_id": "pal"}
+
+    def _meter_down(user_ref, cid, cap):
+        raise RuntimeError("supabase down")
+
+    async def _fake_end(conversation_id):
+        ended.append(conversation_id)
+
+    monkeypatch.setattr(consult, "_budget_guard", lambda user_ref: None)
+    monkeypatch.setattr(consult.user_data, "get_user_data", lambda ref: None)
+    monkeypatch.setattr(consult, "_tavus_ids", lambda: ("pal", "face"))
+    monkeypatch.setattr(consult, "create_conversation", _fake_create)
+    monkeypatch.setattr(consult, "_record_session", _meter_down)
+    monkeypatch.setattr(consult, "end_conversation", _fake_end)
+
+    # A conversation we cannot meter is a conversation we cannot bound, so it
+    # gets reclaimed instead of left billing.
+    with pytest.raises(RuntimeError):
+        asyncio.run(consult.start_session(ConsultSessionRequest(user_ref="u1")))
+
+    assert ended == ["c9"]
 
 
 # ------------------------------------------------ eligibility: excluded branch

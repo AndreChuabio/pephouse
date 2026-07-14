@@ -19,6 +19,7 @@ import consult
 import main
 import user_data
 import user_stack
+from auth import AuthUser, require_user
 
 USER_TABLES = (
     "user_profiles",
@@ -102,13 +103,34 @@ def _patch_supabase(monkeypatch, fake):
     monkeypatch.setattr(consult, "supabase", fake)
 
 
+# ---------------------------------------------------------------- auth harness
+# Identity comes from the verified Supabase token, never from the path, so these
+# routes are exercised through a dependency override rather than by trusting a
+# path segment. That is the same guarantee the deployed API has.
+
+
+def _as_user(user_id: str) -> TestClient:
+    """A TestClient authenticated as ``user_id``."""
+    main.app.dependency_overrides[require_user] = lambda: AuthUser(
+        id=user_id, email=f"{user_id}@example.com", is_anonymous=False
+    )
+    return TestClient(main.app)
+
+
+@pytest.fixture(autouse=True)
+def _reset_overrides():
+    """Never let one test's identity leak into the next."""
+    yield
+    main.app.dependency_overrides.clear()
+
+
 # ------------------------------------ (a) deletes across all five tables
 
 
 def test_endpoint_deletes_across_all_tables_and_reports_counts(monkeypatch):
     fake = _seeded_fake()
     _patch_supabase(monkeypatch, fake)
-    client = TestClient(main.app)
+    client = _as_user("u1")
 
     res = client.delete("/users/u1/data")
 
@@ -158,10 +180,34 @@ def test_empty_user_ref_is_rejected(monkeypatch):
     with pytest.raises(ValueError):
         consult.delete_intakes("")
 
-    # a whitespace-only ref reaches the route and must 400, not delete
-    client = TestClient(main.app)
-    res = client.delete("/users/%20/data")
-    assert res.status_code == 400
+
+# ------------------------------------------------ (b2) the route is not open
+# Before auth, `user_ref` was an unverified client string: anyone could read,
+# overwrite, or delete another member's health data by naming their ref. These
+# two tests are the regression guard on that.
+
+
+def test_unauthenticated_delete_is_refused(monkeypatch):
+    fake = _seeded_fake()
+    _patch_supabase(monkeypatch, fake)
+
+    res = TestClient(main.app).delete("/users/u1/data")
+
+    assert res.status_code == 401
+    # u1's rows are untouched
+    assert fake.table("user_profiles").rows == [{"user_ref": "u1"}, {"user_ref": "u2"}]
+
+
+def test_cross_account_delete_is_refused(monkeypatch):
+    fake = _seeded_fake()
+    _patch_supabase(monkeypatch, fake)
+    client = _as_user("u1")
+
+    res = client.delete("/users/u2/data")
+
+    assert res.status_code == 403
+    # u2's rows survive u1's attempt
+    assert {"user_ref": "u2"} in fake.table("user_profiles").rows
 
 
 # ------------------------------------------ (c) no-rows user is a success
@@ -170,7 +216,7 @@ def test_empty_user_ref_is_rejected(monkeypatch):
 def test_deleting_unknown_user_succeeds_with_zero_counts(monkeypatch):
     fake = _seeded_fake()
     _patch_supabase(monkeypatch, fake)
-    client = TestClient(main.app)
+    client = _as_user("nobody")
 
     res = client.delete("/users/nobody/data")
 
@@ -192,7 +238,7 @@ class _BoomSupabase:
 
 def test_supabase_failure_surfaces_as_502(monkeypatch):
     _patch_supabase(monkeypatch, _BoomSupabase())
-    client = TestClient(main.app)
+    client = _as_user("u1")
 
     res = client.delete("/users/u1/data")
 
