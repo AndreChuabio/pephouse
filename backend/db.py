@@ -6,6 +6,7 @@ The frontend talks to Supabase directly with the anon key instead.
 
 from __future__ import annotations
 
+import logging
 import os
 
 from dotenv import load_dotenv
@@ -13,8 +14,54 @@ from supabase import Client, create_client
 
 load_dotenv()
 
+logger = logging.getLogger("pephouse.db")
+
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+
+
+def _warn_if_not_service_key(key: str) -> None:
+    """Warn loudly at startup if this is not a service_role (secret) key.
+
+    The member-data tables have RLS on and admit only service_role, so a backend
+    holding a publishable/anon key silently loses all read and write access to
+    them: profile, labs, entitlements, vendor submissions, and session metering
+    all fail. That failure surfaces as opaque row-level-security errors far from
+    the cause, so the check is done once, here, in plain language.
+
+    New-style keys are opaque: `sb_secret_...` is correct, `sb_publishable_...`
+    is the browser key and is wrong here. Legacy keys are JWTs whose payload
+    carries the role.
+    """
+    if key.startswith("sb_secret_"):
+        return
+    if key.startswith("sb_publishable_"):
+        logger.error(
+            "SUPABASE_SERVICE_ROLE_KEY looks like a PUBLISHABLE key (sb_publishable_). "
+            "The backend needs the SECRET key (sb_secret_) or it cannot read or write "
+            "member-data tables under RLS. Fix in backend/.env and on Railway."
+        )
+        return
+    if key.count(".") == 2:  # legacy JWT
+        try:
+            import base64
+            import json
+
+            payload = key.split(".")[1]
+            payload += "=" * (-len(payload) % 4)
+            role = json.loads(base64.urlsafe_b64decode(payload)).get("role")
+            if role != "service_role":
+                logger.error(
+                    "SUPABASE_SERVICE_ROLE_KEY has role=%r, not 'service_role'. The "
+                    "backend cannot access member-data tables under RLS. Use the "
+                    "service_role key.",
+                    role,
+                )
+        except Exception:  # noqa: BLE001 - a diagnostic must never break startup
+            logger.warning("could not decode SUPABASE_SERVICE_ROLE_KEY to check its role")
+
+
+_warn_if_not_service_key(SUPABASE_SERVICE_ROLE_KEY)
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
