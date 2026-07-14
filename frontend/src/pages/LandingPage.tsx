@@ -29,7 +29,9 @@ export default function LandingPage() {
   }, []);
 
   const handleTryIt = (): void => {
-    navigate("/digital-twin");
+    // The stack report is the front door: a member picks what they are running
+    // and gets the honest verdict for free before anything is asked of them.
+    navigate("/report");
   };
 
   const handleGoogle = async (): Promise<void> => {
@@ -47,7 +49,9 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="h-screen w-full overflow-hidden bg-[#0a0a0c] text-zinc-200 antialiased selection:bg-zinc-800 selection:text-white relative flex flex-col items-center justify-center px-6">
+    // min-h-screen rather than h-screen + overflow-hidden: the disclosures below
+    // must never be clipped, and most of the traffic that matters is on a phone.
+    <div className="min-h-screen w-full bg-[#0a0a0c] text-zinc-200 antialiased selection:bg-zinc-800 selection:text-white relative flex flex-col items-center justify-center px-6 py-16">
       {/* ambient glow, echoing AppShell's main surface */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] max-w-full h-[420px] bg-cyan-500/5 rounded-full blur-[130px] pointer-events-none" />
       <div className="absolute bottom-[-120px] left-1/2 -translate-x-1/2 w-[600px] max-w-full h-[300px] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none" />
@@ -118,6 +122,31 @@ export default function LandingPage() {
           </p>
         )}
       </main>
+
+      {/* Required disclosures. This is a health product that takes payment, so
+          they belong on the front door in language a person will actually read,
+          not buried in a terms page nobody opens. */}
+      <footer className="relative z-10 mt-12 w-full max-w-2xl text-center">
+        <p className="text-[11px] leading-relaxed text-zinc-600">
+          PepHouse is education, not medical advice. It does not diagnose, treat, or
+          prescribe, and it is not a substitute for a licensed clinician. Several
+          compounds in this registry are not approved for human use, and some carry
+          documented harms. Talk to a doctor before taking anything.
+        </p>
+        <p className="mt-3 text-[11px] leading-relaxed text-zinc-600">
+          Your health data stays yours. We store what you enter so your report works,
+          we never sell it, and you can delete all of it at any time from{" "}
+          <button
+            type="button"
+            onClick={() => navigate("/settings")}
+            className="underline underline-offset-2 hover:text-zinc-400 transition-colors"
+          >
+            Settings
+          </button>
+          . We take no money from peptide vendors, and no vendor can pay for a listing,
+          a rating, or a position in our index.
+        </p>
+      </footer>
     </div>
   );
 }

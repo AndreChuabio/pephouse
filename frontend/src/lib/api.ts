@@ -3,10 +3,12 @@ import type {
   SimulateRequest,
   SimulateResponse,
 } from "../types/simulation";
+import { apiFetch } from "./http";
 
-// Hosted backend (Railway) is the default so the deployed app works for everyone.
-// For local dev against your own backend, set VITE_API_URL=http://localhost:8001 in frontend/.env.local
-const API_BASE = import.meta.env.VITE_API_URL ?? "https://pephouse-backend-production.up.railway.app";
+// Every call goes through apiFetch, which attaches the caller's Supabase access
+// token. The backend resolves identity from that token, so a `userRef` argument
+// here is only ever the caller's own id — passing someone else's is refused with
+// a 403 server-side.
 
 /** Digital Twin one-shot run: full payload (patient/user_ref + compounds + controls). */
 export type TwinSimulatePayload = {
@@ -21,7 +23,7 @@ export type TwinSimulatePayload = {
 };
 
 export async function twinSimulate(payload: TwinSimulatePayload): Promise<SimulateResponse> {
-  const res = await fetch(`${API_BASE}/twin/simulate`, {
+  const res = await apiFetch(`/twin/simulate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -31,7 +33,7 @@ export async function twinSimulate(payload: TwinSimulatePayload): Promise<Simula
 }
 
 export async function postSimulate(body: SimulateRequest): Promise<SimulateResponse> {
-  const res = await fetch(`${API_BASE}/simulate`, {
+  const res = await apiFetch(`/simulate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -50,7 +52,7 @@ export type GenerateModuleResult = {
 };
 
 export async function postGenerateModule(compoundId: number): Promise<GenerateModuleResult> {
-  const res = await fetch(`${API_BASE}/compounds/${compoundId}/module`, { method: "POST" });
+  const res = await apiFetch(`/compounds/${compoundId}/module`, { method: "POST" });
   if (!res.ok) {
     let detail = `module generation failed (${res.status})`;
     try {
@@ -75,7 +77,7 @@ export type RegistryCompound = {
 };
 
 export async function fetchCompounds(): Promise<RegistryCompound[]> {
-  const res = await fetch(`${API_BASE}/compounds`);
+  const res = await apiFetch(`/compounds`);
   if (!res.ok) throw new Error(`compounds failed (${res.status})`);
   return res.json() as Promise<RegistryCompound[]>;
 }
@@ -105,7 +107,7 @@ export type SimulationDataResponse = {
 };
 
 export async function fetchCompoundData(compoundId: number): Promise<SimulationDataResponse> {
-  const res = await fetch(`${API_BASE}/compounds/${compoundId}/data`);
+  const res = await apiFetch(`/compounds/${compoundId}/data`);
   if (!res.ok) throw new Error(`compound data failed (${res.status})`);
   return res.json() as Promise<SimulationDataResponse>;
 }
@@ -164,7 +166,7 @@ export type SyntheaModuleRow = {
 };
 
 export async function fetchCompoundModules(compoundId: number): Promise<SyntheaModuleRow[]> {
-  const res = await fetch(`${API_BASE}/compounds/${compoundId}/modules`);
+  const res = await apiFetch(`/compounds/${compoundId}/modules`);
   if (!res.ok) throw new Error(`modules failed (${res.status})`);
   return res.json() as Promise<SyntheaModuleRow[]>;
 }
@@ -172,7 +174,7 @@ export async function fetchCompoundModules(compoundId: number): Promise<SyntheaM
 export async function fetchInteractions(compoundIds: number[]): Promise<InteractionsResponse> {
   if (compoundIds.length < 2) return { pairs: [] };
   const qs = compoundIds.join(",");
-  const res = await fetch(`${API_BASE}/interactions?ids=${qs}`);
+  const res = await apiFetch(`/interactions?ids=${qs}`);
   if (!res.ok) throw new Error(`interactions failed (${res.status})`);
   return res.json() as Promise<InteractionsResponse>;
 }
@@ -201,14 +203,14 @@ function toPatch(raw: RawPatch): ImportPatch {
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
+  const res = await apiFetch(`${path}`);
   if (!res.ok) throw new Error((await res.text()) || `${path} failed (${res.status})`);
   return res.json() as Promise<T>;
 }
 
 /** Start a Junction Link session; returns the hosted URL to open. */
 export async function importLink(userRef: string): Promise<{ link_url: string }> {
-  const res = await fetch(`${API_BASE}/import/link`, {
+  const res = await apiFetch(`/import/link`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ user_ref: userRef }),
@@ -273,7 +275,7 @@ export async function addStackItem(
   userRef: string,
   item: { compound_id: number; compound_name?: string; dose?: string; source_type?: string },
 ): Promise<StackItem[]> {
-  const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userRef)}/stack`, {
+  const res = await apiFetch(`/users/${encodeURIComponent(userRef)}/stack`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(item),
@@ -283,7 +285,7 @@ export async function addStackItem(
 }
 
 export async function removeStackItem(userRef: string, id: number): Promise<StackItem[]> {
-  const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userRef)}/stack/${id}`, {
+  const res = await apiFetch(`/users/${encodeURIComponent(userRef)}/stack/${id}`, {
     method: "DELETE",
   });
   if (!res.ok) throw new Error((await res.text()) || `remove from stack failed (${res.status})`);
@@ -307,7 +309,7 @@ export type UserDataBundle = {
 
 /** Fetch the stored bundle for a user, or null if nothing saved yet (404). */
 export async function fetchUserData(userRef: string): Promise<UserDataBundle | null> {
-  const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userRef)}/data`);
+  const res = await apiFetch(`/users/${encodeURIComponent(userRef)}/data`);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error((await res.text()) || `user data failed (${res.status})`);
   return res.json() as Promise<UserDataBundle>;
@@ -324,7 +326,7 @@ export async function uploadLabReport(userRef: string, file: File): Promise<LabU
   const form = new FormData();
   form.append("user_ref", userRef);
   form.append("file", file);
-  const res = await fetch(`${API_BASE}/consult/labs/upload`, {
+  const res = await apiFetch(`/consult/labs/upload`, {
     method: "POST",
     body: form,
   });
@@ -339,7 +341,7 @@ export type DeleteUserDataResult = {
 
 /** Delete everything stored for a user. Returns per-table row counts removed. */
 export async function deleteUserData(userRef: string): Promise<DeleteUserDataResult> {
-  const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userRef)}/data`, {
+  const res = await apiFetch(`/users/${encodeURIComponent(userRef)}/data`, {
     method: "DELETE",
   });
   if (!res.ok) throw new Error((await res.text()) || `delete user data failed (${res.status})`);
@@ -363,7 +365,7 @@ export async function saveUserData(
   if (patch.weightKg != null) body.weight_kg = patch.weightKg;
   if (patch.labs !== undefined) body.labs = patch.labs;
   if (patch.source) body.source = patch.source;
-  const res = await fetch(`${API_BASE}/users/${encodeURIComponent(userRef)}/data`, {
+  const res = await apiFetch(`/users/${encodeURIComponent(userRef)}/data`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
