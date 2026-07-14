@@ -19,7 +19,13 @@ const EVIDENCE_TIERS: ReadonlyArray<{ label: string; weight: string; tone: strin
 export default function LandingPage() {
   useDocumentTitle("PepHouse | Honest evidence for the peptide-curious");
   const navigate = useNavigate();
-  const { signInWithGoogle } = useAuth();
+  // isAnonymous distinguishes a real Google account from the anonymous session
+  // every visitor starts with. A signed-in member returning to the landing page
+  // (for example by clicking the wordmark) must see that they are signed in and
+  // an option to enter — not the sign-in button, which re-runs the OAuth
+  // redirect and reads as being logged out.
+  const { signInWithGoogle, signOut, isAnonymous, email } = useAuth();
+  const signedIn = !isAnonymous;
   const [authPending, setAuthPending] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -95,26 +101,41 @@ export default function LandingPage() {
             onClick={handleTryIt}
             className="w-full sm:w-auto rounded-xl bg-cyan-600 hover:bg-cyan-500 px-7 py-3 text-sm font-semibold text-white flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0c]"
           >
-            Try it now
+            {signedIn ? "Enter" : "Try it now"}
             <Icon icon="lucide:arrow-right" className="w-4 h-4" />
           </button>
-          <button
-            type="button"
-            onClick={handleGoogle}
-            disabled={authPending}
-            className="w-full sm:w-auto rounded-xl border border-zinc-700 bg-zinc-950/60 hover:border-zinc-500 hover:bg-zinc-900 px-7 py-3 text-sm font-medium text-zinc-100 flex items-center justify-center gap-2.5 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0c]"
-          >
-            <Icon
-              icon={authPending ? "svg-spinners:180-ring" : "logos:google-icon"}
-              className="w-4 h-4"
-            />
-            {authPending ? "Redirecting" : "Sign in with Google"}
-          </button>
+          {!signedIn && (
+            <button
+              type="button"
+              onClick={handleGoogle}
+              disabled={authPending}
+              className="w-full sm:w-auto rounded-xl border border-zinc-700 bg-zinc-950/60 hover:border-zinc-500 hover:bg-zinc-900 px-7 py-3 text-sm font-medium text-zinc-100 flex items-center justify-center gap-2.5 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0c]"
+            >
+              <Icon
+                icon={authPending ? "svg-spinners:180-ring" : "logos:google-icon"}
+                className="w-4 h-4"
+              />
+              {authPending ? "Redirecting" : "Sign in with Google"}
+            </button>
+          )}
         </div>
 
-        <p className="mt-5 text-xs text-zinc-600">
-          No account needed to start. Sign in later to keep your data.
-        </p>
+        {signedIn ? (
+          <p className="mt-5 text-xs text-zinc-500">
+            Signed in{email ? ` as ${email}` : ""}.{" "}
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              className="underline underline-offset-2 hover:text-zinc-300 transition-colors"
+            >
+              Sign out
+            </button>
+          </p>
+        ) : (
+          <p className="mt-5 text-xs text-zinc-600">
+            No account needed to start. Sign in later to keep your data.
+          </p>
+        )}
 
         {authError && (
           <p className="mt-4 text-xs text-amber-400" role="alert">
