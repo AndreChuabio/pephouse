@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CSSProperties, FormEvent, ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { Icon } from "@iconify/react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/layout/AppShell";
@@ -47,12 +47,6 @@ import {
 
 const NOT_ON_FILE = "Not on file";
 
-/** Diagonal hatch. Used wherever the honest answer is "there is nothing here". */
-const HATCH: CSSProperties = {
-  backgroundImage:
-    "repeating-linear-gradient(135deg, rgba(113,113,122,0.20) 0px, rgba(113,113,122,0.20) 1px, transparent 1px, transparent 7px)",
-};
-
 const SOURCE_LABEL: Record<string, string> = {
   compounding_pharmacy: "Compounding pharmacy",
   vendor_tested: "Gray-market, vendor-tested",
@@ -75,7 +69,7 @@ const TESTING_STATUS: Record<TestingStatus, TestingStatusMeta> = {
   independent: {
     label: "Independent assay",
     icon: "solar:verified-check-bold",
-    badge: "bg-emerald-500/15 text-emerald-300 border-emerald-500/40",
+    badge: "bg-measured/10 text-measured border-measured/30",
     hatched: false,
     blurb:
       "A third-party lab measured the product. This is the only thing on this page that counts as evidence.",
@@ -83,7 +77,7 @@ const TESTING_STATUS: Record<TestingStatus, TestingStatusMeta> = {
   vendor_claim: {
     label: "Vendor claim, no assay",
     icon: "solar:chat-round-unread-linear",
-    badge: "bg-amber-500/10 text-amber-300 border-amber-500/30 border-dashed",
+    badge: "bg-signal/10 text-signal border-signal/30 border-dashed",
     hatched: false,
     blurb:
       "The vendor claims it is tested. No independent assay is on file. A claim is not a result.",
@@ -91,7 +85,7 @@ const TESTING_STATUS: Record<TestingStatus, TestingStatusMeta> = {
   none: {
     label: "No testing data on file",
     icon: "solar:file-corrupted-linear",
-    badge: "bg-zinc-900 text-zinc-200 border-zinc-600 border-dashed",
+    badge: "bg-surface text-faint border-line border-dashed",
     hatched: true,
     blurb:
       "Nothing has been measured and nothing has been claimed. This is the most common case in the index.",
@@ -254,7 +248,7 @@ function triTone(value: boolean | null | undefined, goodWhen: boolean): Tone {
 
 function Missing({ children }: { children?: ReactNode }) {
   return (
-    <span className="text-zinc-400 border-b border-dashed border-zinc-700">
+    <span className="text-faint border-b border-dashed border-line">
       {children ?? NOT_ON_FILE}
     </span>
   );
@@ -263,8 +257,8 @@ function Missing({ children }: { children?: ReactNode }) {
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1 min-w-0">
-      <span className="text-[10px] uppercase tracking-widest text-zinc-500">{label}</span>
-      <span className="text-sm text-zinc-200 break-words">{children}</span>
+      <span className="eyebrow !text-[10px]">{label}</span>
+      <span className="text-sm text-ink break-words">{children}</span>
     </div>
   );
 }
@@ -313,11 +307,11 @@ function BoolFact({
   return (
     <Fact label={label}>
       <span
-        className={`flex items-center gap-1.5 ${good ? "text-emerald-300" : "text-zinc-300"}`}
+        className={`flex items-center gap-1.5 ${good ? "text-ink" : "text-muted"}`}
       >
         <Icon
           icon={good ? "solar:check-circle-linear" : "solar:close-circle-linear"}
-          className={good ? "text-emerald-400" : "text-zinc-500"}
+          className="text-faint"
         />
         {good ? goodText : badText}
       </span>
@@ -347,27 +341,24 @@ function SafetyFlag({
   const tone = triTone(value, goodWhen);
   const styles: Record<Tone, { cls: string; icon: string; body: string }> = {
     good: {
-      cls: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
+      cls: "bg-measured/10 text-measured border-measured/30",
       icon: "solar:check-circle-linear",
       body: goodText,
     },
     bad: {
-      cls: "bg-red-500/15 text-red-300 border-red-500/40",
+      cls: "bg-danger/10 text-danger border-danger/40",
       icon: "solar:danger-triangle-bold",
       body: badText,
     },
     unknown: {
-      cls: "bg-zinc-900 text-zinc-200 border-zinc-600 border-dashed",
+      cls: "bg-surface text-faint border-line border-dashed void-hatch",
       icon: "solar:question-circle-linear",
       body: "Not tested",
     },
   };
   const s = styles[tone];
   return (
-    <div
-      className={`rounded-lg border px-2.5 py-2 ${s.cls}`}
-      style={tone === "unknown" ? HATCH : undefined}
-    >
+    <div className={`rounded-lg border px-2.5 py-2 ${s.cls}`}>
       <span className="block text-[10px] uppercase tracking-widest opacity-70">{label}</span>
       <span className="flex items-center gap-1.5 text-xs font-medium mt-1">
         <Icon icon={s.icon} className="shrink-0" />
@@ -383,8 +374,9 @@ function TestingBadge({ status, size = "sm" }: { status: TestingStatus; size?: "
   const pad = size === "lg" ? "px-3 py-1.5 text-xs" : "px-2 py-1 text-[11px]";
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-md border font-medium whitespace-nowrap ${pad} ${meta.badge}`}
-      style={meta.hatched ? HATCH : undefined}
+      className={`inline-flex items-center gap-1.5 rounded-md border font-medium whitespace-nowrap ${pad} ${meta.badge} ${
+        meta.hatched ? "void-hatch" : ""
+      }`}
     >
       <Icon icon={meta.icon} className="shrink-0" />
       {meta.label}
@@ -395,15 +387,12 @@ function TestingBadge({ status, size = "sm" }: { status: TestingStatus; size?: "
 /** An empty section stays on the page and says exactly what is not there. */
 function NothingOnFile({ title, body }: { title: string; body: string }) {
   return (
-    <div
-      className="rounded-lg border border-dashed border-zinc-600 bg-zinc-900/60 px-4 py-3"
-      style={HATCH}
-    >
-      <p className="text-sm font-medium text-zinc-200 flex items-center gap-2">
-        <Icon icon="solar:file-corrupted-linear" className="text-zinc-400 shrink-0" />
+    <div className="rounded-lg border border-dashed border-line bg-surface void-hatch px-4 py-3">
+      <p className="text-sm font-medium text-muted flex items-center gap-2">
+        <Icon icon="solar:file-corrupted-linear" className="text-faint shrink-0" />
         {title}
       </p>
-      <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{body}</p>
+      <p className="text-xs text-faint mt-1 leading-relaxed">{body}</p>
     </div>
   );
 }
@@ -420,7 +409,7 @@ function NothingOnFile({ title, body }: { title: string; body: string }) {
 function SafetyGapChip({ gap }: { gap: SafetyAxis[] }) {
   if (gap.length === 0) return null;
   return (
-    <span className="mt-1.5 flex items-start gap-1 text-[11px] leading-snug text-amber-300/90">
+    <span className="mt-1.5 flex items-start gap-1 text-[11px] leading-snug text-signal/90">
       <Icon icon="solar:shield-cross-linear" className="shrink-0 mt-px" />
       <span>Never tested for {axisList(gap)}</span>
     </span>
@@ -436,16 +425,12 @@ function AxisCoverage({ tested }: { tested: TestedAxes }) {
         const has = covered[axis];
         const danger = SAFETY_AXES.some((safetyAxis) => safetyAxis === axis);
         const cls = has
-          ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+          ? "bg-measured/10 text-measured border-measured/30"
           : danger
-            ? "bg-amber-500/10 text-amber-300/90 border-amber-500/30 border-dashed"
-            : "bg-zinc-900 text-zinc-300 border-zinc-600 border-dashed";
+            ? "bg-signal/10 text-signal/90 border-signal/30 border-dashed void-hatch"
+            : "bg-surface text-faint border-line border-dashed void-hatch";
         return (
-          <div
-            key={axis}
-            className={`rounded-lg border px-2.5 py-2 ${cls}`}
-            style={has ? undefined : HATCH}
-          >
+          <div key={axis} className={`rounded-lg border px-2.5 py-2 ${cls}`}>
             <span className="block text-[10px] uppercase tracking-widest opacity-70">
               {AXIS_LABEL[axis]}
             </span>
@@ -471,12 +456,12 @@ function AxisCoverage({ tested }: { tested: TestedAxes }) {
 function SafetyGapNotice({ gap }: { gap: SafetyAxis[] }) {
   if (gap.length === 0) return null;
   return (
-    <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-5 py-4">
-      <p className="text-base font-semibold text-amber-200 flex items-center gap-2">
+    <div className="rounded-xl border border-signal/40 bg-signal/10 px-5 py-4">
+      <p className="font-display tracking-tight text-base font-semibold text-signal flex items-center gap-2">
         <Icon icon="solar:shield-cross-bold" className="text-xl shrink-0" />
         Tested, but not for {axisList(gap)}
       </p>
-      <p className="text-sm text-amber-100/90 mt-1.5 leading-relaxed">
+      <p className="text-sm text-signal/90 mt-1.5 leading-relaxed">
         There is an independent assay on file for this vendor, and it did not cover{" "}
         {axisList(gap)}. Purity is the axis that barely varies across this market, and it is almost
         the only one anybody measures. The axes left blank here are the ones that send people to
@@ -489,9 +474,9 @@ function SafetyGapNotice({ gap }: { gap: SafetyAxis[] }) {
 
 function SectionCaption({ tone, children }: { tone: "evidence" | "claim" | "anecdote"; children: ReactNode }) {
   const map = {
-    evidence: "text-emerald-300/90 border-emerald-500/30",
-    claim: "text-amber-300/90 border-amber-500/30",
-    anecdote: "text-zinc-400 border-zinc-700",
+    evidence: "text-measured/90 border-measured/30",
+    claim: "text-signal/90 border-signal/30",
+    anecdote: "text-muted border-line",
   } as const;
   return (
     <p className={`text-xs leading-relaxed border-l-2 pl-3 mb-4 ${map[tone]}`}>{children}</p>
@@ -505,16 +490,16 @@ function CountStrip({ vendor }: { vendor: VendorSummary }) {
   const claims = count(vendor.vendor_claims);
   const reports = count(vendor.member_reports);
   return (
-    <div className="flex items-center gap-3 text-[11px] font-mono whitespace-nowrap">
-      <span className={assays > 0 ? "text-emerald-400" : "text-zinc-500"}>
+    <div className="flex items-center gap-3 readout text-[11px] whitespace-nowrap">
+      <span className={assays > 0 ? "text-measured" : "text-faint"}>
         {assays} assay{assays === 1 ? "" : "s"}
       </span>
-      <span className="text-zinc-700">/</span>
-      <span className={claims > 0 ? "text-amber-400" : "text-zinc-500"}>
+      <span className="text-ghost">/</span>
+      <span className={claims > 0 ? "text-signal" : "text-faint"}>
         {claims} claim{claims === 1 ? "" : "s"}
       </span>
-      <span className="text-zinc-700">/</span>
-      <span className="text-zinc-500">
+      <span className="text-ghost">/</span>
+      <span className="text-faint">
         {reports} report{reports === 1 ? "" : "s"}
       </span>
     </div>
@@ -526,20 +511,20 @@ function VendorRow({ vendor, onOpen }: { vendor: VendorSummary; onOpen: (id: num
     <button
       type="button"
       onClick={() => onOpen(vendor.id)}
-      className="w-full text-left px-4 py-3 border-b border-zinc-800/60 last:border-b-0 hover:bg-zinc-800/30 transition-colors group"
+      className="w-full text-left px-4 py-3 border-b border-line last:border-b-0 hover:bg-surface-2/40 transition-colors group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-signal/50"
     >
       <div className="grid grid-cols-12 gap-3 items-center">
         <div className="col-span-12 md:col-span-3 min-w-0">
-          <p className="text-sm font-medium text-white truncate group-hover:text-blue-400 transition-colors">
+          <p className="font-display tracking-tight text-sm font-medium text-ink truncate group-hover:text-signal transition-colors">
             {isMissing(vendor.name) ? "Unnamed vendor" : text(vendor.name)}
           </p>
-          <p className="text-xs text-zinc-500 truncate">
+          <p className="text-xs text-faint truncate">
             {isMissing(vendor.manufacturer) ? "Manufacturer not on file" : text(vendor.manufacturer)}
           </p>
         </div>
 
         <div className="col-span-6 md:col-span-2 min-w-0">
-          <p className="text-xs text-zinc-300 truncate">
+          <p className="text-xs text-muted truncate">
             {isMissing(vendor.country) ? <Missing>Country not on file</Missing> : text(vendor.country)}
           </p>
         </div>
@@ -550,7 +535,7 @@ function VendorRow({ vendor, onOpen }: { vendor: VendorSummary; onOpen: (id: num
               <Missing>Source type not on file</Missing>
             </p>
           ) : (
-            <p className="text-xs text-zinc-400 truncate">{sourceLabel(vendor.source_type)}</p>
+            <p className="text-xs text-muted truncate">{sourceLabel(vendor.source_type)}</p>
           )}
         </div>
 
@@ -584,17 +569,17 @@ function AssayCard({ assay }: { assay: IndependentAssay }) {
 
   const banner: Record<Tone, { cls: string; icon: string; body: string }> = {
     good: {
-      cls: "bg-emerald-500/10 border-emerald-500/30 text-emerald-300",
+      cls: "bg-measured/10 border-measured/30 text-measured",
       icon: "solar:verified-check-bold",
       body: gap.length > 0 ? "Passed the checks that were run" : "Passed the independent assay",
     },
     bad: {
-      cls: "bg-red-500/20 border-red-500/50 text-red-200",
+      cls: "bg-danger/15 border-danger/50 text-danger",
       icon: "solar:danger-triangle-bold",
       body: "FAILED the independent assay",
     },
     unknown: {
-      cls: "bg-zinc-900 border-zinc-600 border-dashed text-zinc-200",
+      cls: "bg-surface border-line border-dashed text-faint void-hatch",
       icon: "solar:question-circle-linear",
       body: "Pass or fail was not recorded",
     },
@@ -603,27 +588,24 @@ function AssayCard({ assay }: { assay: IndependentAssay }) {
 
   return (
     <div
-      className={`rounded-lg border overflow-hidden ${
-        outcome === "bad" ? "border-red-500/40 bg-red-950/10" : "border-zinc-800 bg-zinc-950/40"
+      className={`rounded-[var(--radius-card)] border overflow-hidden ${
+        outcome === "bad" ? "border-danger/40 bg-danger/5" : "border-line bg-base/40"
       }`}
     >
-      <div
-        className={`flex items-center gap-2 px-4 py-2.5 border-b ${b.cls}`}
-        style={outcome === "unknown" ? HATCH : undefined}
-      >
+      <div className={`flex items-center gap-2 px-4 py-2.5 border-b ${b.cls}`}>
         <Icon icon={b.icon} className="shrink-0" />
         <span className={`text-sm ${outcome === "bad" ? "font-bold tracking-wide" : "font-medium"}`}>
           {b.body}
         </span>
-        <span className="ml-auto text-[11px] font-mono text-zinc-400 shrink-0">
+        <span className="ml-auto readout text-[11px] text-muted shrink-0">
           {compoundLabel(assay.compound_id)}
         </span>
       </div>
 
       {outcome === "bad" && (
-        <div className="px-4 py-3 border-b border-red-500/30 bg-red-500/10">
-          <p className="text-[10px] uppercase tracking-widest text-red-300/80">Reason for failure</p>
-          <p className="text-sm text-red-100 mt-1 leading-relaxed">
+        <div className="px-4 py-3 border-b border-danger/30 bg-danger/10">
+          <p className="text-[10px] uppercase tracking-widest text-danger/80">Reason for failure</p>
+          <p className="text-sm text-danger/90 mt-1 leading-relaxed">
             {isMissing(assay.fail_reason)
               ? "The lab recorded a failure but gave no reason."
               : text(assay.fail_reason)}
@@ -632,8 +614,8 @@ function AssayCard({ assay }: { assay: IndependentAssay }) {
       )}
 
       {outcome === "good" && gap.length > 0 && (
-        <div className="px-4 py-2.5 border-b border-amber-500/25 bg-amber-500/[0.06]">
-          <p className="text-xs text-amber-200/90 leading-relaxed flex items-start gap-1.5">
+        <div className="px-4 py-2.5 border-b border-signal/25 bg-signal/5">
+          <p className="text-xs text-signal/90 leading-relaxed flex items-start gap-1.5">
             <Icon icon="solar:shield-cross-linear" className="shrink-0 mt-0.5" />
             <span>
               This lab never tested for {axisList(gap)}. The pass above covers only the axes it
@@ -645,14 +627,14 @@ function AssayCard({ assay }: { assay: IndependentAssay }) {
 
       <div className="px-4 py-3 grid grid-cols-2 md:grid-cols-3 gap-4">
         <Fact label="Purity">
-          {num(assay.purity_pct) === null ? <Missing /> : <span className="font-mono">{pct(assay.purity_pct)}</span>}
+          {num(assay.purity_pct) === null ? <Missing /> : <span className="readout">{pct(assay.purity_pct)}</span>}
         </Fact>
         <Fact label="Label vs tested">
           {num(assay.label_mg) === null && num(assay.tested_mg) === null ? (
             <Missing />
           ) : (
-            <span className="font-mono">
-              {mg(assay.tested_mg)} <span className="text-zinc-500">of</span> {mg(assay.label_mg)}
+            <span className="readout">
+              {mg(assay.tested_mg)} <span className="text-faint">of</span> {mg(assay.label_mg)}
             </span>
           )}
         </Fact>
@@ -661,11 +643,11 @@ function AssayCard({ assay }: { assay: IndependentAssay }) {
             <Missing />
           ) : (
             <span
-              className={`font-mono ${potency < 0.95 ? "text-orange-400" : "text-emerald-400"}`}
+              className={`readout ${potency < 0.95 ? "text-signal" : "text-measured"}`}
             >
               {potency}x
               {potency < 0.95 && (
-                <span className="text-zinc-500 ml-1 font-sans text-xs">under label</span>
+                <span className="text-faint ml-1 font-sans text-xs">under label</span>
               )}
             </span>
           )}
@@ -703,39 +685,39 @@ function AssayCard({ assay }: { assay: IndependentAssay }) {
         />
       </div>
 
-      <div className="px-4 py-2.5 border-t border-zinc-800/80 bg-zinc-900/40 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
-        <span className="text-zinc-400">
+      <div className="px-4 py-2.5 border-t border-line bg-surface-2/40 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+        <span className="text-muted">
           Lab:{" "}
           {isMissing(assay.test_lab) ? (
             <Missing>Lab not named</Missing>
           ) : (
-            <span className="text-zinc-200">{text(assay.test_lab)}</span>
+            <span className="text-ink">{text(assay.test_lab)}</span>
           )}
         </span>
-        <span className="text-zinc-400">
+        <span className="text-muted">
           Method:{" "}
           {isMissing(assay.test_method) ? (
             <Missing>Not stated</Missing>
           ) : (
-            <span className="text-zinc-200">{text(assay.test_method)}</span>
+            <span className="text-ink">{text(assay.test_method)}</span>
           )}
         </span>
-        <span className="text-zinc-400">
+        <span className="text-muted">
           Tested:{" "}
           {isMissing(assay.test_date) ? (
             <Missing>Date not stated</Missing>
           ) : (
-            <span className="text-zinc-200">{whenText(assay.test_date)}</span>
+            <span className="text-ink readout">{whenText(assay.test_date)}</span>
           )}
         </span>
         {sourceUrl === null ? (
-          <span className="text-zinc-500 ml-auto">No source link on file</span>
+          <span className="text-faint ml-auto">No source link on file</span>
         ) : (
           <a
             href={sourceUrl}
             target="_blank"
             rel="noreferrer"
-            className="ml-auto text-blue-400 hover:text-blue-300 flex items-center gap-1"
+            className="ml-auto text-signal hover:text-signal-bright flex items-center gap-1"
           >
             Source
             <Icon icon="solar:arrow-right-up-linear" />
@@ -751,9 +733,9 @@ function ClaimCard({ claim }: { claim: VendorClaim }) {
   const labs = (claim.test_labs ?? []).filter((lab) => !isMissing(lab));
   const coaUrl = link(claim.coa_url);
   return (
-    <div className="rounded-lg border border-dashed border-amber-500/30 bg-amber-500/[0.04] px-4 py-3 space-y-3">
+    <div className="rounded-[var(--radius-card)] border border-dashed border-signal/30 bg-signal/5 px-4 py-3 space-y-3">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm text-amber-200 flex items-center gap-2">
+        <p className="text-sm text-signal flex items-center gap-2">
           <Icon icon="solar:chat-round-unread-linear" className="shrink-0" />
           {tested === true
             ? "The vendor claims its product is third-party tested"
@@ -761,13 +743,13 @@ function ClaimCard({ claim }: { claim: VendorClaim }) {
               ? "The vendor states its product is not third-party tested"
               : "The vendor did not say whether its product is tested"}
         </p>
-        <span className="text-[10px] uppercase tracking-widest text-zinc-500 shrink-0">
+        <span className="eyebrow !text-[10px] shrink-0">
           Submitted {whenText(claim.submitted_at)}
         </span>
       </div>
 
       {tested === true && (
-        <p className="text-xs text-zinc-400 leading-relaxed">
+        <p className="text-xs text-muted leading-relaxed">
           No assay backing this claim is on file. Until a lab result appears in section 2, this is
           the vendor talking about itself.
         </p>
@@ -792,7 +774,7 @@ function ClaimCard({ claim }: { claim: VendorClaim }) {
               href={coaUrl}
               target="_blank"
               rel="noreferrer"
-              className="text-blue-400 hover:text-blue-300 inline-flex items-center gap-1"
+              className="text-signal hover:text-signal-bright inline-flex items-center gap-1"
             >
               Vendor-supplied COA
               <Icon icon="solar:arrow-right-up-linear" />
@@ -802,7 +784,7 @@ function ClaimCard({ claim }: { claim: VendorClaim }) {
       </div>
 
       {coaUrl !== null && (
-        <p className="text-[11px] text-amber-300/70">
+        <p className="text-[11px] text-signal/70">
           That COA was supplied by the vendor. PepHouse has not verified it and did not commission it.
           A vendor-supplied purity certificate is not an assay, and it almost never covers endotoxin,
           heavy metals, or sterility.
@@ -810,7 +792,7 @@ function ClaimCard({ claim }: { claim: VendorClaim }) {
       )}
 
       {!isMissing(claim.notes) && (
-        <p className="text-xs text-zinc-400 leading-relaxed border-l-2 border-zinc-800 pl-3">
+        <p className="text-xs text-muted leading-relaxed border-l-2 border-line pl-3">
           {text(claim.notes)}
         </p>
       )}
@@ -820,19 +802,22 @@ function ClaimCard({ claim }: { claim: VendorClaim }) {
 
 function ReportCard({ report }: { report: MemberReport }) {
   const sentiment = (report.sentiment ?? "").toLowerCase();
+  // Member sentiment is anecdote, the weakest grade on the page, so it is never
+  // hue-coded good/bad. A negative or mixed read is flagged in the warm signal
+  // voice; a positive or neutral read stays quiet.
   const sentimentCls =
     sentiment === "positive"
-      ? "text-emerald-400"
+      ? "text-muted"
       : sentiment === "negative"
-        ? "text-orange-400"
+        ? "text-signal"
         : sentiment === "mixed"
-          ? "text-amber-400"
-          : "text-zinc-400";
+          ? "text-signal/80"
+          : "text-faint";
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-3 space-y-3">
+    <div className="rounded-[var(--radius-card)] border border-line bg-base/40 px-4 py-3 space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[11px] font-mono text-zinc-500">
+        <span className="readout text-[11px] text-faint">
           {compoundLabel(report.compound_id)}
         </span>
         <span className={`text-[11px] uppercase tracking-wider ${sentimentCls}`}>
@@ -845,7 +830,7 @@ function ReportCard({ report }: { report: MemberReport }) {
           {num(report.tested_purity_pct) === null ? (
             <Missing>Not reported</Missing>
           ) : (
-            <span className="font-mono text-zinc-300">{pct(report.tested_purity_pct)}</span>
+            <span className="readout text-muted">{pct(report.tested_purity_pct)}</span>
           )}
         </Fact>
         <BoolFact
@@ -859,13 +844,13 @@ function ReportCard({ report }: { report: MemberReport }) {
           {num(report.cost_usd) === null ? (
             <Missing>Not reported</Missing>
           ) : (
-            <span className="font-mono text-zinc-300">{usd(report.cost_usd)}</span>
+            <span className="readout text-muted">{usd(report.cost_usd)}</span>
           )}
         </Fact>
       </div>
 
       {!isMissing(report.notes) && (
-        <p className="text-xs text-zinc-400 leading-relaxed border-l-2 border-zinc-800 pl-3">
+        <p className="text-xs text-muted leading-relaxed border-l-2 border-line pl-3">
           {text(report.notes)}
         </p>
       )}
@@ -876,8 +861,8 @@ function ReportCard({ report }: { report: MemberReport }) {
 function SourcingCard({ row }: { row: SourcingRow }) {
   const shipsFrom = (row.ships_from ?? []).filter((place) => !isMissing(place));
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-3 space-y-3">
-      <span className="text-[11px] font-mono text-zinc-500">{compoundLabel(row.compound_id)}</span>
+    <div className="rounded-[var(--radius-card)] border border-line bg-base/40 px-4 py-3 space-y-3">
+      <span className="readout text-[11px] text-faint">{compoundLabel(row.compound_id)}</span>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <SourceFact label="Source type" value={row.source_type} />
         <TextFact label="Origin country" value={row.origin_country} />
@@ -887,7 +872,7 @@ function SourcingCard({ row }: { row: SourcingRow }) {
         <TextFact label="Payment" value={row.payment} />
       </div>
       {!isMissing(row.notes) && (
-        <p className="text-xs text-zinc-400 leading-relaxed border-l-2 border-zinc-800 pl-3">
+        <p className="text-xs text-muted leading-relaxed border-l-2 border-line pl-3">
           {text(row.notes)}
         </p>
       )}
@@ -936,15 +921,15 @@ function ContactChannels({ vendor }: { vendor: VendorBreakdown }) {
     website === null && telegram.length === 0 && whatsapp.length === 0 && other.length === 0;
 
   return (
-    <div className="mt-5 pt-5 border-t border-zinc-800">
-      <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-3">Contact channels</p>
+    <div className="mt-5 pt-5 border-t border-line">
+      <p className="eyebrow !text-[10px] mb-3">Contact channels</p>
       {none ? (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-3">
-          <p className="text-sm text-zinc-300 flex items-center gap-2">
-            <Icon icon="solar:link-broken-linear" className="text-zinc-500 shrink-0" />
+        <div className="rounded-[var(--radius-card)] border border-line bg-base/40 px-4 py-3">
+          <p className="text-sm text-muted flex items-center gap-2">
+            <Icon icon="solar:link-broken-linear" className="text-faint shrink-0" />
             No contact channel on file
           </p>
-          <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
+          <p className="text-xs text-faint mt-1 leading-relaxed">
             No website, Telegram, WhatsApp, or other channel is recorded. This is a neutral fact and
             not a red flag: many sources share contact details only in private.
           </p>
@@ -954,13 +939,13 @@ function ContactChannels({ vendor }: { vendor: VendorBreakdown }) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
             <ChannelFact label="Website">
               {website === null ? (
-                <span className="text-sm text-zinc-400">None listed</span>
+                <span className="text-sm text-faint">None listed</span>
               ) : (
                 <a
                   href={website}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-blue-400 hover:text-blue-300 inline-flex items-center gap-1 break-all"
+                  className="text-signal hover:text-signal-bright inline-flex items-center gap-1 break-all"
                 >
                   {website}
                   <Icon icon="solar:arrow-right-up-linear" className="shrink-0" />
@@ -969,38 +954,38 @@ function ContactChannels({ vendor }: { vendor: VendorBreakdown }) {
             </ChannelFact>
             <ChannelFact label="Telegram">
               {telegram.length === 0 ? (
-                <span className="text-sm text-zinc-400">None listed</span>
+                <span className="text-sm text-faint">None listed</span>
               ) : telegramUrl !== null ? (
                 <a
                   href={telegramUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-blue-400 hover:text-blue-300 inline-flex items-center gap-1 break-all"
+                  className="text-signal hover:text-signal-bright inline-flex items-center gap-1 break-all"
                 >
                   {telegram}
                   <Icon icon="solar:arrow-right-up-linear" className="shrink-0" />
                 </a>
               ) : (
-                <span className="text-sm text-zinc-200 break-words">{telegram}</span>
+                <span className="text-sm text-ink break-words">{telegram}</span>
               )}
             </ChannelFact>
             <ChannelFact label="WhatsApp">
               {whatsapp.length === 0 ? (
-                <span className="text-sm text-zinc-400">None listed</span>
+                <span className="text-sm text-faint">None listed</span>
               ) : (
-                <span className="text-sm text-zinc-200 break-words">{whatsapp}</span>
+                <span className="text-sm text-ink break-words">{whatsapp}</span>
               )}
             </ChannelFact>
             <ChannelFact label="Other contact">
               {other.length === 0 ? (
-                <span className="text-sm text-zinc-400">None listed</span>
+                <span className="text-sm text-faint">None listed</span>
               ) : (
-                <span className="text-sm text-zinc-200 break-words">{other}</span>
+                <span className="text-sm text-ink break-words">{other}</span>
               )}
             </ChannelFact>
           </div>
           {website === null && (
-            <p className="mt-3 text-xs text-zinc-500 leading-relaxed flex items-start gap-1.5">
+            <p className="mt-3 text-xs text-faint leading-relaxed flex items-start gap-1.5">
               <Icon icon="solar:info-circle-linear" className="shrink-0 mt-0.5" />
               <span>
                 No website is listed. For a grey-market source that is common and not a red flag on
@@ -1025,8 +1010,8 @@ function ContactChannels({ vendor }: { vendor: VendorBreakdown }) {
 // only after a human approves it, labelled unverified.
 
 const FORM_INPUT =
-  "w-full bg-[#0a0a0a] border border-zinc-700/80 rounded-lg py-2.5 px-3 text-sm text-zinc-200 " +
-  "placeholder:text-zinc-600 outline-none focus:border-zinc-500 transition-colors";
+  "w-full bg-base border border-line rounded-lg py-2.5 px-3 text-sm text-ink " +
+  "placeholder:text-faint outline-none focus:border-line-bright focus-visible:ring-1 focus-visible:ring-signal transition-colors";
 
 type TriState = "yes" | "no" | "unknown";
 type Sentiment = "positive" | "neutral" | "negative";
@@ -1131,11 +1116,11 @@ function Field({
 }) {
   return (
     <div>
-      <label htmlFor={id} className="block text-xs font-medium text-zinc-300">
+      <label htmlFor={id} className="block text-xs font-medium text-muted">
         {label}
       </label>
       {hint !== undefined && (
-        <p className="text-[11px] text-zinc-500 mt-0.5 leading-relaxed">{hint}</p>
+        <p className="text-[11px] text-faint mt-0.5 leading-relaxed">{hint}</p>
       )}
       <div className="mt-1.5">{children}</div>
     </div>
@@ -1159,8 +1144,8 @@ function TriStateField({
 }) {
   return (
     <div>
-      <p className="text-xs font-medium text-zinc-300">{label}</p>
-      <p className="text-[11px] text-zinc-500 mt-0.5 leading-relaxed">{hint}</p>
+      <p className="text-xs font-medium text-muted">{label}</p>
+      <p className="text-[11px] text-faint mt-0.5 leading-relaxed">{hint}</p>
       <div className="mt-1.5 grid grid-cols-3 gap-2" role="radiogroup" aria-label={label}>
         {TRI_OPTIONS.map((option) => {
           const active = value === option.value;
@@ -1171,10 +1156,10 @@ function TriStateField({
               role="radio"
               aria-checked={active}
               onClick={() => onChange(option.value)}
-              className={`rounded-lg border px-2 py-2 text-sm font-medium transition-colors ${
+              className={`rounded-lg border px-2 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 ${
                 active
-                  ? "border-blue-500/50 bg-blue-500/10 text-blue-300"
-                  : "border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700"
+                  ? "border-signal/50 bg-signal/10 text-signal"
+                  : "border-line bg-base/60 text-muted hover:border-line-bright"
               }`}
             >
               {option.label}
@@ -1197,8 +1182,8 @@ function SentimentField({
 }) {
   return (
     <div>
-      <p className="text-xs font-medium text-zinc-300">Your read on this vendor</p>
-      <p className="text-[11px] text-zinc-500 mt-0.5 leading-relaxed">
+      <p className="text-xs font-medium text-muted">Your read on this vendor</p>
+      <p className="text-[11px] text-faint mt-0.5 leading-relaxed">
         Your own experience, not a measurement. Nothing is selected by default.
       </p>
       <div className="mt-1.5 grid grid-cols-3 gap-2" role="radiogroup" aria-label="Sentiment">
@@ -1211,10 +1196,10 @@ function SentimentField({
               role="radio"
               aria-checked={active}
               onClick={() => onChange(option.value)}
-              className={`rounded-lg border px-2 py-2 text-sm font-medium transition-colors ${
+              className={`rounded-lg border px-2 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 ${
                 active
-                  ? "border-blue-500/50 bg-blue-500/10 text-blue-300"
-                  : "border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700"
+                  ? "border-signal/50 bg-signal/10 text-signal"
+                  : "border-line bg-base/60 text-muted hover:border-line-bright"
               }`}
             >
               {option.label}
@@ -1229,9 +1214,9 @@ function SentimentField({
 /** The review-gate disclosure, stated above every submit button. */
 function ReviewGateNotice() {
   return (
-    <div className="rounded-lg border border-blue-500/20 bg-blue-500/[0.06] px-3 py-2.5 flex gap-2.5">
-      <Icon icon="solar:shield-check-linear" className="text-blue-400 text-base shrink-0 mt-0.5" />
-      <p className="text-[11px] text-blue-200/90 leading-relaxed">
+    <div className="rounded-lg border border-line bg-surface-2 px-3 py-2.5 flex gap-2.5">
+      <Icon icon="solar:shield-check-linear" className="text-signal text-base shrink-0 mt-0.5" />
+      <p className="text-[11px] text-muted leading-relaxed">
         Your report is reviewed before it appears. Nothing here goes public immediately: it goes to
         the operator queue and shows on this page only after a human approves it. When it appears it
         is labelled unverified, and it never outranks an independent assay.
@@ -1242,25 +1227,25 @@ function ReviewGateNotice() {
 
 function FormNote({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2.5 flex gap-2.5">
-      <Icon icon="solar:danger-triangle-linear" className="text-amber-400 text-base shrink-0 mt-0.5" />
-      <p className="text-[11px] text-amber-200/90 leading-relaxed">{children}</p>
+    <div className="rounded-lg border border-signal/20 bg-signal/5 px-3 py-2.5 flex gap-2.5">
+      <Icon icon="solar:danger-triangle-linear" className="text-signal text-base shrink-0 mt-0.5" />
+      <p className="text-[11px] text-signal/90 leading-relaxed">{children}</p>
     </div>
   );
 }
 
 function FormError({ message, onSignIn }: { message: string; onSignIn: (() => void) | null }) {
   return (
-    <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2.5">
+    <div role="alert" className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2.5">
       <div className="flex gap-2.5">
-        <Icon icon="solar:close-circle-linear" className="text-red-400 text-base shrink-0 mt-0.5" />
-        <p className="text-sm text-red-300 leading-relaxed">{message}</p>
+        <Icon icon="solar:close-circle-linear" className="text-danger text-base shrink-0 mt-0.5" />
+        <p className="text-sm text-danger leading-relaxed">{message}</p>
       </div>
       {onSignIn !== null && (
         <button
           type="button"
           onClick={onSignIn}
-          className="mt-2.5 inline-flex items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-sm font-medium text-blue-200 hover:bg-blue-500/15 transition-colors"
+          className="mt-2.5 inline-flex items-center gap-2 rounded-lg border border-signal/40 bg-signal/10 px-3 py-2 text-sm font-medium text-signal hover:bg-signal/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50"
         >
           <Icon icon="solar:login-3-linear" />
           Sign in with Google
@@ -1272,19 +1257,19 @@ function FormError({ message, onSignIn }: { message: string; onSignIn: (() => vo
 
 function SubmittedCard({ title, onAnother }: { title: string; onAnother: () => void }) {
   return (
-    <div className="rounded-lg border border-blue-500/30 bg-blue-500/[0.06] p-4" role="status">
-      <p className="text-sm font-medium text-white flex items-center gap-2">
-        <Icon icon="solar:check-read-linear" className="text-blue-400 shrink-0" />
+    <div className="rounded-[var(--radius-card)] border border-line bg-surface-2 p-4" role="status">
+      <p className="text-sm font-medium text-ink flex items-center gap-2">
+        <Icon icon="solar:check-read-linear" className="text-signal shrink-0" />
         {title}
       </p>
-      <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+      <p className="text-xs text-muted mt-1.5 leading-relaxed">
         It is in the operator queue, pending review. It is not on this page yet and will not appear
         until a human approves it. When it does, it is labelled unverified.
       </p>
       <button
         type="button"
         onClick={onAnother}
-        className="mt-3 text-xs font-medium text-blue-300 hover:text-blue-200 transition-colors flex items-center gap-1.5"
+        className="mt-3 text-xs font-medium text-signal hover:text-signal-bright transition-colors flex items-center gap-1.5"
       >
         <Icon icon="solar:add-circle-linear" />
         Add another
@@ -1376,7 +1361,7 @@ function MemberReportForm({ vendor, onSignIn }: { vendor: VendorBreakdown; onSig
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-      <p className="text-xs text-zinc-500 leading-relaxed">
+      <p className="text-xs text-faint leading-relaxed">
         A buyer report is the lowest grade of information on this page. It is unverified and it is
         not a lab test. Every field is optional.
       </p>
@@ -1438,7 +1423,7 @@ function MemberReportForm({ vendor, onSignIn }: { vendor: VendorBreakdown; onSig
       <button
         type="submit"
         disabled={submitting}
-        className="w-full min-h-12 rounded-lg bg-blue-500/15 border border-blue-500/50 py-3 text-sm font-medium text-blue-200 hover:bg-blue-500/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        className="w-full min-h-12 rounded-lg bg-signal text-base font-semibold py-3 text-sm hover:bg-signal-bright transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
       >
         {submitting ? (
           <>
@@ -1544,7 +1529,7 @@ function VendorStatementForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-      <p className="text-xs text-zinc-500 leading-relaxed">
+      <p className="text-xs text-faint leading-relaxed">
         Everything here is a claim, not evidence. Only an independent lab assay counts as evidence,
         and this form cannot produce one. Every field is optional.
       </p>
@@ -1654,7 +1639,7 @@ function VendorStatementForm({
       <button
         type="submit"
         disabled={submitting}
-        className="w-full min-h-12 rounded-lg bg-blue-500/15 border border-blue-500/50 py-3 text-sm font-medium text-blue-200 hover:bg-blue-500/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        className="w-full min-h-12 rounded-lg bg-signal text-base font-semibold py-3 text-sm hover:bg-signal-bright transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
       >
         {submitting ? (
           <>
@@ -1699,21 +1684,21 @@ function ContributeSection({ vendor }: { vendor: VendorBreakdown }) {
       </SectionCaption>
 
       {isAnonymous ? (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-4">
-          <p className="text-sm text-zinc-300 leading-relaxed">
+        <div className="rounded-[var(--radius-card)] border border-line bg-base/60 px-4 py-4">
+          <p className="text-sm text-muted leading-relaxed">
             Contributing needs a signed-in Google account so a submission can be attributed and
             reviewed. An anonymous session cannot post to the queue.
           </p>
           <button
             type="button"
             onClick={handleSignIn}
-            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3.5 py-2.5 text-sm font-medium text-blue-200 hover:bg-blue-500/15 transition-colors"
+            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-signal/40 bg-signal/10 px-3.5 py-2.5 text-sm font-medium text-signal hover:bg-signal/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50"
           >
             <Icon icon="solar:login-3-linear" />
             Sign in with Google to contribute
           </button>
           {signInError !== null && (
-            <p className="mt-2 text-xs text-red-400" role="alert">
+            <p className="mt-2 text-xs text-danger" role="alert">
               {signInError}
             </p>
           )}
@@ -1725,39 +1710,39 @@ function ContributeSection({ vendor }: { vendor: VendorBreakdown }) {
               type="button"
               onClick={() => setOpen(open === "member" ? null : "member")}
               aria-expanded={open === "member"}
-              className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+              className={`rounded-lg border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 ${
                 open === "member"
-                  ? "border-blue-500/50 bg-blue-500/10"
-                  : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700"
+                  ? "border-signal/50 bg-signal/10"
+                  : "border-line bg-base/60 hover:border-line-bright"
               }`}
             >
               <span
                 className={`block text-sm font-medium ${
-                  open === "member" ? "text-blue-300" : "text-zinc-200"
+                  open === "member" ? "text-signal" : "text-ink"
                 }`}
               >
                 Add your experience
               </span>
-              <span className="block text-xs text-zinc-500 mt-0.5">A buyer report. Unverified.</span>
+              <span className="block text-xs text-faint mt-0.5">A buyer report. Unverified.</span>
             </button>
             <button
               type="button"
               onClick={() => setOpen(open === "vendor" ? null : "vendor")}
               aria-expanded={open === "vendor"}
-              className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+              className={`rounded-lg border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 ${
                 open === "vendor"
-                  ? "border-blue-500/50 bg-blue-500/10"
-                  : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700"
+                  ? "border-signal/50 bg-signal/10"
+                  : "border-line bg-base/60 hover:border-line-bright"
               }`}
             >
               <span
                 className={`block text-sm font-medium ${
-                  open === "vendor" ? "text-blue-300" : "text-zinc-200"
+                  open === "vendor" ? "text-signal" : "text-ink"
                 }`}
               >
                 Add a vendor statement
               </span>
-              <span className="block text-xs text-zinc-500 mt-0.5">A vendor claim. Not an assay.</span>
+              <span className="block text-xs text-faint mt-0.5">A vendor claim. Not an assay.</span>
             </button>
           </div>
 
@@ -1792,27 +1777,27 @@ function VendorDetail({ vendor, onBack }: { vendor: VendorBreakdown; onBack: () 
       <button
         type="button"
         onClick={onBack}
-        className="text-xs font-medium text-zinc-400 hover:text-white transition-colors flex items-center gap-1.5"
+        className="text-xs font-medium text-muted hover:text-ink transition-colors flex items-center gap-1.5"
       >
         <Icon icon="solar:arrow-left-linear" />
         All vendors
       </button>
 
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-2xl font-semibold text-white">
+        <h2 className="font-display tracking-tight text-2xl font-semibold text-ink">
           {isMissing(vendor.name) ? "Unnamed vendor" : text(vendor.name)}
         </h2>
         <TestingBadge status={vendor.testing_status} size="lg" />
       </div>
-      <p className="text-sm text-zinc-400 -mt-2 max-w-3xl leading-relaxed">{meta.blurb}</p>
+      <p className="text-sm text-muted -mt-2 max-w-3xl leading-relaxed">{meta.blurb}</p>
 
       {failedAssays.length > 0 && (
-        <div className="rounded-xl border border-red-500/50 bg-red-500/15 px-5 py-4">
-          <p className="text-base font-bold text-red-200 flex items-center gap-2 tracking-wide">
+        <div className="rounded-xl border border-danger/50 bg-danger/15 px-5 py-4">
+          <p className="font-display tracking-tight text-base font-bold text-danger flex items-center gap-2">
             <Icon icon="solar:danger-triangle-bold" className="text-xl shrink-0" />
             This vendor failed an independent assay
           </p>
-          <p className="text-sm text-red-100/90 mt-1.5 leading-relaxed">
+          <p className="text-sm text-danger/90 mt-1.5 leading-relaxed">
             {failedAssays.length} of {assays.length} assay
             {assays.length === 1 ? "" : "s"} on file came back as a failure. Read section 2 before
             you read anything else on this page.
@@ -1852,15 +1837,15 @@ function VendorDetail({ vendor, onBack }: { vendor: VendorBreakdown; onBack: () 
             num(vendor.cost_multiple_vs_gray) === null ? (
               <Missing />
             ) : (
-              <span className="text-zinc-200">
+              <span className="text-ink">
                 {isMissing(vendor.cost_tier) ? "" : `${text(vendor.cost_tier)} `}
                 {num(vendor.cost_per_vial_usd) !== null && (
-                  <span className="font-mono text-zinc-300">
+                  <span className="readout text-muted">
                     {usd(vendor.cost_per_vial_usd)} per vial
                   </span>
                 )}
                 {num(vendor.cost_multiple_vs_gray) !== null && (
-                  <span className="text-zinc-500 block text-xs">
+                  <span className="readout text-faint block text-xs">
                     {num(vendor.cost_multiple_vs_gray)}x gray-market price
                   </span>
                 )}
@@ -1870,19 +1855,19 @@ function VendorDetail({ vendor, onBack }: { vendor: VendorBreakdown; onBack: () 
         </div>
         <ContactChannels vendor={vendor} />
         {!isMissing(vendor.notes) && (
-          <p className="text-xs text-zinc-400 leading-relaxed border-l-2 border-zinc-800 pl-3 mt-5">
+          <p className="text-xs text-muted leading-relaxed border-l-2 border-line pl-3 mt-5">
             {text(vendor.notes)}
           </p>
         )}
       </Panel>
 
       {/* 2. Independent assays */}
-      <Panel className="p-5 border-zinc-700">
+      <Panel className="p-5 border-line-bright">
         <PanelHeader
           icon="solar:test-tube-linear"
           title="2. Independent assays"
           action={
-            <span className="text-[11px] font-mono text-zinc-500">
+            <span className="readout text-[11px] text-faint">
               {assays.length} on file
             </span>
           }
@@ -1910,13 +1895,13 @@ function VendorDetail({ vendor, onBack }: { vendor: VendorBreakdown; onBack: () 
       </Panel>
 
       {/* 3. Vendor claims */}
-      <div className="pl-4 md:pl-8 border-l border-zinc-800/60">
-        <Panel className="p-4 bg-zinc-900/20">
+      <div className="pl-4 md:pl-8 border-l border-line">
+        <Panel className="p-4 bg-surface-2/20">
           <PanelHeader
             icon="solar:chat-round-unread-linear"
             title="3. Vendor claims"
             action={
-              <span className="text-[11px] font-mono text-zinc-500">{claims.length} on file</span>
+              <span className="readout text-[11px] text-faint">{claims.length} on file</span>
             }
           />
           <SectionCaption tone="claim">
@@ -1940,13 +1925,13 @@ function VendorDetail({ vendor, onBack }: { vendor: VendorBreakdown; onBack: () 
       </div>
 
       {/* 4. Member reports */}
-      <div className="pl-8 md:pl-16 border-l border-zinc-800/40">
-        <Panel className="p-4 bg-zinc-900/20">
+      <div className="pl-8 md:pl-16 border-l border-line">
+        <Panel className="p-4 bg-surface-2/20">
           <PanelHeader
             icon="solar:users-group-rounded-linear"
             title="4. Member reports"
             action={
-              <span className="text-[11px] font-mono text-zinc-500">{reports.length} on file</span>
+              <span className="readout text-[11px] text-faint">{reports.length} on file</span>
             }
           />
           <SectionCaption tone="anecdote">
@@ -1974,7 +1959,7 @@ function VendorDetail({ vendor, onBack }: { vendor: VendorBreakdown; onBack: () 
           icon="solar:box-linear"
           title="5. Sourcing"
           action={
-            <span className="text-[11px] font-mono text-zinc-500">{sourcing.length} on file</span>
+            <span className="readout text-[11px] text-faint">{sourcing.length} on file</span>
           }
         />
         {sourcing.length === 0 ? (
@@ -2114,15 +2099,15 @@ export default function VendorsPage() {
 
   return (
     <AppShell>
-      <header className="h-16 flex items-center justify-between px-8 border-b border-zinc-800/60 shrink-0 z-10 bg-zinc-950/80 backdrop-blur-md">
+      <header className="h-16 flex items-center justify-between px-8 border-b border-line shrink-0 z-10 bg-base/80 backdrop-blur-md">
         <div className="flex items-center gap-4">
-          <h1 className="text-lg font-semibold tracking-tight text-white flex items-center gap-2">
-            <Icon icon="solar:shop-2-linear" className="text-blue-400 text-xl" />
+          <h1 className="font-display text-lg font-semibold tracking-tight text-ink flex items-center gap-2">
+            <Icon icon="solar:shop-2-linear" className="text-signal text-xl" />
             Vendors
           </h1>
-          <div className="h-4 w-px bg-zinc-800" />
-          <span className="text-xs font-medium text-zinc-400 bg-zinc-900 border border-zinc-800 px-2 py-1 rounded-full">
-            {vendors.length} in the index
+          <div className="h-4 w-px bg-line" />
+          <span className="text-xs font-medium text-muted bg-surface border border-line px-2 py-1 rounded-full">
+            <span className="readout">{vendors.length}</span> in the index
           </span>
         </div>
         <div className="flex items-center gap-4">
@@ -2130,14 +2115,14 @@ export default function VendorsPage() {
             type="button"
             onClick={() => void loadList()}
             disabled={listLoading}
-            className="text-xs font-medium text-zinc-400 hover:text-white transition-colors flex items-center gap-1.5 disabled:opacity-60"
+            className="text-xs font-medium text-muted hover:text-ink transition-colors flex items-center gap-1.5 disabled:opacity-60"
           >
             <Icon icon="solar:refresh-linear" className={listLoading ? "animate-spin" : ""} />
             Refresh
           </button>
           <Link
             to="/vendors/submit"
-            className="text-xs font-medium text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5"
+            className="text-xs font-medium text-signal hover:text-signal-bright transition-colors flex items-center gap-1.5"
           >
             <Icon icon="solar:add-circle-linear" />
             Submit a vendor
@@ -2148,15 +2133,15 @@ export default function VendorsPage() {
       <div className="flex-1 min-h-0 overflow-y-auto p-6 z-10">
         {selectedId !== null ? (
           detailLoading ? (
-            <p className="text-sm text-zinc-500">Loading vendor…</p>
+            <p className="text-sm text-faint">Loading vendor…</p>
           ) : detailError !== null ? (
             <Panel className="p-4 max-w-2xl">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm text-red-400">{detailError}</p>
+                <p className="text-sm text-danger">{detailError}</p>
                 <button
                   type="button"
                   onClick={closeVendor}
-                  className="text-xs font-medium text-zinc-300 hover:text-white border border-zinc-700 rounded px-2 py-1 transition-colors shrink-0"
+                  className="text-xs font-medium text-muted hover:text-ink border border-line rounded px-2 py-1 transition-colors shrink-0"
                 >
                   Back to all vendors
                 </button>
@@ -2168,16 +2153,16 @@ export default function VendorsPage() {
             // Not loading, no error, no vendor. Say so rather than render a blank page.
             <Panel className="p-8 max-w-2xl">
               <div className="flex flex-col items-center text-center gap-2">
-                <Icon icon="solar:file-corrupted-linear" className="text-3xl text-zinc-600" />
-                <p className="text-white font-medium">No such vendor in the index</p>
-                <p className="text-sm text-zinc-500 max-w-md leading-relaxed">
+                <Icon icon="solar:file-corrupted-linear" className="text-3xl text-faint" />
+                <p className="text-ink font-medium">No such vendor in the index</p>
+                <p className="text-sm text-faint max-w-md leading-relaxed">
                   Vendor #{selectedId} is not on file. Nothing is listed here that we do not have a
                   record for.
                 </p>
                 <button
                   type="button"
                   onClick={closeVendor}
-                  className="mt-2 text-xs font-medium text-zinc-300 hover:text-white border border-zinc-700 rounded px-2 py-1 transition-colors"
+                  className="mt-2 text-xs font-medium text-muted hover:text-ink border border-line rounded px-2 py-1 transition-colors"
                 >
                   Back to all vendors
                 </button>
@@ -2188,7 +2173,7 @@ export default function VendorsPage() {
           <div className="max-w-6xl space-y-5">
             {/* the honest line of context */}
             <Panel className="p-5">
-              <p className="text-sm text-zinc-300 leading-relaxed max-w-3xl">
+              <p className="text-sm text-muted leading-relaxed max-w-3xl">
                 This index is small and it is growing. PepHouse takes no money from vendors. No vendor
                 can pay for placement, for a rating, or for a better testing grade, and the list below
                 is ordered alphabetically rather than ranked. Where a vendor has never been
@@ -2200,7 +2185,7 @@ export default function VendorsPage() {
               <div className="flex flex-wrap items-center gap-3 mt-4">
                 <Link
                   to="/vendors/submit"
-                  className="text-xs font-medium text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5"
+                  className="text-xs font-medium text-signal hover:text-signal-bright transition-colors flex items-center gap-1.5"
                 >
                   <Icon icon="solar:add-circle-linear" />
                   Add a vendor, or send us an assay we are missing
@@ -2219,10 +2204,11 @@ export default function VendorsPage() {
                     return (
                       <div
                         key={status}
-                        className={`rounded-lg border px-4 py-3 ${meta.badge}`}
-                        style={meta.hatched ? HATCH : undefined}
+                        className={`rounded-[var(--radius-card)] border px-4 py-3 ${meta.badge} ${
+                          meta.hatched ? "void-hatch" : ""
+                        }`}
                       >
-                        <p className="text-2xl font-semibold">
+                        <p className="readout text-2xl font-semibold">
                           {n}
                           <span className="text-sm font-normal opacity-60"> of {vendors.length}</span>
                         </p>
@@ -2234,7 +2220,7 @@ export default function VendorsPage() {
                     );
                   })}
                 </div>
-                <p className="text-xs text-zinc-500 mt-4 leading-relaxed">
+                <p className="text-xs text-faint mt-4 leading-relaxed">
                   Across the whole index: {tally.assays} independent{" "}
                   {tally.assays === 1 ? "assay" : "assays"}, {tally.claims} vendor{" "}
                   {tally.claims === 1 ? "claim" : "claims"}, {tally.reports} member{" "}
@@ -2242,7 +2228,7 @@ export default function VendorsPage() {
                   numbers that measures anything.
                 </p>
                 {tally.gapped > 0 && (
-                  <p className="text-xs text-amber-300/80 mt-2 leading-relaxed flex items-start gap-1.5">
+                  <p className="text-xs text-signal/80 mt-2 leading-relaxed flex items-start gap-1.5">
                     <Icon icon="solar:shield-cross-linear" className="shrink-0 mt-0.5" />
                     <span>
                       {tally.gapped} of the {tally.byStatus.independent} independently tested{" "}
@@ -2258,12 +2244,12 @@ export default function VendorsPage() {
             {listError !== null && (
               <Panel className="p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm text-red-400">{listError}</p>
+                  <p className="text-sm text-danger">{listError}</p>
                   <button
                     type="button"
                     onClick={() => void loadList()}
                     disabled={listLoading}
-                    className="text-xs font-medium text-zinc-300 hover:text-white border border-zinc-700 rounded px-2 py-1 transition-colors disabled:opacity-60 shrink-0"
+                    className="text-xs font-medium text-muted hover:text-ink border border-line rounded px-2 py-1 transition-colors disabled:opacity-60 shrink-0"
                   >
                     Retry
                   </button>
@@ -2272,19 +2258,19 @@ export default function VendorsPage() {
             )}
 
             {listLoading && vendors.length === 0 ? (
-              <p className="text-sm text-zinc-500">Loading the vendor index…</p>
+              <p className="text-sm text-faint">Loading the vendor index…</p>
             ) : listError !== null && vendors.length === 0 ? null : vendors.length === 0 ? (
               <Panel className="p-8">
                 <div className="flex flex-col items-center text-center gap-2">
-                  <Icon icon="solar:shop-2-linear" className="text-3xl text-zinc-600" />
-                  <p className="text-white font-medium">No vendors in the index yet</p>
-                  <p className="text-sm text-zinc-500 max-w-md leading-relaxed">
+                  <Icon icon="solar:shop-2-linear" className="text-3xl text-faint" />
+                  <p className="text-ink font-medium">No vendors in the index yet</p>
+                  <p className="text-sm text-faint max-w-md leading-relaxed">
                     The index starts empty and fills up from submissions and lab results. Nothing is
                     listed here that we do not have a record for.
                   </p>
                   <Link
                     to="/vendors/submit"
-                    className="mt-2 text-xs font-medium text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5"
+                    className="mt-2 text-xs font-medium text-signal hover:text-signal-bright transition-colors flex items-center gap-1.5"
                   >
                     <Icon icon="solar:add-circle-linear" />
                     Submit the first one
@@ -2293,20 +2279,12 @@ export default function VendorsPage() {
               </Panel>
             ) : (
               <Panel className="overflow-hidden">
-                <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2.5 border-b border-zinc-800/80 bg-zinc-900/40">
-                  <span className="col-span-3 text-[10px] uppercase tracking-widest text-zinc-500">
-                    Vendor
-                  </span>
-                  <span className="col-span-2 text-[10px] uppercase tracking-widest text-zinc-500">
-                    Country
-                  </span>
-                  <span className="col-span-2 text-[10px] uppercase tracking-widest text-zinc-500">
-                    Source type
-                  </span>
-                  <span className="col-span-3 text-[10px] uppercase tracking-widest text-zinc-400">
-                    Testing status
-                  </span>
-                  <span className="col-span-2 text-[10px] uppercase tracking-widest text-zinc-500 justify-self-end">
+                <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2.5 border-b border-line bg-surface-2/40">
+                  <span className="col-span-3 eyebrow !text-[10px]">Vendor</span>
+                  <span className="col-span-2 eyebrow !text-[10px]">Country</span>
+                  <span className="col-span-2 eyebrow !text-[10px]">Source type</span>
+                  <span className="col-span-3 eyebrow !text-[10px] !text-muted">Testing status</span>
+                  <span className="col-span-2 eyebrow !text-[10px] justify-self-end">
                     Assays / claims / reports
                   </span>
                 </div>

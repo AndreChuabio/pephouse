@@ -2,6 +2,7 @@ import { Icon } from "@iconify/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/layout/AppShell";
+import { EvidenceMeter } from "../components/ui/EvidenceMeter";
 import { Panel } from "../components/ui/Panel";
 import { PanelHeader } from "../components/ui/PanelHeader";
 import { useAuth } from "../context/AuthProvider";
@@ -137,20 +138,22 @@ interface TierMeta {
 
 // Numbering matches the rest of the app (Cellar, Arena): higher = stronger.
 // Tier 4 is COMPLETED trials only. A registered trial never reaches this ladder.
+// Tiers are ranked by a neutral luminance ramp — strength, never a good/bad hue.
+// Tier 4 (completed trials) is the brightest ink, tier 1 (anecdote) the dimmest.
 const TIER_META: Record<Tier, TierMeta> = {
   4: {
     name: "Completed clinical trials",
     hint: "Finished, with a result. The only thing that settles a question.",
-    text: "text-emerald-400",
-    dot: "bg-emerald-400",
-    border: "border-emerald-500/30",
+    text: "text-tier-4",
+    dot: "bg-tier-4",
+    border: "border-line-bright",
   },
   3: {
     name: "Observational / papers",
     hint: "Published, but not a controlled trial.",
-    text: "text-teal-400",
-    dot: "bg-teal-400",
-    border: "border-teal-500/30",
+    text: "text-tier-3",
+    dot: "bg-tier-3",
+    border: "border-line",
   },
   2: {
     // This rung counts independent third-party assays and sourcing records. It is
@@ -159,16 +162,16 @@ const TIER_META: Record<Tier, TierMeta> = {
     // speaks to what is in the vial and says nothing about whether it works.
     name: "Verified real-world / lab data",
     hint: "Independent assays and sourcing records. What is in the vial, not whether it works.",
-    text: "text-blue-400",
-    dot: "bg-blue-400",
-    border: "border-blue-500/30",
+    text: "text-tier-2",
+    dot: "bg-tier-2",
+    border: "border-line",
   },
   1: {
     name: "Anecdotal / forums",
     hint: "Someone said so. That is all.",
-    text: "text-amber-400",
-    dot: "bg-amber-400",
-    border: "border-amber-500/30",
+    text: "text-tier-1",
+    dot: "bg-tier-1",
+    border: "border-line",
   },
 };
 
@@ -181,36 +184,39 @@ interface VerdictMeta {
   border: string;
 }
 
+// The verdict tag reads on the same neutral luminance ramp as the tiers: brighter
+// = stronger evidence, never a hue that says good or bad. no_evidence is the void,
+// hatched so an absence reads as a finding rather than a blank.
 const VERDICT_META: Record<Verdict, VerdictMeta> = {
   trial_backed: {
     label: "Trial backed",
-    text: "text-emerald-400",
-    bg: "bg-emerald-500/10",
-    border: "border-emerald-500/25",
+    text: "text-ink",
+    bg: "bg-surface-2",
+    border: "border-line-bright",
   },
   observational_only: {
     label: "Observational only",
-    text: "text-teal-400",
-    bg: "bg-teal-500/10",
-    border: "border-teal-500/25",
+    text: "text-tier-3",
+    bg: "bg-surface-2",
+    border: "border-line",
   },
   source_data_only: {
     label: "Source data only",
-    text: "text-blue-400",
-    bg: "bg-blue-500/10",
-    border: "border-blue-500/25",
+    text: "text-tier-2",
+    bg: "bg-surface",
+    border: "border-line",
   },
   anecdote_only: {
     label: "Anecdote only",
-    text: "text-amber-400",
-    bg: "bg-amber-500/10",
-    border: "border-amber-500/25",
+    text: "text-tier-1",
+    bg: "bg-surface",
+    border: "border-line",
   },
   no_evidence: {
     label: "No evidence on file",
-    text: "text-rose-400",
-    bg: "bg-rose-500/10",
-    border: "border-rose-500/25",
+    text: "text-faint",
+    bg: "void-hatch bg-surface",
+    border: "border-line",
   },
 };
 
@@ -226,30 +232,33 @@ interface SeverityMeta {
   border: string;
 }
 
+// A documented harm is the one place the loud danger red is earned. An unknown
+// pair is not danger and not safe — it is an honest gap, so it carries the warm
+// signal, never green.
 const SEVERITY_META: Record<InteractionPair["severity"], SeverityMeta> = {
   major: {
     label: "Major",
-    text: "text-rose-400",
-    bg: "bg-rose-500/10",
-    border: "border-rose-500/30",
+    text: "text-danger",
+    bg: "bg-danger/10",
+    border: "border-danger/40",
   },
   moderate: {
     label: "Moderate",
-    text: "text-orange-400",
-    bg: "bg-orange-500/10",
-    border: "border-orange-500/30",
+    text: "text-danger",
+    bg: "bg-danger/[0.06]",
+    border: "border-danger/25",
   },
   minor: {
     label: "Minor",
-    text: "text-zinc-300",
-    bg: "bg-zinc-800/60",
-    border: "border-zinc-700",
+    text: "text-muted",
+    bg: "bg-surface-2",
+    border: "border-line",
   },
   unknown: {
     label: "Unknown",
-    text: "text-amber-400",
-    bg: "bg-amber-500/10",
-    border: "border-amber-500/30",
+    text: "text-signal",
+    bg: "bg-signal/10",
+    border: "border-signal/40",
   },
 };
 
@@ -263,7 +272,7 @@ function VerdictBadge({ verdict }: VerdictBadgeProps) {
   const meta = verdictMeta(verdict);
   return (
     <span
-      className={`px-2 py-0.5 rounded text-[10px] font-semibold border uppercase tracking-wider whitespace-nowrap shrink-0 ${meta.bg} ${meta.text} ${meta.border}`}
+      className={`readout px-2 py-0.5 rounded text-[10px] font-semibold border uppercase tracking-wider whitespace-nowrap shrink-0 ${meta.bg} ${meta.text} ${meta.border}`}
     >
       {meta.label}
     </span>
@@ -298,40 +307,40 @@ function EvidenceLadder({ ladder }: LadderProps) {
             key={tier}
             className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 ${
               empty
-                ? "border-dashed border-zinc-800 bg-zinc-950/40"
-                : `bg-zinc-950/60 ${meta.border}`
+                ? "border-dashed border-line void-hatch"
+                : `bg-surface ${meta.border}`
             }`}
           >
             <span
               className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${
-                empty ? "bg-zinc-700" : meta.dot
+                empty ? "bg-line-bright" : meta.dot
               }`}
               aria-hidden
             />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span
-                  className={`text-[10px] font-bold uppercase tracking-widest ${
-                    empty ? "text-zinc-600" : meta.text
+                  className={`readout text-[10px] font-bold uppercase tracking-widest ${
+                    empty ? "text-faint" : meta.text
                   }`}
                 >
                   Tier {tier}
                 </span>
                 <span
-                  className={`text-sm ${empty ? "text-zinc-500" : "text-zinc-200"}`}
+                  className={`text-sm ${empty ? "text-muted" : "text-ink"}`}
                 >
                   {rung.label || meta.name}
                 </span>
               </div>
-              <p className="text-[11px] text-zinc-600 mt-0.5">{meta.hint}</p>
+              <p className="text-[11px] text-faint mt-0.5">{meta.hint}</p>
             </div>
             <span className="shrink-0 text-right">
               {empty ? (
-                <span className="text-[11px] text-zinc-500 uppercase tracking-wider">
+                <span className="readout text-[11px] text-faint uppercase tracking-wider">
                   No data on file
                 </span>
               ) : (
-                <span className={`font-mono text-sm ${meta.text}`}>{count}</span>
+                <span className={`readout text-sm ${meta.text}`}>{count}</span>
               )}
             </span>
           </div>
@@ -367,11 +376,11 @@ function TrialLine({ trial, evidence }: TrialLineProps) {
       <span className="min-w-0 flex items-center gap-2">
         <Icon
           icon={evidence ? "solar:document-text-linear" : "solar:hourglass-linear"}
-          className={`shrink-0 ${evidence ? "text-emerald-400" : "text-zinc-500"}`}
+          className={`shrink-0 ${evidence ? "text-ink" : "text-faint"}`}
         />
         <span
-          className={`font-mono text-sm truncate ${
-            href ? "text-zinc-200 group-hover:text-blue-400" : "text-zinc-400"
+          className={`readout text-sm truncate ${
+            href ? "text-ink group-hover:text-signal transition-colors" : "text-muted"
           }`}
         >
           {trial.nct_id ?? "No registry id on file"}
@@ -379,19 +388,19 @@ function TrialLine({ trial, evidence }: TrialLineProps) {
         {/* The row carries its own status. A registered trial gets copied, screenshotted
             and quoted out from under the heading that called it "not evidence". */}
         {!evidence && (
-          <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider border border-zinc-700 bg-zinc-800/60 text-zinc-400">
+          <span className="readout shrink-0 px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider border border-line bg-surface-2 text-muted">
             Not evidence
           </span>
         )}
       </span>
-      <span className="font-mono text-[11px] text-zinc-500 shrink-0 text-right">
+      <span className="readout text-[11px] text-faint shrink-0 text-right">
         {parts.join(" · ")}
       </span>
     </>
   );
 
   const className =
-    "flex items-center justify-between gap-3 rounded-lg border border-zinc-800/70 bg-zinc-950/50 px-3 py-2 group";
+    "flex items-center justify-between gap-3 rounded-lg border border-line bg-surface px-3 py-2 group";
 
   if (!href) {
     return <div className={className}>{body}</div>;
@@ -401,7 +410,7 @@ function TrialLine({ trial, evidence }: TrialLineProps) {
       href={href}
       target="_blank"
       rel="noreferrer"
-      className={`${className} hover:border-zinc-700 transition-colors`}
+      className={`${className} hover:border-line-bright transition-colors`}
     >
       {body}
     </a>
@@ -421,17 +430,17 @@ function CountTile({ icon, label, count }: CountTileProps) {
   return (
     <div
       className={`rounded-lg border px-3 py-2.5 ${
-        empty ? "border-dashed border-zinc-800 bg-zinc-950/40" : "border-zinc-800 bg-zinc-950/60"
+        empty ? "border-dashed border-line void-hatch" : "border-line bg-surface"
       }`}
     >
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-zinc-500">
+      <div className="flex items-center gap-1.5 eyebrow">
         <Icon icon={icon} className="shrink-0" />
         <span className="truncate">{label}</span>
       </div>
-      <div className={`mt-1 font-mono text-lg ${empty ? "text-zinc-600" : "text-zinc-100"}`}>
+      <div className={`mt-1 readout text-lg ${empty ? "text-faint" : "text-ink"}`}>
         {count}
       </div>
-      {empty && <div className="text-[10px] text-zinc-600">None on file</div>}
+      {empty && <div className="readout text-[10px] text-faint">None on file</div>}
     </div>
   );
 }
@@ -452,9 +461,9 @@ interface MissingCompoundsProps {
 function MissingCompounds({ ids, nameFor }: MissingCompoundsProps) {
   if (ids.length === 0) return null;
   return (
-    <Panel className="p-5 sm:p-6 border-amber-500/30">
+    <Panel className="p-5 sm:p-6 border-signal/40">
       <PanelHeader icon="solar:question-circle-linear" title="Not in the registry" />
-      <p className="text-sm text-zinc-300 leading-relaxed">
+      <p className="text-sm text-muted leading-relaxed">
         PepHouse has nothing on file for {ids.map(nameFor).join(", ")}. That is a finding, not an
         omission: no trials, no papers, no lab data, no interaction rows. It is not covered by the
         read above and it is not covered by any pair below. Treat it as unstudied.
@@ -468,7 +477,7 @@ interface InteractionRowProps {
 }
 
 /** A pair with no data must not read like a clean bill of health. It gets the
- *  amber treatment, a dashed border, and the word UNKNOWN. */
+ *  warm signal treatment, a dashed hatched border, and the word UNKNOWN. */
 function InteractionRow({ pair }: InteractionRowProps) {
   const nameA = pair.compound_a_name ?? `Compound ${pair.compound_a_id}`;
   const nameB = pair.compound_b_name ?? `Compound ${pair.compound_b_id}`;
@@ -476,18 +485,18 @@ function InteractionRow({ pair }: InteractionRowProps) {
   if (!pair.has_data) {
     const meta = SEVERITY_META.unknown;
     return (
-      <div className="rounded-lg border border-dashed border-amber-500/30 bg-amber-500/[0.04] px-3 py-2.5">
+      <div className="rounded-lg border border-dashed border-signal/40 void-hatch px-3 py-2.5">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <span className="text-sm text-zinc-200 min-w-0">
-            {nameA} <span className="text-zinc-600">+</span> {nameB}
+          <span className="text-sm text-ink min-w-0">
+            {nameA} <span className="text-faint">+</span> {nameB}
           </span>
           <span
-            className={`px-2 py-0.5 rounded text-[10px] font-semibold border uppercase tracking-wider shrink-0 ${meta.bg} ${meta.text} ${meta.border}`}
+            className={`readout px-2 py-0.5 rounded text-[10px] font-semibold border uppercase tracking-wider shrink-0 ${meta.bg} ${meta.text} ${meta.border}`}
           >
             Unknown
           </span>
         </div>
-        <p className="text-[11px] text-amber-400/80 mt-1.5 leading-relaxed">
+        <p className="text-[11px] text-muted mt-1.5 leading-relaxed">
           No interaction data on file for this pair. Nobody has looked, or nobody has
           published. That is not the same as safe, and it must not be read that way.
         </p>
@@ -497,31 +506,31 @@ function InteractionRow({ pair }: InteractionRowProps) {
 
   const meta = SEVERITY_META[pair.severity] ?? SEVERITY_META.unknown;
   return (
-    <div className={`rounded-lg border bg-zinc-950/60 px-3 py-2.5 ${meta.border}`}>
+    <div className={`rounded-lg border bg-surface px-3 py-2.5 ${meta.border}`}>
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <span className="text-sm text-zinc-200 min-w-0">
-          {nameA} <span className="text-zinc-600">+</span> {nameB}
+        <span className="text-sm text-ink min-w-0">
+          {nameA} <span className="text-faint">+</span> {nameB}
         </span>
         <span
-          className={`px-2 py-0.5 rounded text-[10px] font-semibold border uppercase tracking-wider shrink-0 ${meta.bg} ${meta.text} ${meta.border}`}
+          className={`readout px-2 py-0.5 rounded text-[10px] font-semibold border uppercase tracking-wider shrink-0 ${meta.bg} ${meta.text} ${meta.border}`}
         >
           {meta.label}
         </span>
       </div>
       {pair.mechanism && (
-        <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
-          <span className="text-zinc-600 uppercase tracking-wider">Mechanism</span>{" "}
+        <p className="text-[11px] text-muted mt-1.5 leading-relaxed">
+          <span className="text-faint uppercase tracking-wider">Mechanism</span>{" "}
           {pair.mechanism}
         </p>
       )}
       {pair.management && (
-        <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
-          <span className="text-zinc-600 uppercase tracking-wider">Management</span>{" "}
+        <p className="text-[11px] text-muted mt-1 leading-relaxed">
+          <span className="text-faint uppercase tracking-wider">Management</span>{" "}
           {pair.management}
         </p>
       )}
       {!pair.mechanism && !pair.management && (
-        <p className="text-[11px] text-zinc-600 mt-1.5 italic">
+        <p className="text-[11px] text-faint mt-1.5 italic">
           Flagged, but no mechanism or management guidance is on file.
         </p>
       )}
@@ -541,44 +550,49 @@ function CompoundReport({ section }: CompoundReportProps) {
     <Panel className="p-5 sm:p-6">
       <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
         <div className="min-w-0">
-          <h3 className="text-lg font-semibold text-white">{section.name}</h3>
-          <p className="text-xs text-zinc-500 mt-0.5">
+          <h3 className="font-display text-lg font-semibold text-ink tracking-tight">
+            {section.name}
+          </h3>
+          <p className="text-xs text-faint mt-0.5">
             {section.drug_class ?? "Drug class not on file"}
-            <span className="text-zinc-700"> · </span>
+            <span className="text-ghost"> · </span>
             {section.fda_status ?? (section.approved ? "FDA approved" : "Not FDA approved")}
           </p>
         </div>
-        <VerdictBadge verdict={section.verdict} />
+        <div className="flex items-center gap-3 shrink-0">
+          <EvidenceMeter tier={section.top_tier} />
+          <VerdictBadge verdict={section.verdict} />
+        </div>
       </div>
 
-      <p className="text-sm text-zinc-300 leading-relaxed mt-3">
+      <p className="text-sm text-muted leading-relaxed mt-3">
         {verdictText(section.verdict_text)}
       </p>
 
       {section.summary && (
-        <p className="text-xs text-zinc-500 leading-relaxed mt-2">{section.summary}</p>
+        <p className="text-xs text-faint leading-relaxed mt-2">{section.summary}</p>
       )}
 
       <div className="mt-5">
-        <h4 className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest mb-2.5 flex items-center gap-1.5">
+        <h4 className="eyebrow mb-2.5 flex items-center gap-1.5">
           <Icon icon="solar:ranking-linear" /> Evidence ladder
         </h4>
         <EvidenceLadder ladder={section.evidence_ladder ?? []} />
       </div>
 
       <div className="mt-5">
-        <h4 className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest mb-2.5 flex items-center gap-1.5">
+        <h4 className="eyebrow mb-2.5 flex items-center gap-1.5">
           <Icon icon="solar:document-text-linear" /> Completed trials
-          <span className="text-zinc-700 normal-case tracking-normal font-normal">
+          <span className="text-ghost normal-case tracking-normal font-normal">
             — the evidence
           </span>
         </h4>
         {completed.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-zinc-800 bg-zinc-950/40 px-3 py-3">
-            <p className="text-sm text-zinc-400">
+          <div className="rounded-lg border border-dashed border-line void-hatch px-3 py-3">
+            <p className="text-sm text-muted">
               No completed clinical trial on file for {section.name}.
             </p>
-            <p className="text-[11px] text-zinc-600 mt-1">
+            <p className="text-[11px] text-faint mt-1">
               Nothing has been finished and reported that would tell you whether this works,
               at what dose, or at what cost.
             </p>
@@ -594,17 +608,17 @@ function CompoundReport({ section }: CompoundReportProps) {
 
       {inProgress.length > 0 && (
         <div className="mt-5">
-          <h4 className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest mb-2.5 flex items-center gap-1.5">
+          <h4 className="eyebrow mb-2.5 flex items-center gap-1.5">
             <Icon icon="solar:hourglass-linear" /> Registered, still running
-            <span className="text-zinc-700 normal-case tracking-normal font-normal">
+            <span className="text-ghost normal-case tracking-normal font-normal">
               — not evidence
             </span>
           </h4>
-          <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
-            <p className="text-[11px] text-zinc-400 leading-relaxed mb-2.5">
+          <div className="rounded-lg border border-line bg-surface px-3 py-3">
+            <p className="text-[11px] text-muted leading-relaxed mb-2.5">
               {section.trials_note ??
                 `${inProgress.length} registered trial(s) have not produced a result yet. A registered trial is not evidence.`}{" "}
-              <span className="text-zinc-500">
+              <span className="text-faint">
                 Someone is finally studying this, which is worth knowing. It proves nothing
                 yet, and it does not raise the tier above.
               </span>
@@ -877,9 +891,9 @@ export default function ReportPage() {
 
   return (
     <AppShell>
-      <div className="h-16 flex items-center px-6 sm:px-8 border-b border-zinc-800/60 shrink-0 z-10">
-        <h1 className="text-sm font-medium text-white tracking-tight flex items-center gap-2">
-          <Icon icon="solar:clipboard-check-linear" className="text-blue-400" /> Stack report
+      <div className="h-16 flex items-center px-6 sm:px-8 border-b border-line shrink-0 z-10">
+        <h1 className="font-display text-sm font-medium text-ink tracking-tight flex items-center gap-2">
+          <Icon icon="solar:clipboard-check-linear" className="text-signal" /> Stack report
         </h1>
       </div>
 
@@ -895,26 +909,26 @@ export default function ReportPage() {
                   <button
                     type="button"
                     onClick={() => setSelected([])}
-                    className="text-[11px] text-zinc-500 hover:text-zinc-200 transition-colors"
+                    className="text-[11px] text-faint hover:text-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 rounded"
                   >
                     Clear
                   </button>
                 ) : undefined
               }
             />
-            <p className="text-xs text-zinc-500 mb-4 leading-relaxed">
+            <p className="text-xs text-faint mb-4 leading-relaxed">
               Pick everything you are running. The report reads the evidence behind each one
               and every pair across the stack.
             </p>
 
             {compoundState === "loading" && (
-              <div className="text-sm text-zinc-500 flex items-center gap-2 py-4">
-                <Icon icon="svg-spinners:180-ring" className="text-blue-400" /> Loading compounds
+              <div className="text-sm text-faint flex items-center gap-2 py-4">
+                <Icon icon="svg-spinners:180-ring" className="text-signal" /> Loading compounds
               </div>
             )}
 
             {compoundState === "error" && (
-              <p className="text-xs text-amber-400" role="alert">
+              <p className="text-xs text-danger" role="alert">
                 {compoundError}
               </p>
             )}
@@ -926,11 +940,11 @@ export default function ReportPage() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search compounds"
-                  className="w-full bg-[#0a0a0a] border border-zinc-700/80 rounded-lg py-2 px-3 text-sm text-zinc-200 outline-none focus:border-zinc-500 transition-colors mb-3"
+                  className="w-full bg-base border border-line rounded-lg py-2 px-3 text-sm text-ink placeholder:text-faint outline-none focus:border-signal transition-colors mb-3"
                 />
 
                 {visibleCompounds.length === 0 ? (
-                  <p className="text-xs text-zinc-600 italic py-2">
+                  <p className="text-xs text-faint italic py-2">
                     Nothing in the registry matches that.
                   </p>
                 ) : (
@@ -943,18 +957,18 @@ export default function ReportPage() {
                           type="button"
                           onClick={() => toggleCompound(compound.id)}
                           aria-pressed={on}
-                          className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                          className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/40 ${
                             on
-                              ? "border-blue-500/50 bg-blue-500/10"
-                              : "border-zinc-800 bg-zinc-950/50 hover:border-zinc-700"
+                              ? "border-signal/50 bg-signal/10"
+                              : "border-line bg-surface hover:border-line-bright"
                           }`}
                         >
                           <Icon
                             icon={on ? "solar:check-circle-bold" : "solar:add-circle-linear"}
-                            className={`shrink-0 ${on ? "text-blue-400" : "text-zinc-600"}`}
+                            className={`shrink-0 ${on ? "text-signal" : "text-faint"}`}
                           />
                           <span
-                            className={`text-sm truncate ${on ? "text-white" : "text-zinc-300"}`}
+                            className={`text-sm truncate ${on ? "text-ink" : "text-muted"}`}
                           >
                             {compound.name}
                           </span>
@@ -964,7 +978,7 @@ export default function ReportPage() {
                   </div>
                 )}
 
-                <p className="text-[11px] text-zinc-600 mt-3">
+                <p className="text-[11px] text-faint mt-3">
                   {selected.length === 0
                     ? "Nothing selected yet."
                     : `${selected.length} selected: ${selected
@@ -982,32 +996,32 @@ export default function ReportPage() {
                 icon="solar:eye-linear"
                 title="The read"
                 action={
-                  <span className="text-[10px] uppercase tracking-widest text-emerald-400 border border-emerald-500/25 bg-emerald-500/10 rounded px-2 py-0.5">
+                  <span className="readout text-[10px] uppercase tracking-widest text-measured border border-measured/30 bg-measured/10 rounded px-2 py-0.5">
                     Free
                   </span>
                 }
               />
 
               {previewState === "loading" && (
-                <div className="text-sm text-zinc-500 flex items-center gap-2 py-4">
-                  <Icon icon="svg-spinners:180-ring" className="text-blue-400" /> Reading the
+                <div className="text-sm text-faint flex items-center gap-2 py-4">
+                  <Icon icon="svg-spinners:180-ring" className="text-signal" /> Reading the
                   evidence
                 </div>
               )}
 
               {previewState === "error" && (
-                <p className="text-xs text-amber-400" role="alert">
+                <p className="text-xs text-danger" role="alert">
                   {previewError}
                 </p>
               )}
 
               {previewState === "ready" && preview && (
                 <>
-                  <p className="text-base sm:text-lg text-white leading-relaxed font-medium">
+                  <p className="font-display text-base sm:text-lg text-ink leading-relaxed font-medium tracking-tight">
                     {preview.summary?.headline?.trim() ||
                       "No headline came back for this stack. Read each compound below on its own terms."}
                   </p>
-                  <p className="text-[11px] text-zinc-500 mt-2 leading-relaxed">
+                  <p className="text-[11px] text-faint mt-2 leading-relaxed">
                     This is the conclusion, and it is free. You should never have to pay to find
                     out that what you are injecting has nothing behind it. What the full report
                     sells is the evidence underneath: the trials, the counts, the gaps, and the
@@ -1018,15 +1032,18 @@ export default function ReportPage() {
                     {(preview.compounds ?? []).map((compound) => (
                       <div
                         key={compound.compound_id}
-                        className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2.5"
+                        className="rounded-lg border border-line bg-surface px-3 py-2.5"
                       >
                         <div className="flex items-center justify-between gap-3 flex-wrap">
-                          <span className="text-sm font-medium text-zinc-100">
-                            {compound.name}
+                          <span className="flex items-center gap-2.5 min-w-0">
+                            <EvidenceMeter tier={compound.top_tier} className="shrink-0" />
+                            <span className="font-display text-sm font-medium text-ink truncate">
+                              {compound.name}
+                            </span>
                           </span>
                           <VerdictBadge verdict={compound.verdict} />
                         </div>
-                        <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+                        <p className="text-xs text-muted mt-1.5 leading-relaxed">
                           {verdictText(compound.verdict_text)}
                         </p>
                       </div>
@@ -1034,8 +1051,8 @@ export default function ReportPage() {
                   </div>
 
                   {(preview.locked?.length ?? 0) > 0 && !hasAccess && (
-                    <div className="mt-4 pt-4 border-t border-zinc-800/70">
-                      <p className="text-[10px] uppercase tracking-widest text-zinc-600 mb-2">
+                    <div className="mt-4 pt-4 border-t border-line">
+                      <p className="eyebrow mb-2">
                         In the full report
                       </p>
                       <ul className="space-y-1">
@@ -1045,11 +1062,11 @@ export default function ReportPage() {
                           return (
                             <li
                               key={item}
-                              className="text-xs text-zinc-400 flex items-start gap-2 leading-relaxed"
+                              className="text-xs text-muted flex items-start gap-2 leading-relaxed"
                             >
                               <Icon
                                 icon="solar:lock-keyhole-minimalistic-linear"
-                                className="text-zinc-600 shrink-0 mt-0.5"
+                                className="text-faint shrink-0 mt-0.5"
                               />
                               {label}
                             </li>
@@ -1074,19 +1091,19 @@ export default function ReportPage() {
             <>
               {checkoutPhase === "confirming" && (
                 <Panel className="p-5 sm:p-6">
-                  <div className="text-sm text-zinc-400 flex items-center gap-2">
-                    <Icon icon="svg-spinners:180-ring" className="text-blue-400" /> Confirming your
+                  <div className="text-sm text-muted flex items-center gap-2">
+                    <Icon icon="svg-spinners:180-ring" className="text-signal" /> Confirming your
                     payment
                   </div>
                 </Panel>
               )}
 
               {checkoutPhase === "error" && checkoutError && (
-                <Panel className="p-5 sm:p-6 border-amber-500/30">
-                  <p className="text-sm text-amber-400" role="alert">
+                <Panel className="p-5 sm:p-6 border-danger/40">
+                  <p className="text-sm text-danger" role="alert">
                     {checkoutError}
                   </p>
-                  <p className="text-xs text-zinc-500 mt-1.5">
+                  <p className="text-xs text-faint mt-1.5">
                     If the payment went through, reload this page. If it did not, nothing was
                     charged.
                   </p>
@@ -1095,15 +1112,15 @@ export default function ReportPage() {
 
               {billingState === "loading" && (
                 <Panel className="p-5 sm:p-6">
-                  <div className="text-sm text-zinc-500 flex items-center gap-2">
-                    <Icon icon="svg-spinners:180-ring" className="text-blue-400" /> Checking access
+                  <div className="text-sm text-faint flex items-center gap-2">
+                    <Icon icon="svg-spinners:180-ring" className="text-signal" /> Checking access
                   </div>
                 </Panel>
               )}
 
               {billingState === "error" && (
-                <Panel className="p-5 sm:p-6 border-amber-500/30">
-                  <p className="text-sm text-amber-400" role="alert">
+                <Panel className="p-5 sm:p-6 border-danger/40">
+                  <p className="text-sm text-danger" role="alert">
                     {billingError}
                   </p>
                 </Panel>
@@ -1112,11 +1129,11 @@ export default function ReportPage() {
               {billingState === "ready" && billing && !billing.configured && (
                 <Panel className="p-5 sm:p-6">
                   <PanelHeader icon="solar:card-linear" title="Full report" />
-                  <p className="text-sm text-zinc-300 leading-relaxed">
+                  <p className="text-sm text-muted leading-relaxed">
                     Payments are not set up on this deployment, so the full report cannot be
                     bought right now.
                   </p>
-                  <p className="text-xs text-zinc-500 mt-2 leading-relaxed">
+                  <p className="text-xs text-faint mt-2 leading-relaxed">
                     The read above is the whole conclusion and it stands on its own. Nothing about
                     the evidence changes because the checkout is offline.
                   </p>
@@ -1126,7 +1143,7 @@ export default function ReportPage() {
               {billingState === "ready" && billing && billing.configured && !billing.has_access && (
                 <Panel className="p-5 sm:p-6">
                   <PanelHeader icon="solar:card-linear" title="Full report" />
-                  <p className="text-sm text-zinc-300 leading-relaxed">
+                  <p className="text-sm text-muted leading-relaxed">
                     The evidence behind the read: every rung of the ladder with its count, the
                     completed trials with their registry ids, the trials still running, and every
                     interaction pair across your stack including the ones nobody has studied.
@@ -1135,7 +1152,7 @@ export default function ReportPage() {
                     type="button"
                     onClick={() => void handleBuy()}
                     disabled={checkoutBusy}
-                    className="mt-4 w-full rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
+                    className="mt-4 w-full rounded-lg bg-signal hover:bg-signal-bright px-4 py-2.5 text-sm font-semibold text-base flex items-center justify-center gap-2 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
                   >
                     <Icon
                       icon={checkoutBusy ? "svg-spinners:180-ring" : "solar:lock-keyhole-linear"}
@@ -1147,34 +1164,34 @@ export default function ReportPage() {
                         : "Unlock the full report"}
                   </button>
                   {!priceLabel && (
-                    <p className="text-[11px] text-amber-400 mt-2 text-center">
+                    <p className="text-[11px] text-muted mt-2 text-center">
                       The price did not load. Checkout will show it before anything is charged.
                     </p>
                   )}
-                  <p className="text-[11px] text-zinc-600 mt-2 text-center">
+                  <p className="text-[11px] text-faint mt-2 text-center">
                     One payment. No subscription.
                   </p>
 
                   {checkoutError && checkoutPhase !== "error" && (
-                    <p className="text-[11px] text-amber-400 mt-2 text-center" role="alert">
+                    <p className="text-[11px] text-danger mt-2 text-center" role="alert">
                       {checkoutError}
                     </p>
                   )}
 
                   {checkoutPhase === "cancelled" && (
-                    <p className="text-[11px] text-zinc-500 mt-2 text-center">
+                    <p className="text-[11px] text-faint mt-2 text-center">
                       Checkout was cancelled. Nothing was charged.
                     </p>
                   )}
 
                   {isAnonymous && (
-                    <p className="text-[11px] text-zinc-500 mt-3 leading-relaxed text-center">
+                    <p className="text-[11px] text-faint mt-3 leading-relaxed text-center">
                       You are on a guest session, so the purchase would be tied to this browser.{" "}
                       <button
                         type="button"
                         onClick={() => void handleSignIn()}
                         disabled={authBusy}
-                        className="text-blue-400 hover:underline disabled:opacity-60"
+                        className="text-signal hover:underline disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 rounded"
                       >
                         Sign in with Google
                       </button>{" "}
@@ -1191,16 +1208,16 @@ export default function ReportPage() {
             <>
               {reportState === "loading" && (
                 <Panel className="p-5 sm:p-6">
-                  <div className="text-sm text-zinc-500 flex items-center gap-2">
-                    <Icon icon="svg-spinners:180-ring" className="text-blue-400" /> Building the
+                  <div className="text-sm text-faint flex items-center gap-2">
+                    <Icon icon="svg-spinners:180-ring" className="text-signal" /> Building the
                     report
                   </div>
                 </Panel>
               )}
 
               {reportState === "error" && (
-                <Panel className="p-5 sm:p-6 border-amber-500/30">
-                  <p className="text-sm text-amber-400" role="alert">
+                <Panel className="p-5 sm:p-6 border-danger/40">
+                  <p className="text-sm text-danger" role="alert">
                     {reportError}
                   </p>
                 </Panel>
@@ -1209,7 +1226,7 @@ export default function ReportPage() {
               {reportState === "ready" && report && (
                 <>
                   {checkoutPhase === "confirmed" && (
-                    <p className="text-xs text-emerald-400 flex items-center gap-1.5">
+                    <p className="text-xs text-measured flex items-center gap-1.5">
                       <Icon icon="solar:check-circle-linear" /> Payment confirmed. The full report
                       is below.
                     </p>
@@ -1228,13 +1245,13 @@ export default function ReportPage() {
                       title="Interactions across the stack"
                       action={
                         interactions ? (
-                          <span className="text-[11px] font-mono text-zinc-500">
+                          <span className="readout text-[11px] text-faint">
                             {interactions.pairs_with_data} with data ·{" "}
                             <span
                               className={
                                 interactions.pairs_without_data > 0
-                                  ? "text-amber-400"
-                                  : "text-zinc-500"
+                                  ? "text-signal"
+                                  : "text-faint"
                               }
                             >
                               {interactions.pairs_without_data} unknown
@@ -1245,11 +1262,11 @@ export default function ReportPage() {
                     />
 
                     {interactions && interactions.pairs_without_data > 0 && (
-                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-3 py-3 mb-3">
-                        <p className="text-sm text-amber-300 leading-relaxed flex items-start gap-2">
+                      <div className="rounded-lg border border-signal/40 bg-signal/[0.06] px-3 py-3 mb-3">
+                        <p className="text-sm text-muted leading-relaxed flex items-start gap-2">
                           <Icon
                             icon="solar:danger-triangle-linear"
-                            className="shrink-0 mt-0.5 text-amber-400"
+                            className="shrink-0 mt-0.5 text-signal"
                           />
                           <span>
                             {interactions.note ??
@@ -1260,7 +1277,7 @@ export default function ReportPage() {
                     )}
 
                     {!interactions || !interactions.pairs || interactions.pairs.length === 0 ? (
-                      <p className="text-xs text-zinc-500 italic">
+                      <p className="text-xs text-faint italic">
                         {knownCount < 2
                           ? "A stack needs two compounds the registry knows about before there is a pair to read. An empty table here is not a statement about safety."
                           : "No pairs came back for this stack. That is missing data, not an all-clear, and it must not be read as one."}
@@ -1278,11 +1295,11 @@ export default function ReportPage() {
                   </Panel>
 
                   {/* disclaimer */}
-                  <Panel className="p-5 sm:p-6 border-zinc-800">
-                    <h2 className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <Panel className="p-5 sm:p-6 border-line">
+                    <h2 className="eyebrow mb-2 flex items-center gap-1.5">
                       <Icon icon="solar:info-circle-linear" /> Read this
                     </h2>
-                    <p className="text-xs text-zinc-500 leading-relaxed">
+                    <p className="text-xs text-muted leading-relaxed">
                       This report is education, not medical advice. It is not a prescription, it is
                       not a diagnosis, and it is not a substitute for a clinician who knows your
                       history. PepHouse reports what is on file and what is missing. A compound with

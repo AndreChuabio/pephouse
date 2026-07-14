@@ -72,11 +72,14 @@ const SUBMITTER_LABEL: Record<string, string> = {
   operator: "Entered by an operator",
 };
 
-/** How a buyer's sentiment renders. Still one purchaser's opinion, never a result. */
+// How a buyer's sentiment renders. Still one purchaser's opinion, never a
+// result — so the hues are drained: positive and neutral stay quiet graphite
+// (the product does not reward a vendor with a green glow), and only a negative
+// experience gets the loud danger tone, the one signal here worth surfacing.
 const SENTIMENT: Record<string, { label: string; tone: string; icon: string }> = {
-  positive: { label: "Positive experience", tone: "text-emerald-300", icon: "solar:like-linear" },
-  neutral: { label: "Neutral experience", tone: "text-zinc-300", icon: "solar:minus-circle-linear" },
-  negative: { label: "Negative experience", tone: "text-red-300", icon: "solar:dislike-linear" },
+  positive: { label: "Positive experience", tone: "text-muted", icon: "solar:like-linear" },
+  neutral: { label: "Neutral experience", tone: "text-muted", icon: "solar:minus-circle-linear" },
+  negative: { label: "Negative experience", tone: "text-danger", icon: "solar:dislike-linear" },
 };
 
 function errorText(err: unknown): string {
@@ -144,8 +147,8 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   const shown = value === null || value === undefined || value.trim() === "" ? null : value.trim();
   return (
     <div className="min-w-0">
-      <p className="text-[10px] uppercase tracking-widest text-zinc-600">{label}</p>
-      <p className={`text-sm truncate ${shown ? "text-zinc-200" : "text-zinc-600 italic"}`}>
+      <p className="eyebrow">{label}</p>
+      <p className={`text-sm truncate ${shown ? "text-ink" : "text-faint italic"}`}>
         {shown ?? "not given"}
       </p>
     </div>
@@ -164,10 +167,10 @@ function ClaimLine({
 }) {
   const tone =
     state === "claimed"
-      ? "text-amber-400"
+      ? "text-signal"
       : state === "denied"
-        ? "text-zinc-300"
-        : "text-orange-400";
+        ? "text-muted"
+        : "text-faint";
   const icon =
     state === "claimed"
       ? "solar:chat-square-like-linear"
@@ -203,27 +206,25 @@ function ContactChannels({
   if (rows.length === 0) return null;
   return (
     <div className="mt-4">
-      <p className="text-[10px] uppercase tracking-widest text-zinc-600 mb-1.5">Contact channels</p>
+      <p className="eyebrow mb-1.5">Contact channels</p>
       <div className="space-y-1.5">
         {rows.map((row) => {
           const href = channelHref(row.value);
           return (
             <div key={row.key} className="flex items-center gap-2 min-w-0">
-              <Icon icon={row.icon} className="text-zinc-500 text-sm shrink-0" />
-              <span className="w-20 shrink-0 text-[10px] uppercase tracking-widest text-zinc-600">
-                {row.label}
-              </span>
+              <Icon icon={row.icon} className="text-faint text-sm shrink-0" />
+              <span className="w-20 shrink-0 eyebrow">{row.label}</span>
               {href ? (
                 <a
                   href={href}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="min-w-0 break-all text-sm text-blue-400 hover:underline"
+                  className="min-w-0 break-all text-sm text-signal hover:text-signal-bright hover:underline rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/40"
                 >
                   {row.value}
                 </a>
               ) : (
-                <span className="min-w-0 break-all font-mono text-sm text-zinc-200">
+                <span className="min-w-0 break-all readout text-sm text-ink">
                   {row.value}
                 </span>
               )}
@@ -231,7 +232,7 @@ function ContactChannels({
           );
         })}
       </div>
-      <p className="mt-1.5 text-xs text-zinc-500">
+      <p className="mt-1.5 text-xs text-faint">
         How a channel-only vendor is reached. A handle is not a website and is not verified.
       </p>
     </div>
@@ -253,7 +254,7 @@ function Locked({
       <div className="max-w-md mx-auto mt-10">
         <Panel className="p-6">
           <PanelHeader icon="solar:lock-keyhole-minimalistic-linear" title={title} />
-          <p className="text-sm text-zinc-400 leading-relaxed">{body}</p>
+          <p className="text-sm text-muted leading-relaxed">{body}</p>
           {action ? <div className="mt-5">{action}</div> : null}
         </Panel>
       </div>
@@ -355,7 +356,7 @@ export default function VendorReviewPage() {
             <button
               type="button"
               onClick={() => void signInWithGoogle()}
-              className="w-full py-3 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-sm font-medium hover:bg-blue-500/25 transition-colors"
+              className="w-full py-3 rounded-lg bg-signal/15 border border-signal/30 text-signal text-sm font-medium hover:bg-signal/25 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50"
             >
               Sign in with Google
             </button>
@@ -391,10 +392,10 @@ export default function VendorReviewPage() {
         <div className="max-w-2xl mx-auto space-y-4">
           {result ? (
             <div
-              className={`rounded-lg border px-4 py-3 flex items-start gap-2.5 ${
+              className={`rounded-[var(--radius-card)] border px-4 py-3 flex items-start gap-2.5 ${
                 result.action === "published"
-                  ? "bg-emerald-500/10 border-emerald-500/25"
-                  : "bg-zinc-800/50 border-zinc-700"
+                  ? "bg-measured/10 border-measured/30"
+                  : "bg-surface-2 border-line"
               }`}
             >
               <Icon
@@ -404,36 +405,42 @@ export default function VendorReviewPage() {
                     : "solar:trash-bin-minimalistic-linear"
                 }
                 className={`text-base mt-0.5 shrink-0 ${
-                  result.action === "published" ? "text-emerald-400" : "text-zinc-400"
+                  result.action === "published" ? "text-measured" : "text-muted"
                 }`}
               />
-              <p className="text-sm text-zinc-200 flex-1">
+              <p className="text-sm text-ink flex-1">
                 {result.action === "published" ? (
                   result.kind === "member" ? (
                     <>
-                      <span className="font-medium">{result.vendorName}</span> is published. This
-                      buyer report is now on its public record, labelled as an unverified buyer
-                      report. Nothing here was recorded as an independent assay.
+                      <span className="font-display font-medium tracking-tight">
+                        {result.vendorName}
+                      </span>{" "}
+                      is published. This buyer report is now on its public record, labelled as an
+                      unverified buyer report. Nothing here was recorded as an independent assay.
                     </>
                   ) : (
                     <>
-                      <span className="font-medium">{result.vendorName}</span> is published. Its
-                      identity is in the public directory, and this submission's claims are now on
-                      its public record, labelled as claims. Nothing here was recorded as an
-                      independent assay.
+                      <span className="font-display font-medium tracking-tight">
+                        {result.vendorName}
+                      </span>{" "}
+                      is published. Its identity is in the public directory, and this submission's
+                      claims are now on its public record, labelled as claims. Nothing here was
+                      recorded as an independent assay.
                     </>
                   )
                 ) : (
                   <>
-                    <span className="font-medium">{result.vendorName}</span> is rejected. Nothing
-                    from this submission is published.
+                    <span className="font-display font-medium tracking-tight">
+                      {result.vendorName}
+                    </span>{" "}
+                    is rejected. Nothing from this submission is published.
                   </>
                 )}
               </p>
               <button
                 type="button"
                 onClick={() => setResult(null)}
-                className="text-zinc-500 hover:text-zinc-200 shrink-0"
+                className="text-faint hover:text-ink shrink-0 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/40"
                 aria-label="Dismiss"
               >
                 <Icon icon="solar:close-circle-linear" />
@@ -443,19 +450,19 @@ export default function VendorReviewPage() {
 
           {state.kind === "loading" ? (
             <Panel className="p-6 flex items-center gap-3">
-              <span className="h-4 w-4 rounded-full border-2 border-zinc-700 border-t-blue-400 animate-spin" />
-              <span className="text-sm text-zinc-400">Loading the queue</span>
+              <span className="h-4 w-4 rounded-full border-2 border-line border-t-signal animate-spin" />
+              <span className="text-sm text-muted">Loading the queue</span>
             </Panel>
           ) : null}
 
           {state.kind === "error" ? (
             <Panel className="p-6">
               <PanelHeader icon="solar:danger-triangle-linear" title="The queue did not load" />
-              <p className="text-sm text-zinc-400 break-words">{state.message}</p>
+              <p className="text-sm text-muted break-words">{state.message}</p>
               <button
                 type="button"
                 onClick={() => void load()}
-                className="mt-4 px-4 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-sm text-zinc-200 hover:bg-zinc-700 transition-colors"
+                className="mt-4 px-4 py-2 rounded-lg bg-surface-2 border border-line text-sm text-ink hover:bg-raised hover:border-line-bright transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50"
               >
                 Try again
               </button>
@@ -466,17 +473,17 @@ export default function VendorReviewPage() {
             <Panel className="p-8 text-center">
               <Icon
                 icon="solar:inbox-line-linear"
-                className="text-3xl text-zinc-700 mx-auto mb-3"
+                className="text-3xl text-ghost mx-auto mb-3"
               />
-              <p className="text-sm text-zinc-300">Nothing pending</p>
-              <p className="text-xs text-zinc-500 mt-1">
+              <p className="text-sm text-muted">Nothing pending</p>
+              <p className="text-xs text-faint mt-1">
                 Every submission collected so far has been reviewed.
               </p>
             </Panel>
           ) : null}
 
           {state.kind === "ready" && rows.length > 0 ? (
-            <p className="text-xs text-zinc-500 px-1">
+            <p className="text-xs text-faint px-1">
               Nothing below is public. Every field on these cards is what the submitter told us, and
               publishing does not turn any of it into a tested result.
             </p>
@@ -514,19 +521,17 @@ function Header({
   email: string | null;
 }) {
   return (
-    <div className="h-16 flex items-center justify-between gap-3 px-4 sm:px-8 border-b border-zinc-800/60 shrink-0 z-10">
-      <h1 className="text-sm font-medium text-white tracking-tight flex items-center gap-2 min-w-0">
-        <Icon icon="solar:clipboard-check-linear" className="text-blue-500 shrink-0" />
+    <div className="h-16 flex items-center justify-between gap-3 px-4 sm:px-8 border-b border-line shrink-0 z-10">
+      <h1 className="text-sm font-medium text-ink tracking-tight flex items-center gap-2 min-w-0">
+        <Icon icon="solar:clipboard-check-linear" className="text-signal shrink-0" />
         <span className="truncate">Review queue</span>
         {count !== null ? (
-          <span className="text-[10px] uppercase tracking-widest text-zinc-500 shrink-0">
-            {count} pending
-          </span>
+          <span className="readout text-[10px] text-faint shrink-0">{count} pending</span>
         ) : null}
       </h1>
       <div className="flex items-center gap-3 shrink-0">
         {email ? (
-          <span className="hidden sm:block text-xs text-zinc-600 truncate max-w-[180px]">
+          <span className="hidden sm:block text-xs text-faint truncate max-w-[180px]">
             {email}
           </span>
         ) : null}
@@ -534,7 +539,7 @@ function Header({
           <button
             type="button"
             onClick={onRefresh}
-            className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/60 transition-colors"
+            className="p-2 rounded-lg text-muted hover:text-ink hover:bg-surface/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/40"
             aria-label="Refresh the queue"
           >
             <Icon icon="solar:refresh-linear" />
@@ -623,20 +628,22 @@ function SubmissionCard({
         icon={isMember ? "solar:user-rounded-linear" : "solar:shop-2-linear"}
         title={submission.vendor_name}
         action={
-          <span className="text-[10px] uppercase tracking-widest text-zinc-600 shrink-0">
+          <span className="readout text-[10px] text-faint shrink-0">
             #{submission.id} · {timeAgo(submission.created_at)}
           </span>
         }
       />
 
       {/* The kind decides what the fields below mean. A buyer report is a lower
-          grade of information than a vendor's own claim, and neither is a test. */}
+          grade of information than a vendor's own claim, and neither is a test.
+          Cool teal marks a member submission, warm amber a vendor's own — the
+          temperature split, not a verification badge. */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span
           className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
             isMember
-              ? "bg-sky-500/10 text-sky-300 border-sky-500/30"
-              : "bg-amber-500/10 text-amber-300 border-amber-500/30"
+              ? "bg-measured/10 text-measured border-measured/30"
+              : "bg-signal/10 text-signal border-signal/30"
           }`}
         >
           <Icon
@@ -645,7 +652,7 @@ function SubmissionCard({
           />
           {isMember ? "Buyer report" : "Vendor claim"}
         </span>
-        <span className="text-[11px] text-zinc-600">
+        <span className="text-[11px] text-faint">
           {isMember
             ? "the lowest grade of information, unverified"
             : "a self-disclosure, not a measurement"}
@@ -655,41 +662,41 @@ function SubmissionCard({
       {isMember ? (
         /* A buyer report: what one purchaser told us about a vendor they used. It
            is the lowest grade of information on file and is never a test. */
-        <div className="rounded-lg border border-sky-500/20 bg-sky-500/[0.04] p-3.5 space-y-3">
-          <p className="text-[10px] uppercase tracking-widest text-sky-400/80">
+        <div className="rounded-[var(--radius-card)] border border-measured/20 bg-measured/[0.04] p-3.5 space-y-3">
+          <p className="eyebrow !text-measured/80">
             Buyer report, unverified, the lowest grade of information on file
           </p>
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
             <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-widest text-zinc-600">Compound</p>
-              <p className={`text-sm ${reportCompound ? "text-zinc-200" : "text-zinc-600 italic"}`}>
+              <p className="eyebrow">Compound</p>
+              <p className={reportCompound ? "readout text-sm text-ink" : "text-sm text-faint italic"}>
                 {reportCompound ?? "not specified"}
               </p>
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-widest text-zinc-600">Reported cost</p>
-              <p className={`text-sm ${reportCost ? "text-zinc-200" : "text-zinc-600 italic"}`}>
+              <p className="eyebrow">Reported cost</p>
+              <p className={reportCost ? "readout text-sm text-ink" : "text-sm text-faint italic"}>
                 {reportCost ?? "not given"}
               </p>
             </div>
           </div>
 
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-zinc-600 mb-1">Sentiment</p>
+            <p className="eyebrow mb-1">Sentiment</p>
             {sentiment ? (
               <span className={`inline-flex items-center gap-1.5 text-sm ${sentiment.tone}`}>
                 <Icon icon={sentiment.icon} className="text-base" />
                 {sentiment.label}
               </span>
             ) : (
-              <p className="text-sm text-zinc-600 italic">not given</p>
+              <p className="text-sm text-faint italic">not given</p>
             )}
           </div>
 
           {batchTested === true ? (
             <ClaimLine label="Buyer says this batch was lab-tested">
-              <p className="text-xs text-zinc-500 mt-0.5">
+              <p className="text-xs text-faint mt-0.5">
                 The buyer's word, not an assay. Publishing files this as an unverified buyer report
                 and loads no independent result.
               </p>
@@ -698,7 +705,7 @@ function SubmissionCard({
             <ClaimLine label="Buyer says this batch was not lab-tested" state="denied" />
           ) : (
             <ClaimLine label="No answer on whether the batch was lab-tested" state="missing">
-              <p className="text-xs text-zinc-500 mt-0.5">
+              <p className="text-xs text-faint mt-0.5">
                 Left blank. That is a finding, not a pass.
               </p>
             </ClaimLine>
@@ -710,9 +717,7 @@ function SubmissionCard({
               is the submitter's own answer, not a category we checked. Saying so here
               keeps the boundary honest, rather than implying only the amber box below
               holds claims. */}
-          <p className="text-[10px] uppercase tracking-widest text-zinc-600 mb-2">
-            Identity, as given by the submitter
-          </p>
+          <p className="eyebrow mb-2">Identity, as given by the submitter</p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
             <Field label="Manufacturer" value={submission.manufacturer} />
             <Field label="Country" value={submission.country} />
@@ -720,33 +725,31 @@ function SubmissionCard({
           </div>
 
           <div className="mt-3">
-            <p className="text-[10px] uppercase tracking-widest text-zinc-600">Website</p>
+            <p className="eyebrow">Website</p>
             {website ? (
               <a
                 href={website}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="text-sm text-blue-400 hover:underline break-all inline-flex items-center gap-1"
+                className="text-sm text-signal hover:text-signal-bright hover:underline break-all inline-flex items-center gap-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/40"
               >
                 {website}
                 <Icon icon="solar:arrow-right-up-linear" className="text-xs shrink-0" />
               </a>
             ) : (
-              <p className="text-sm text-zinc-600 italic">
+              <p className="text-sm text-faint italic">
                 {submission.website ? "given, but not a usable http address" : "not given"}
               </p>
             )}
           </div>
 
           {/* Everything below is what the submitter says about itself. */}
-          <div className="mt-4 rounded-lg border border-amber-500/20 bg-amber-500/[0.04] p-3.5 space-y-3">
-            <p className="text-[10px] uppercase tracking-widest text-amber-500/80">
-              Claimed by the submitter, not verified
-            </p>
+          <div className="mt-4 rounded-[var(--radius-card)] border border-signal/20 bg-signal/[0.04] p-3.5 space-y-3">
+            <p className="eyebrow !text-signal/80">Claimed by the submitter, not verified</p>
 
             {tested === true ? (
               <ClaimLine label="Claims it is third-party tested">
-                <p className="text-xs text-zinc-500 mt-0.5">
+                <p className="text-xs text-faint mt-0.5">
                   A claim, not an assay. Publishing does not badge this vendor as tested: the
                   directory grades it as a vendor claim, never as an independent result. It stays
                   graded that way until a real third-party assay is loaded, which this decision does
@@ -757,53 +760,53 @@ function SubmissionCard({
               <ClaimLine label="States it is not third-party tested" state="denied" />
             ) : (
               <ClaimLine label="No answer on third-party testing" state="missing">
-                <p className="text-xs text-zinc-500 mt-0.5">
+                <p className="text-xs text-faint mt-0.5">
                   The question was left blank. That is a finding, not a pass.
                 </p>
               </ClaimLine>
             )}
 
             <div>
-              <p className="text-[10px] uppercase tracking-widest text-zinc-600 mb-1">Named labs</p>
+              <p className="eyebrow mb-1">Named labs</p>
               {labs.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
                   {labs.map((lab) => (
                     <span
                       key={lab}
-                      className="px-2 py-0.5 rounded text-[11px] bg-zinc-800 text-zinc-300 border border-zinc-700"
+                      className="px-2 py-0.5 rounded text-[11px] bg-surface-2 text-muted border border-line"
                     >
                       {lab}
                     </span>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-orange-400">No lab named</p>
+                <p className="void-hatch rounded border border-line/60 px-2.5 py-1.5 text-sm text-faint">
+                  No lab named
+                </p>
               )}
             </div>
 
             <div>
-              <p className="text-[10px] uppercase tracking-widest text-zinc-600 mb-1">
-                Certificate of analysis
-              </p>
+              <p className="eyebrow mb-1">Certificate of analysis</p>
               {coa ? (
                 <>
                   <a
                     href={coa}
                     target="_blank"
                     rel="noreferrer noopener"
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-sm text-zinc-100 hover:bg-zinc-700 transition-colors"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface-2 border border-line text-sm text-ink hover:bg-raised hover:border-line-bright transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/40"
                   >
-                    <Icon icon="solar:document-text-linear" className="text-zinc-400" />
+                    <Icon icon="solar:document-text-linear" className="text-muted" />
                     Open the COA
-                    <Icon icon="solar:arrow-right-up-linear" className="text-xs text-zinc-500" />
+                    <Icon icon="solar:arrow-right-up-linear" className="text-xs text-faint" />
                   </a>
-                  <p className="text-xs text-zinc-500 mt-1.5">
+                  <p className="text-xs text-faint mt-1.5">
                     A document the vendor chose to show us. Check the lab, the date, and that the
                     batch matches before you treat it as anything.
                   </p>
                 </>
               ) : (
-                <p className="text-sm text-orange-400">
+                <p className="void-hatch rounded border border-line/60 px-2.5 py-1.5 text-sm text-faint">
                   {submission.coa_url
                     ? "COA link given, but not a usable http address"
                     : "No COA on file"}
@@ -826,78 +829,76 @@ function SubmissionCard({
 
       <div className="mt-4 space-y-2">
         <div>
-          <p className="text-[10px] uppercase tracking-widest text-zinc-600">Who submitted this</p>
-          <p className="text-sm text-zinc-200">{submitterLabel}</p>
+          <p className="eyebrow">Who submitted this</p>
+          <p className="text-sm text-muted">{submitterLabel}</p>
           {submission.submitter_ref ? (
-            <p className="text-[11px] font-mono text-zinc-600 break-all">
+            <p className="readout text-[11px] text-faint break-all">
               {submission.submitter_ref}
             </p>
           ) : (
-            <p className="text-[11px] text-zinc-600 italic">no submitter ref recorded</p>
+            <p className="text-[11px] text-faint italic">no submitter ref recorded</p>
           )}
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-widest text-zinc-600">Notes from submitter</p>
+          <p className="eyebrow">Notes from submitter</p>
           {submission.notes && submission.notes.trim().length > 0 ? (
-            <p className="text-sm text-zinc-300 whitespace-pre-wrap break-words">
+            <p className="text-sm text-muted whitespace-pre-wrap break-words">
               {submission.notes}
             </p>
           ) : (
-            <p className="text-sm text-zinc-600 italic">none</p>
+            <p className="text-sm text-faint italic">none</p>
           )}
         </div>
       </div>
 
       <label className="block mt-4">
-        <span className="text-[10px] uppercase tracking-widest text-zinc-600">
-          Review note, optional
-        </span>
+        <span className="eyebrow">Review note, optional</span>
         <textarea
           value={note}
           onChange={(event) => onNote(event.target.value)}
           disabled={locked}
           rows={2}
           placeholder="What you saw, what you asked, what to check later"
-          className="mt-1 w-full rounded-lg bg-zinc-950/60 border border-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600 disabled:opacity-50 resize-none"
+          className="mt-1 w-full rounded-lg bg-base/60 border border-line px-3 py-2 text-sm text-ink placeholder:text-faint focus:outline-none focus:border-signal disabled:opacity-50 resize-none"
         />
       </label>
 
       {error ? (
-        <div className="mt-3 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2">
-          <p className="text-xs text-red-300 break-words">
+        <div className="mt-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2">
+          <p className="text-xs text-danger break-words">
             The review did not save, so this row is back in the queue. {error}
           </p>
         </div>
       ) : null}
 
-      <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3.5 space-y-2">
-        <p className="flex items-start gap-2 text-xs text-zinc-400">
-          <Icon icon="solar:global-linear" className="text-zinc-500 text-sm mt-0.5 shrink-0" />
+      <div className="mt-4 rounded-[var(--radius-card)] border border-line bg-base/40 p-3.5 space-y-2">
+        <p className="flex items-start gap-2 text-xs text-muted">
+          <Icon icon="solar:global-linear" className="text-faint text-sm mt-0.5 shrink-0" />
           <span>
             Publishing puts{" "}
-            <span className="text-zinc-200">{submission.vendor_name}</span> in the public directory,
-            attaching it to an existing vendor of that name or creating the row if there is none. It
-            goes live immediately.
+            <span className="text-ink font-display tracking-tight">{submission.vendor_name}</span> in
+            the public directory, attaching it to an existing vendor of that name or creating the row
+            if there is none. It goes live immediately.
           </span>
         </p>
         {isMember ? (
           <>
-            <p className="text-xs text-zinc-500 pl-6">
+            <p className="text-xs text-faint pl-6">
               This buyer report goes public with it, rendered as an unverified buyer report, the
               lowest grade of information on the vendor's record.
             </p>
-            <p className="text-xs text-zinc-500 pl-6">
+            <p className="text-xs text-faint pl-6">
               It is not an assay and does not change the vendor's testing grade. A buyer saying a
               batch was lab-tested is not a lab result.
             </p>
           </>
         ) : (
           <>
-            <p className="text-xs text-zinc-500 pl-6">
+            <p className="text-xs text-faint pl-6">
               The claims above go public with it, rendered as claims: the COA link, the named labs,
               and the testing and GMP answers all appear on the vendor's public record.
             </p>
-            <p className="text-xs text-zinc-500 pl-6">
+            <p className="text-xs text-faint pl-6">
               {tested === true
                 ? "Because it claims third-party testing, the directory will move it from nothing on file to vendor claim. It cannot reach independent this way."
                 : "It carries no independent assay, so the directory will show it with nothing on file until a real third-party result is loaded."}
@@ -911,14 +912,14 @@ function SubmissionCard({
           type="button"
           onClick={() => press("published")}
           disabled={locked}
-          className={`h-14 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 ${
+          className={`h-14 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 ${
             armed === "published"
-              ? "bg-emerald-500 text-zinc-950 border border-emerald-400"
-              : "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25"
+              ? "bg-signal text-base border border-signal-bright hover:bg-signal-bright"
+              : "bg-signal/15 text-signal border border-signal/30 hover:bg-signal/25"
           }`}
         >
           {busy === "published" ? (
-            <span className="h-4 w-4 rounded-full border-2 border-emerald-900/40 border-t-emerald-300 animate-spin" />
+            <span className="h-4 w-4 rounded-full border-2 border-signal/30 border-t-signal animate-spin" />
           ) : (
             <Icon icon="solar:check-circle-linear" className="text-base" />
           )}
@@ -933,14 +934,14 @@ function SubmissionCard({
           type="button"
           onClick={() => press("rejected")}
           disabled={locked}
-          className={`h-14 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 ${
+          className={`h-14 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/50 ${
             armed === "rejected"
-              ? "bg-red-500 text-zinc-950 border border-red-400"
-              : "bg-red-500/10 text-red-300 border border-red-500/25 hover:bg-red-500/20"
+              ? "bg-danger text-base border border-danger"
+              : "bg-danger/10 text-danger border border-danger/40 hover:bg-danger/20"
           }`}
         >
           {busy === "rejected" ? (
-            <span className="h-4 w-4 rounded-full border-2 border-red-900/40 border-t-red-300 animate-spin" />
+            <span className="h-4 w-4 rounded-full border-2 border-danger/30 border-t-danger animate-spin" />
           ) : (
             <Icon icon="solar:close-circle-linear" className="text-base" />
           )}
@@ -948,7 +949,7 @@ function SubmissionCard({
         </button>
       </div>
 
-      <p className="mt-2 text-[11px] text-zinc-600 text-center">
+      <p className="mt-2 text-[11px] text-faint text-center">
         {armed
           ? "Tap again to commit. This clears itself in a few seconds."
           : "Each action takes two taps."}

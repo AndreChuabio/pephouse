@@ -4,6 +4,7 @@ import { Icon } from "@iconify/react";
 import { AppShell } from "../components/layout/AppShell";
 import { Panel } from "../components/ui/Panel";
 import { PanelHeader } from "../components/ui/PanelHeader";
+import { EvidenceMeter } from "../components/ui/EvidenceMeter";
 import { useAuth } from "../context/AuthProvider";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { submitVendor } from "../lib/pephouse";
@@ -86,8 +87,8 @@ const SUBMITTER_OPTIONS: { value: SubmittedBy; title: string; detail: string }[]
 ];
 
 const inputClass =
-  "w-full bg-[#0a0a0a] border border-zinc-700/80 rounded-lg py-3 px-3.5 text-base text-zinc-200 " +
-  "placeholder:text-zinc-600 outline-none focus:border-zinc-500 transition-colors";
+  "w-full bg-surface-2 border border-line rounded-lg py-3 px-3.5 text-[1rem] text-ink " +
+  "placeholder:text-faint outline-none focus:border-signal focus:ring-1 focus:ring-signal transition-colors";
 
 /** Unknown must reach the API as an absent key, never as a `false`. */
 function triToBool(value: TriState): boolean | undefined {
@@ -177,11 +178,11 @@ interface FieldProps {
 function Field({ id, label, hint, children }: FieldProps) {
   return (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-zinc-300">
+      <label htmlFor={id} className="block text-sm font-medium text-muted">
         {label}
       </label>
       {hint !== undefined && (
-        <p className="text-xs text-zinc-500 mt-1 leading-relaxed">{hint}</p>
+        <p className="text-xs text-faint mt-1 leading-relaxed">{hint}</p>
       )}
       <div className="mt-2">{children}</div>
     </div>
@@ -192,16 +193,16 @@ type NoteTone = "amber" | "zinc";
 
 function Note({ tone, icon, children }: { tone: NoteTone; icon: string; children: ReactNode }) {
   const map: Record<NoteTone, string> = {
-    amber: "border-amber-500/20 bg-amber-500/5 text-amber-200/90",
-    zinc: "border-zinc-800 bg-zinc-950/60 text-zinc-400",
+    amber: "border-signal/25 bg-signal/[0.06] text-signal-bright/90",
+    zinc: "border-line bg-base/60 text-muted",
   };
   const iconTone: Record<NoteTone, string> = {
-    amber: "text-amber-400",
-    zinc: "text-zinc-500",
+    amber: "text-signal",
+    zinc: "text-faint",
   };
   return (
     <div className={`mt-2.5 flex gap-2.5 rounded-lg border px-3 py-2.5 ${map[tone]}`}>
-      <Icon icon={icon} className={`text-base shrink-0 mt-0.5 ${iconTone[tone]}`} />
+      <Icon icon={icon} className={`w-4 h-4 shrink-0 mt-0.5 ${iconTone[tone]}`} />
       <p className="text-xs leading-relaxed">{children}</p>
     </div>
   );
@@ -221,8 +222,8 @@ interface TriStateFieldProps {
 function TriStateField({ label, hint, value, onChange }: TriStateFieldProps) {
   return (
     <div>
-      <p className="text-sm font-medium text-zinc-300">{label}</p>
-      <p className="text-xs text-zinc-500 mt-1 leading-relaxed">{hint}</p>
+      <p className="text-sm font-medium text-muted">{label}</p>
+      <p className="text-xs text-faint mt-1 leading-relaxed">{hint}</p>
       <div className="mt-2 grid grid-cols-3 gap-2" role="radiogroup" aria-label={label}>
         {TRI_OPTIONS.map((option) => {
           const active = value === option.value;
@@ -233,10 +234,10 @@ function TriStateField({ label, hint, value, onChange }: TriStateFieldProps) {
               role="radio"
               aria-checked={active}
               onClick={() => onChange(option.value)}
-              className={`min-h-13 rounded-lg border px-2 py-3.5 text-base font-medium transition-colors ${
+              className={`min-h-13 rounded-lg border px-2 py-3.5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
                 active
-                  ? "border-blue-500/50 bg-blue-500/10 text-blue-300"
-                  : "border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700"
+                  ? "border-signal/50 bg-signal/10 text-signal"
+                  : "border-line bg-base/60 text-muted hover:border-line-bright"
               }`}
             >
               {option.label}
@@ -345,9 +346,9 @@ export default function VendorSubmitPage() {
 
   return (
     <AppShell>
-      <div className="h-16 flex items-center px-5 sm:px-8 border-b border-zinc-800/60 shrink-0 z-10">
-        <h1 className="text-sm font-medium text-white tracking-tight flex items-center gap-2">
-          <Icon icon="solar:shop-2-linear" className="text-blue-400" /> Submit a vendor
+      <div className="h-16 flex items-center px-5 sm:px-8 border-b border-line shrink-0 z-10">
+        <h1 className="font-display text-sm font-medium text-ink tracking-tight flex items-center gap-2">
+          <Icon icon="solar:shop-2-linear" className="text-signal" /> Submit a vendor
         </h1>
       </div>
 
@@ -357,16 +358,16 @@ export default function VendorSubmitPage() {
             <div className="space-y-6" role="status">
               <Panel className="p-6">
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center shrink-0">
-                    <Icon icon="solar:check-read-linear" className="text-lg text-blue-400" />
+                  <div className="h-10 w-10 rounded-full bg-signal/10 border border-signal/30 flex items-center justify-center shrink-0">
+                    <Icon icon="solar:check-read-linear" className="text-lg text-signal" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-base font-medium text-white truncate">
+                    <p className="font-display font-medium text-ink truncate tracking-tight">
                       {receipt.draft.vendorName} submitted
                     </p>
                     {/* Both fields are nullable coming back. A missing status or a
                         missing reference is stated, not quietly dropped. */}
-                    <p className="text-xs text-zinc-500 mt-0.5">
+                    <p className="readout text-xs text-faint mt-0.5">
                       {status !== null ? `Status: ${status}` : "Status not returned by the server"}
                       {reference !== null
                         ? ` — reference #${reference}`
@@ -375,14 +376,22 @@ export default function VendorSubmitPage() {
                   </div>
                 </div>
 
-                <div className="mt-5 rounded-lg border border-zinc-800 bg-zinc-950/60 px-3.5 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-                    How it will read in the index
-                  </p>
-                  <p className="text-sm text-zinc-200 mt-1.5">
-                    {listingLabel(receipt.draft.thirdPartyTested)}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1.5 leading-relaxed">
+                <div
+                  className={`mt-5 rounded-lg border border-line bg-base/60 px-3.5 py-3 ${
+                    receipt.draft.thirdPartyTested === "yes" ? "" : "void-hatch"
+                  }`}
+                >
+                  <p className="eyebrow">How it will read in the index</p>
+                  <div className="mt-2 flex items-center gap-3">
+                    <EvidenceMeter
+                      tier={receipt.draft.thirdPartyTested === "yes" ? 1 : 0}
+                      className="shrink-0"
+                    />
+                    <p className="readout text-sm text-ink">
+                      {listingLabel(receipt.draft.thirdPartyTested)}
+                    </p>
+                  </div>
+                  <p className="text-xs text-faint mt-2 leading-relaxed">
                     {receipt.draft.thirdPartyTested === "yes"
                       ? "Filed as a vendor claim. It stays a claim until we hold an independent lab result, and it is never shown as one."
                       : "No testing data on file is a finding, and we publish it as one. It is not a blank and it is not a penalty."}
@@ -391,7 +400,7 @@ export default function VendorSubmitPage() {
 
                 {/* The server decides the status. Do not assert "pending review" over
                     the top of a status that says something else. */}
-                <p className="mt-4 text-xs text-zinc-500 leading-relaxed">
+                <p className="mt-4 text-xs text-faint leading-relaxed">
                   {filedAsPending
                     ? "Nothing is live yet. It goes into the public vendor index once a human has reviewed it, tagged as vendor-submitted and unverified."
                     : "The server filed this with the status shown above. Either way it is tagged vendor-submitted and unverified, and only an independent assay outranks it."}
@@ -400,7 +409,7 @@ export default function VendorSubmitPage() {
                 <button
                   type="button"
                   onClick={handleSubmitAnother}
-                  className="mt-5 w-full min-h-13 rounded-lg bg-blue-500/10 border border-blue-500/40 py-3.5 text-base font-medium text-blue-300 hover:bg-blue-500/15 transition-colors flex items-center justify-center gap-2"
+                  className="mt-5 w-full min-h-13 rounded-lg bg-signal/10 border border-signal/40 py-3.5 font-medium text-signal hover:bg-signal/15 transition-colors flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
                 >
                   <Icon icon="solar:add-circle-linear" className="text-lg" />
                   Submit another vendor
@@ -409,7 +418,7 @@ export default function VendorSubmitPage() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6" noValidate>
-              <p className="text-sm text-zinc-400 leading-relaxed">
+              <p className="text-sm text-muted leading-relaxed">
                 Everything on this form is recorded as a claim, not as evidence. Only an
                 independent lab assay counts as evidence, and this form cannot produce one. One
                 field is required: the vendor name.
@@ -432,11 +441,11 @@ export default function VendorSubmitPage() {
                       aria-invalid={validationError !== null}
                       aria-describedby={validationError !== null ? "vendor-name-error" : undefined}
                       className={`${inputClass} ${
-                        validationError !== null ? "border-red-500/60" : ""
+                        validationError !== null ? "border-danger/60" : ""
                       }`}
                     />
                     {validationError !== null && (
-                      <p id="vendor-name-error" role="alert" className="mt-2 text-xs text-red-400">
+                      <p id="vendor-name-error" role="alert" className="mt-2 text-xs text-danger">
                         {validationError}
                       </p>
                     )}
@@ -472,10 +481,8 @@ export default function VendorSubmitPage() {
 
                   <div className="space-y-4">
                     <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-                        Contact
-                      </p>
-                      <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
+                      <p className="eyebrow">Contact</p>
+                      <p className="text-xs text-faint mt-1 leading-relaxed">
                         Many sources operate on Telegram or WhatsApp and have no website, so a
                         website is optional — a channel is enough.
                       </p>
@@ -562,7 +569,7 @@ export default function VendorSubmitPage() {
                       </select>
                       <Icon
                         icon="solar:alt-arrow-down-linear"
-                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-faint pointer-events-none"
                       />
                     </div>
                   </Field>
@@ -619,7 +626,7 @@ export default function VendorSubmitPage() {
                         {labs.map((lab, i) => (
                           <span
                             key={`${lab}-${i}`}
-                            className="px-2 py-1 rounded border border-zinc-700 bg-zinc-800/60 text-xs text-zinc-300"
+                            className="px-2 py-1 rounded border border-line bg-surface-2 readout text-xs text-muted"
                           >
                             {lab}
                           </span>
@@ -688,20 +695,20 @@ export default function VendorSubmitPage() {
                         role="radio"
                         aria-checked={active}
                         onClick={() => set("submittedBy", option.value)}
-                        className={`w-full text-left rounded-lg border px-4 py-3.5 min-h-13 transition-colors ${
+                        className={`w-full text-left rounded-lg border px-4 py-3.5 min-h-13 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
                           active
-                            ? "border-blue-500/50 bg-blue-500/10"
-                            : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700"
+                            ? "border-signal/50 bg-signal/10"
+                            : "border-line bg-base/60 hover:border-line-bright"
                         }`}
                       >
                         <span
-                          className={`block text-base font-medium ${
-                            active ? "text-blue-300" : "text-zinc-300"
+                          className={`block font-medium ${
+                            active ? "text-signal" : "text-muted"
                           }`}
                         >
                           {option.title}
                         </span>
-                        <span className="block text-xs text-zinc-500 mt-0.5">{option.detail}</span>
+                        <span className="block text-xs text-faint mt-0.5">{option.detail}</span>
                       </button>
                     );
                   })}
@@ -726,13 +733,13 @@ export default function VendorSubmitPage() {
               </Panel>
 
               {/* ---- the disclosure. This is the product. ---- */}
-              <Panel className="p-5 sm:p-6 border-blue-500/25">
+              <Panel className="p-5 sm:p-6 border-line-bright">
                 <PanelHeader icon="solar:shield-check-linear" title="What happens to this" />
-                <ul className="space-y-3 text-sm text-zinc-300 leading-relaxed">
+                <ul className="space-y-3 text-sm text-muted leading-relaxed">
                   <li className="flex gap-2.5">
                     <Icon
                       icon="solar:eye-linear"
-                      className="text-blue-400 text-base shrink-0 mt-0.5"
+                      className="text-signal w-4 h-4 shrink-0 mt-0.5"
                     />
                     <span>
                       What you submit is published publicly in the vendor index. Anyone can read
@@ -742,7 +749,7 @@ export default function VendorSubmitPage() {
                   <li className="flex gap-2.5">
                     <Icon
                       icon="solar:tag-linear"
-                      className="text-blue-400 text-base shrink-0 mt-0.5"
+                      className="text-signal w-4 h-4 shrink-0 mt-0.5"
                     />
                     <span>
                       It is tagged vendor-submitted and unverified. It is not presented as an
@@ -752,7 +759,7 @@ export default function VendorSubmitPage() {
                   <li className="flex gap-2.5">
                     <Icon
                       icon="solar:magnifer-linear"
-                      className="text-blue-400 text-base shrink-0 mt-0.5"
+                      className="text-signal w-4 h-4 shrink-0 mt-0.5"
                     />
                     <span>
                       We may independently verify it. If an independent assay contradicts what you
@@ -762,7 +769,7 @@ export default function VendorSubmitPage() {
                   <li className="flex gap-2.5">
                     <Icon
                       icon="solar:file-remove-linear"
-                      className="text-blue-400 text-base shrink-0 mt-0.5"
+                      className="text-signal w-4 h-4 shrink-0 mt-0.5"
                     />
                     <span>
                       Vendors with no testing data on file are listed as having no testing data on
@@ -772,7 +779,7 @@ export default function VendorSubmitPage() {
                   <li className="flex gap-2.5">
                     <Icon
                       icon="solar:hand-money-linear"
-                      className="text-blue-400 text-base shrink-0 mt-0.5"
+                      className="text-signal w-4 h-4 shrink-0 mt-0.5"
                     />
                     <span>
                       We take no money from vendors. You cannot pay for a listing, a rating, or a
@@ -780,10 +787,10 @@ export default function VendorSubmitPage() {
                     </span>
                   </li>
                 </ul>
-                <p className="mt-4 pt-4 border-t border-zinc-800 text-sm text-zinc-300">
+                <p className="mt-4 pt-4 border-t border-line text-sm text-muted">
                   Submitting is your consent to all of the above.
                 </p>
-                <p className="mt-2 text-xs text-zinc-500">
+                <p className="mt-2 text-xs text-faint">
                   {isAnonymous || email === null
                     ? "This submission is attached to an anonymous session on this device."
                     : `This submission is attached to ${email}.`}
@@ -793,20 +800,20 @@ export default function VendorSubmitPage() {
               {error !== null && (
                 <div
                   role="alert"
-                  className="rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-3 flex gap-2.5"
+                  className="rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 flex gap-2.5"
                 >
                   <Icon
                     icon="solar:close-circle-linear"
-                    className="text-red-400 text-base shrink-0 mt-0.5"
+                    className="text-danger w-4 h-4 shrink-0 mt-0.5"
                   />
-                  <p className="text-sm text-red-300 leading-relaxed">{error}</p>
+                  <p className="text-sm text-danger leading-relaxed">{error}</p>
                 </div>
               )}
 
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full min-h-14 rounded-lg bg-blue-500/15 border border-blue-500/50 py-4 text-base font-medium text-blue-200 hover:bg-blue-500/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full min-h-14 rounded-xl bg-signal hover:bg-signal-bright py-4 text-base font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
               >
                 {submitting ? (
                   <>

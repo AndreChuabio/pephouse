@@ -10,7 +10,8 @@ export function Panel({ children, className }: PanelProps) {
   return (
     <div
       className={cn(
-        "bg-zinc-900/40 border border-zinc-800/80 rounded-xl shadow-sm backdrop-blur-sm",
+        "bg-surface/70 border border-line rounded-[var(--radius-card)] backdrop-blur-sm",
+        "shadow-[0_1px_0_0_rgba(255,255,255,0.02)_inset,0_10px_30px_-16px_rgba(0,0,0,0.7)]",
         className,
       )}
     >

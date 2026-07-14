@@ -38,14 +38,14 @@ const EMPTY_PROFILE: ProfileDraft = {
 };
 
 const inputClass =
-  "w-full bg-[#0a0a0a] border border-zinc-700/80 rounded-lg py-2 px-3 text-sm text-zinc-200 outline-none focus:border-zinc-500 transition-colors";
+  "w-full bg-base border border-line rounded-lg py-2 px-3 text-sm text-ink outline-none focus:border-signal transition-colors";
 
 function SectionLabel({ children }: { children: string }) {
-  return <label className="text-[12px] font-medium text-zinc-500 mb-1.5 block">{children}</label>;
+  return <label className="text-[12px] font-medium text-faint mb-1.5 block">{children}</label>;
 }
 
 function StatusDot({ on }: { on: boolean }) {
-  return <span className={`w-2 h-2 rounded-full shrink-0 ${on ? "bg-emerald-500" : "bg-zinc-600"}`} />;
+  return <span className={`w-2 h-2 rounded-full shrink-0 ${on ? "bg-measured" : "bg-ghost"}`} />;
 }
 
 // Human labels for the per-table delete counts, matching the keys the backend
@@ -212,9 +212,9 @@ export default function SettingsPage() {
 
   return (
     <AppShell>
-      <div className="h-16 flex items-center px-8 border-b border-zinc-800/60 shrink-0 z-10">
-        <h1 className="text-sm font-medium text-white tracking-tight flex items-center gap-2">
-          <Icon icon="solar:settings-linear" className="text-blue-400" /> Settings
+      <div className="h-16 flex items-center px-8 border-b border-line shrink-0 z-10">
+        <h1 className="font-display text-sm font-medium text-ink tracking-tight flex items-center gap-2">
+          <Icon icon="solar:settings-linear" className="text-signal" /> Settings
         </h1>
       </div>
 
@@ -224,17 +224,17 @@ export default function SettingsPage() {
           <Panel className="p-6">
             <PanelHeader icon="solar:user-linear" title="Account" />
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0">
+              <div className="h-10 w-10 rounded-full bg-surface-2 border border-line flex items-center justify-center shrink-0">
                 <Icon
                   icon={isAnonymous ? "solar:incognito-linear" : "solar:user-linear"}
-                  className="text-base text-white"
+                  className="text-base text-ink"
                 />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-white truncate">
+                <div className="text-sm font-medium text-ink truncate">
                   {isAnonymous ? "Guest" : email ?? "Signed in"}
                 </div>
-                <div className="text-[11px] text-zinc-500 truncate font-mono" title={userRef}>
+                <div className="text-[11px] text-faint truncate font-mono" title={userRef}>
                   {isAnonymous ? "Anonymous session — data is tied to this browser" : userRef}
                 </div>
               </div>
@@ -243,9 +243,9 @@ export default function SettingsPage() {
                   type="button"
                   onClick={handleSignIn}
                   disabled={authBusy}
-                  className="shrink-0 flex items-center gap-2 px-3 py-2 rounded-md border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900 transition-colors text-sm font-medium text-white disabled:opacity-50"
+                  className="shrink-0 flex items-center gap-2 px-3 py-2 rounded-md border border-line hover:border-line-bright hover:bg-surface transition-colors text-sm font-medium text-ink disabled:opacity-50"
                 >
-                  <Icon icon="solar:login-3-linear" className="text-base text-blue-400" />
+                  <Icon icon="solar:login-3-linear" className="text-base text-signal" />
                   {authBusy ? "Redirecting" : "Sign in with Google"}
                 </button>
               ) : (
@@ -253,7 +253,7 @@ export default function SettingsPage() {
                   type="button"
                   onClick={handleSignOut}
                   disabled={authBusy}
-                  className="shrink-0 flex items-center gap-2 px-3 py-2 rounded-md text-sm text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors disabled:opacity-50"
+                  className="shrink-0 flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted hover:text-ink hover:bg-surface transition-colors disabled:opacity-50"
                 >
                   <Icon icon="solar:logout-3-linear" className="text-base" />
                   Sign out
@@ -261,13 +261,13 @@ export default function SettingsPage() {
               )}
             </div>
             {isAnonymous && (
-              <p className="mt-3 text-xs text-zinc-500 leading-relaxed">
+              <p className="mt-3 text-xs text-faint leading-relaxed">
                 Signing in keeps your profile, labs, and stack when you switch devices. Your
                 current data carries over.
               </p>
             )}
             {authError && (
-              <p className="mt-2 text-[11px] text-amber-400" role="alert">
+              <p className="mt-2 text-[11px] text-danger" role="alert">
                 {authError}
               </p>
             )}
@@ -279,14 +279,14 @@ export default function SettingsPage() {
               icon="lucide:clipboard-list"
               title="Profile"
               action={
-                <span className="text-[11px] text-zinc-500">
+                <span className="text-[11px] text-faint">
                   {saveState === "saved" ? "Saved" : saveState === "error" ? "Save failed" : ""}
                 </span>
               }
             />
             {!profileLoaded ? (
-              <div className="text-sm text-zinc-500 flex items-center gap-2 py-4">
-                <Icon icon="svg-spinners:180-ring" className="text-blue-400" /> Loading profile
+              <div className="text-sm text-faint flex items-center gap-2 py-4">
+                <Icon icon="svg-spinners:180-ring" className="text-signal" /> Loading profile
               </div>
             ) : (
               <div className="space-y-4">
@@ -360,10 +360,10 @@ export default function SettingsPage() {
                   disabled={saveState === "saving"}
                   className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 ${
                     saveState === "saved"
-                      ? "bg-emerald-600/90 text-white"
+                      ? "bg-measured text-base"
                       : saveState === "error"
-                        ? "bg-amber-600/90 text-white"
-                        : "bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700"
+                        ? "bg-danger text-base"
+                        : "bg-signal hover:bg-signal-bright text-base"
                   }`}
                 >
                   <Icon
@@ -393,13 +393,17 @@ export default function SettingsPage() {
             <PanelHeader icon="lucide:plug-zap" title="Connected data" />
             <div className="space-y-3">
               {/* Blood panel */}
-              <div className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-3">
-                <Icon icon="lucide:test-tube" className="w-4 h-4 text-cyan-400 shrink-0" />
+              <div
+                className={`flex items-center gap-3 rounded-lg border border-line bg-base/40 px-4 py-3 ${
+                  imp.bloodworkConnected ? "" : "void-hatch"
+                }`}
+              >
+                <Icon icon="lucide:test-tube" className="w-4 h-4 text-measured shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-zinc-200 flex items-center gap-2">
+                  <div className="text-sm font-medium text-ink flex items-center gap-2">
                     Blood panel <StatusDot on={imp.bloodworkConnected} />
                   </div>
-                  <div className="text-[11px] text-zinc-500 truncate">
+                  <div className="text-[11px] text-faint truncate">
                     {imp.bloodworkConnected
                       ? `${imp.bloodworkLabel ?? "Junction lab results"} · ${imp.labs.length} biomarkers`
                       : "Not connected"}
@@ -409,29 +413,33 @@ export default function SettingsPage() {
                   type="button"
                   onClick={imp.pullBloodwork}
                   disabled={imp.bloodwork === "working"}
-                  className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-950 hover:border-cyan-700 px-3 py-1.5 text-xs font-medium text-zinc-200 flex items-center gap-1.5 disabled:opacity-50 transition-colors"
+                  className="shrink-0 rounded-lg border border-line bg-base hover:border-signal px-3 py-1.5 text-xs font-medium text-ink flex items-center gap-1.5 disabled:opacity-50 transition-colors"
                 >
                   <Icon
                     icon={imp.bloodwork === "working" ? "svg-spinners:180-ring" : "lucide:download"}
-                    className="text-cyan-400"
+                    className="text-signal"
                   />
                   {imp.bloodwork === "working" ? "Pulling…" : imp.bloodworkConnected ? "Re-pull" : "Pull"}
                 </button>
               </div>
 
               {/* Wearable */}
-              <div className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-3">
-                <Icon icon="lucide:watch" className="w-4 h-4 text-cyan-400 shrink-0" />
+              <div
+                className={`flex items-center gap-3 rounded-lg border border-line bg-base/40 px-4 py-3 ${
+                  imp.wearableConnected ? "" : "void-hatch"
+                }`}
+              >
+                <Icon icon="lucide:watch" className="w-4 h-4 text-measured shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-zinc-200 flex items-center gap-2">
+                  <div className="text-sm font-medium text-ink flex items-center gap-2">
                     Wearable <StatusDot on={imp.wearableConnected} />
                     {imp.wearableConnected && imp.wearableMocked && (
-                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded border border-amber-900/50 bg-amber-950/30 text-amber-400 uppercase tracking-wider">
+                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded border border-signal/40 bg-signal/10 text-signal uppercase tracking-wider">
                         Demo data
                       </span>
                     )}
                   </div>
-                  <div className="text-[11px] text-zinc-500 truncate">
+                  <div className="text-[11px] text-faint truncate">
                     {imp.wearableConnected
                       ? imp.deviceLabel ?? "Oura / WHOOP via Junction"
                       : "Not connected"}
@@ -442,11 +450,11 @@ export default function SettingsPage() {
                     type="button"
                     onClick={imp.pullWearable}
                     disabled={imp.wearableState === "working"}
-                    className="rounded-lg border border-zinc-700 bg-zinc-950 hover:border-cyan-700 px-3 py-1.5 text-xs font-medium text-zinc-200 flex items-center gap-1.5 disabled:opacity-50 transition-colors"
+                    className="rounded-lg border border-line bg-base hover:border-signal px-3 py-1.5 text-xs font-medium text-ink flex items-center gap-1.5 disabled:opacity-50 transition-colors"
                   >
                     <Icon
                       icon={imp.wearableState === "working" ? "svg-spinners:180-ring" : "lucide:download"}
-                      className="text-cyan-400"
+                      className="text-signal"
                     />
                     {imp.wearableState === "working" ? "Pulling…" : imp.wearableConnected ? "Re-pull" : "Pull"}
                   </button>
@@ -454,26 +462,26 @@ export default function SettingsPage() {
                     type="button"
                     onClick={imp.connectDevice}
                     disabled={imp.device === "working"}
-                    className="rounded-lg border border-zinc-700 bg-zinc-950 hover:border-cyan-700 px-3 py-1.5 text-xs font-medium text-zinc-200 flex items-center gap-1.5 disabled:opacity-50 transition-colors"
+                    className="rounded-lg border border-line bg-base hover:border-signal px-3 py-1.5 text-xs font-medium text-ink flex items-center gap-1.5 disabled:opacity-50 transition-colors"
                   >
                     <Icon
                       icon={imp.device === "working" ? "svg-spinners:180-ring" : "lucide:link"}
-                      className="text-cyan-400"
+                      className="text-signal"
                     />
                     Re-link
                   </button>
                 </div>
               </div>
 
-              {imp.error && <p className="text-[11px] text-amber-400">{imp.error}</p>}
+              {imp.error && <p className="text-[11px] text-danger">{imp.error}</p>}
 
               {/* Lab PDF upload */}
-              <div className="rounded-lg border border-dashed border-zinc-700 bg-zinc-950/40 px-4 py-4">
+              <div className="rounded-lg border border-dashed border-line bg-base/40 px-4 py-4">
                 <div className="flex items-center gap-3">
-                  <Icon icon="lucide:file-text" className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <Icon icon="lucide:file-text" className="w-4 h-4 text-measured shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-zinc-200">Upload lab report (PDF)</div>
-                    <div className="text-[11px] text-zinc-500">
+                    <div className="text-sm font-medium text-ink">Upload lab report (PDF)</div>
+                    <div className="text-[11px] text-faint">
                       Biomarkers are extracted and merged onto your stored labs.
                     </div>
                   </div>
@@ -492,17 +500,17 @@ export default function SettingsPage() {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploadState === "uploading"}
-                    className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-950 hover:border-cyan-700 px-3 py-1.5 text-xs font-medium text-zinc-200 flex items-center gap-1.5 disabled:opacity-50 transition-colors"
+                    className="shrink-0 rounded-lg border border-line bg-base hover:border-signal px-3 py-1.5 text-xs font-medium text-ink flex items-center gap-1.5 disabled:opacity-50 transition-colors"
                   >
                     <Icon
                       icon={uploadState === "uploading" ? "svg-spinners:180-ring" : "lucide:upload"}
-                      className="text-cyan-400"
+                      className="text-signal"
                     />
                     {uploadState === "uploading" ? "Extracting…" : "Choose PDF"}
                   </button>
                 </div>
                 {uploadState === "done" && uploadCount != null && (
-                  <p className="mt-2 text-[11px] text-emerald-400 flex items-center gap-1">
+                  <p className="mt-2 text-[11px] text-measured flex items-center gap-1">
                     <Icon icon="lucide:check" className="w-3 h-3" />
                     {uploadCount === 0
                       ? "Processed, but no biomarkers were found in that PDF."
@@ -510,7 +518,7 @@ export default function SettingsPage() {
                   </p>
                 )}
                 {uploadState === "error" && uploadError && (
-                  <p className="mt-2 text-[11px] text-amber-400">{uploadError}</p>
+                  <p className="mt-2 text-[11px] text-danger">{uploadError}</p>
                 )}
               </div>
             </div>
@@ -520,31 +528,31 @@ export default function SettingsPage() {
           <Panel className="p-6">
             <PanelHeader icon="lucide:shield" title="Data rights" />
             <div className="space-y-3">
-              <div className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-3">
-                <Icon icon="lucide:archive" className="w-4 h-4 text-zinc-400 shrink-0" />
+              <div className="flex items-center gap-3 rounded-lg border border-line bg-base/40 px-4 py-3">
+                <Icon icon="lucide:archive" className="w-4 h-4 text-muted shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-zinc-200">Export my data</div>
-                  <div className="text-[11px] text-zinc-500">
+                  <div className="text-sm font-medium text-ink">Export my data</div>
+                  <div className="text-[11px] text-faint">
                     Download everything PepHouse stores about you as JSON.
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={handleExport}
-                  className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-950 hover:border-zinc-500 px-3 py-1.5 text-xs font-medium text-zinc-200 flex items-center gap-1.5 transition-colors"
+                  className="shrink-0 rounded-lg border border-line bg-base hover:border-line-bright px-3 py-1.5 text-xs font-medium text-ink flex items-center gap-1.5 transition-colors"
                 >
                   <Icon icon="lucide:download" />
                   Export
                 </button>
               </div>
-              {exportError && <p className="text-[11px] text-amber-400">{exportError}</p>}
+              {exportError && <p className="text-[11px] text-danger">{exportError}</p>}
 
-              <div className="rounded-lg border border-rose-900/40 bg-rose-950/10 px-4 py-3">
+              <div className="rounded-lg border border-danger/40 bg-danger/10 px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <Icon icon="lucide:trash-2" className="w-4 h-4 text-rose-400 shrink-0" />
+                  <Icon icon="lucide:trash-2" className="w-4 h-4 text-danger shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-zinc-200">Delete my data</div>
-                    <div className="text-[11px] text-zinc-500">
+                    <div className="text-sm font-medium text-ink">Delete my data</div>
+                    <div className="text-[11px] text-faint">
                       Permanently removes your profile, labs, wearable data, and stack. This cannot
                       be undone.
                     </div>
@@ -557,7 +565,7 @@ export default function SettingsPage() {
                         setDeleteInput("");
                         setDeleteError(null);
                       }}
-                      className="shrink-0 rounded-lg border border-rose-900/60 bg-zinc-950 hover:bg-rose-950/30 px-3 py-1.5 text-xs font-medium text-rose-300 flex items-center gap-1.5 transition-colors"
+                      className="shrink-0 rounded-lg border border-danger/50 bg-base hover:bg-danger/10 px-3 py-1.5 text-xs font-medium text-danger flex items-center gap-1.5 transition-colors"
                     >
                       <Icon icon="lucide:trash-2" />
                       Delete
@@ -566,9 +574,9 @@ export default function SettingsPage() {
                 </div>
 
                 {deleteStep === "confirm" || deleteStep === "deleting" ? (
-                  <div className="mt-3 pt-3 border-t border-rose-900/30 space-y-2">
-                    <p className="text-[11px] text-zinc-400">
-                      Type <span className="font-mono font-semibold text-rose-300">DELETE</span> to
+                  <div className="mt-3 pt-3 border-t border-danger/30 space-y-2">
+                    <p className="text-[11px] text-muted">
+                      Type <span className="font-mono font-semibold text-danger">DELETE</span> to
                       confirm.
                     </p>
                     <div className="flex items-center gap-2">
@@ -577,13 +585,13 @@ export default function SettingsPage() {
                         onChange={(e) => setDeleteInput(e.target.value)}
                         placeholder="DELETE"
                         disabled={deleteStep === "deleting"}
-                        className="flex-1 bg-[#0a0a0a] border border-zinc-700/80 rounded-lg py-1.5 px-3 text-sm text-zinc-200 font-mono outline-none focus:border-rose-700 transition-colors"
+                        className="flex-1 bg-base border border-line rounded-lg py-1.5 px-3 text-sm text-ink font-mono outline-none focus:border-danger transition-colors"
                       />
                       <button
                         type="button"
                         onClick={handleDelete}
                         disabled={!deleteArmed || deleteStep === "deleting"}
-                        className="rounded-lg bg-rose-700 hover:bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        className="rounded-lg bg-danger/90 hover:bg-danger px-3 py-1.5 text-xs font-semibold text-base flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                       >
                         <Icon
                           icon={deleteStep === "deleting" ? "svg-spinners:180-ring" : "lucide:trash-2"}
@@ -594,7 +602,7 @@ export default function SettingsPage() {
                         type="button"
                         onClick={() => setDeleteStep("idle")}
                         disabled={deleteStep === "deleting"}
-                        className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:text-white disabled:opacity-50 transition-colors"
+                        className="rounded-lg border border-line bg-base px-3 py-1.5 text-xs font-medium text-muted hover:text-ink disabled:opacity-50 transition-colors"
                       >
                         Cancel
                       </button>
@@ -603,15 +611,15 @@ export default function SettingsPage() {
                 ) : null}
 
                 {deleteStep === "done" && deleteResult && (
-                  <div className="mt-3 pt-3 border-t border-rose-900/30">
-                    <p className="text-[11px] text-emerald-400 flex items-center gap-1 mb-1.5">
+                  <div className="mt-3 pt-3 border-t border-danger/30">
+                    <p className="text-[11px] text-measured flex items-center gap-1 mb-1.5">
                       <Icon icon="lucide:check" className="w-3 h-3" /> Your data has been deleted.
                     </p>
                     <ul className="space-y-0.5">
                       {Object.entries(deleteResult.tables).map(([table, count]) => (
-                        <li key={table} className="text-[11px] text-zinc-500 flex justify-between">
+                        <li key={table} className="text-[11px] text-faint flex justify-between">
                           <span>{TABLE_LABELS[table] ?? table}</span>
-                          <span className="font-mono text-zinc-400">
+                          <span className="readout text-muted">
                             {count} record{count === 1 ? "" : "s"}
                           </span>
                         </li>
@@ -620,7 +628,7 @@ export default function SettingsPage() {
                   </div>
                 )}
                 {deleteStep === "error" && deleteError && (
-                  <p className="mt-2 text-[11px] text-amber-400">{deleteError}</p>
+                  <p className="mt-2 text-[11px] text-danger">{deleteError}</p>
                 )}
               </div>
             </div>
