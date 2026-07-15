@@ -813,7 +813,7 @@ export default function VendorSubmitPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full min-h-14 rounded-xl bg-signal hover:bg-signal-bright py-4 text-base font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
+                className="w-full min-h-14 rounded-xl bg-signal hover:bg-signal-bright py-4 text-on-signal font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
               >
                 {submitting ? (
                   <>

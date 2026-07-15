@@ -94,12 +94,19 @@ ALLOWED_ORIGINS = [
 if "*" in ALLOWED_ORIGINS:
     raise RuntimeError("ALLOWED_ORIGINS must name real origins; '*' is not permitted")
 
-# Every Vercel domain for THIS account's projects (…-andre-chuabios-projects.
-# vercel.app), including per-deploy preview hashes. Scoped to the account rather
-# than an open `*.vercel.app`, so a stranger's Vercel site cannot call the API,
-# but a new deploy hash never breaks CORS. The fixed alias that does not carry
-# the account suffix (frontend-alpha-wine-58) stays in the explicit list above.
-DEFAULT_ORIGIN_REGEX = r"https://[a-z0-9-]+-andre-chuabios-projects\.vercel\.app"
+# Origins allowed by pattern rather than by exact name:
+#   - the custom domain pephouse.org / .app and their www subdomains (the
+#     production home; both TLDs accepted so the brand is not locked to one)
+#   - every Vercel domain for THIS account's projects
+#     (…-andre-chuabios-projects.vercel.app), including per-deploy preview hashes
+# Scoped deliberately — not an open `*.vercel.app` — so a stranger's site cannot
+# call the API, while a new deploy hash or the custom domain never breaks CORS.
+# The fixed alias without the account suffix (frontend-alpha-wine-58) stays in
+# the explicit list above.
+DEFAULT_ORIGIN_REGEX = (
+    r"https://(www\.)?pephouse\.(org|app)"
+    r"|https://[a-z0-9-]+-andre-chuabios-projects\.vercel\.app"
+)
 ALLOWED_ORIGIN_REGEX = os.getenv("ALLOWED_ORIGIN_REGEX", DEFAULT_ORIGIN_REGEX)
 logger.info("cors: allowing %s and regex %s", ALLOWED_ORIGINS, ALLOWED_ORIGIN_REGEX)
 

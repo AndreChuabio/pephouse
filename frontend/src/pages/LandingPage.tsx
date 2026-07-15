@@ -115,7 +115,7 @@ export default function LandingPage() {
           <button
             type="button"
             onClick={handleTryIt}
-            className="w-full sm:w-auto rounded-xl bg-signal hover:bg-signal-bright px-7 py-3 text-sm font-semibold text-base flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
+            className="w-full sm:w-auto rounded-xl bg-signal hover:bg-signal-bright px-7 py-3 text-sm font-semibold text-on-signal flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
           >
             {signedIn ? "Enter" : "Try it now"}
             <Icon icon="lucide:arrow-right" className="w-4 h-4" />

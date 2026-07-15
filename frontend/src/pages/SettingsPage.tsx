@@ -363,7 +363,7 @@ export default function SettingsPage() {
                       ? "bg-measured text-base"
                       : saveState === "error"
                         ? "bg-danger text-base"
-                        : "bg-signal hover:bg-signal-bright text-base"
+                        : "bg-signal hover:bg-signal-bright text-on-signal"
                   }`}
                 >
                   <Icon

@@ -1152,7 +1152,7 @@ export default function ReportPage() {
                     type="button"
                     onClick={() => void handleBuy()}
                     disabled={checkoutBusy}
-                    className="mt-4 w-full rounded-lg bg-signal hover:bg-signal-bright px-4 py-2.5 text-sm font-semibold text-base flex items-center justify-center gap-2 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
+                    className="mt-4 w-full rounded-lg bg-signal hover:bg-signal-bright px-4 py-2.5 text-sm font-semibold text-on-signal flex items-center justify-center gap-2 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
                   >
                     <Icon
                       icon={checkoutBusy ? "svg-spinners:180-ring" : "solar:lock-keyhole-linear"}

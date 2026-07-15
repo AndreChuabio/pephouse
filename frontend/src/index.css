@@ -10,40 +10,43 @@
    safe.
    ============================================================================ */
 
+/* The palette. Every utility (bg-surface, text-signal, ...) compiles to
+   var(--color-*), so the whole look lives in these tokens.
+
+   Green is the brand signal (interactive / voice), a refined emerald-mint rather
+   than acid lime. Evidence tiers stay on the neutral luminance ramp so evidence
+   strength is never conflated with a green "good"; the cool teal marks a
+   separately-measured fact. */
 @theme {
-  /* Surfaces — cool graphite, deeper and cooler than the old zinc. */
-  --color-base: #0a0c11;
-  --color-surface: #0f1320;
-  --color-surface-2: #141a29;
-  --color-raised: #1a2133;
-  --color-line: #232b3d;
-  --color-line-bright: #323c52;
+  --color-base: #090b0d;
+  --color-surface: #0f1315;
+  --color-surface-2: #161b1e;
+  --color-raised: #1d2427;
+  --color-line: #242c2e;
+  --color-line-bright: #35403f;
 
-  /* Ink — soft whites and graded muted greys for the type hierarchy. */
-  --color-ink: #eaeef5;
-  --color-muted: #8592a6;
-  --color-faint: #566072;
-  --color-ghost: #3a4256;
+  --color-ink: #eaf0ee;
+  --color-muted: #889692;
+  --color-faint: #566461;
+  --color-ghost: #384340;
 
-  /* Warm signal — PepHouse's voice. Brand, primary action, "live". Used sparingly. */
-  --color-signal: #f5b03e;
-  --color-signal-bright: #ffc766;
-  --color-signal-dim: #6b5324;
+  --color-signal: #34d69a;
+  --color-signal-bright: #57e8b3;
+  --color-signal-dim: #123f31;
 
-  /* Cool measured — an independently verified fact. The clinical counterweight. */
-  --color-measured: #46d6bd;
-  --color-measured-dim: #1f4f49;
+  --color-measured: #46c8e0;
+  --color-measured-dim: #164752;
 
-  /* Danger — reserved for real harm and failed assays. Rare, so it stays loud. */
   --color-danger: #ff6b6b;
-  --color-danger-dim: #5a2b2b;
+  --color-danger-dim: #4f2626;
 
-  /* Evidence luminance ramp — strength, not goodness. Tier 4 (completed trials)
-     is the brightest, tier 1 (anecdote) the dimmest, tier 0 the void. */
-  --color-tier-4: #eaeef5;
-  --color-tier-3: #9aa6ba;
-  --color-tier-2: #626d80;
-  --color-tier-1: #414b5d;
+  --color-tier-4: #eaf0ee;
+  --color-tier-3: #9aa8a4;
+  --color-tier-2: #626e6a;
+  --color-tier-1: #414b48;
+
+  /* Dark ink on the colored primary button. */
+  --color-on-signal: #04140e;
 
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk", "Inter", sans-serif;
@@ -51,6 +54,7 @@
 
   --radius-card: 14px;
 }
+
 
 /* ---------------------------------------------------------------- base ---- */
 

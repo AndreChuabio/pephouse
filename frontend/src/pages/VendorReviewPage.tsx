@@ -914,7 +914,7 @@ function SubmissionCard({
           disabled={locked}
           className={`h-14 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 ${
             armed === "published"
-              ? "bg-signal text-base border border-signal-bright hover:bg-signal-bright"
+              ? "bg-signal text-on-signal border border-signal-bright hover:bg-signal-bright"
               : "bg-signal/15 text-signal border border-signal/30 hover:bg-signal/25"
           }`}
         >

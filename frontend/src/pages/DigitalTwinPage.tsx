@@ -564,7 +564,7 @@ export default function DigitalTwinPage() {
                       type="button"
                       onClick={() => handleAddToStack(c)}
                       className={`w-full rounded-lg px-3 py-2 text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base ${
-                        added ? "bg-surface-2 hover:bg-raised text-ink border border-line" : "bg-signal hover:bg-signal-bright text-base"
+                        added ? "bg-surface-2 hover:bg-raised text-ink border border-line" : "bg-signal hover:bg-signal-bright text-on-signal"
                       }`}
                     >
                       <Icon icon={added ? "lucide:refresh-cw" : "lucide:plus"} className="w-4 h-4" />
@@ -638,7 +638,7 @@ export default function DigitalTwinPage() {
                     type="button"
                     onClick={imp.pullBloodwork}
                     disabled={imp.bloodwork === "working"}
-                    className="w-full rounded-xl bg-signal hover:bg-signal-bright disabled:opacity-60 px-4 py-3 text-sm font-semibold text-base flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
+                    className="w-full rounded-xl bg-signal hover:bg-signal-bright disabled:opacity-60 px-4 py-3 text-sm font-semibold text-on-signal flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
                   >
                     <Icon icon={imp.bloodwork === "working" ? "svg-spinners:180-ring" : "lucide:test-tube"} />
                     {imp.bloodwork === "working" ? "Pulling your data…" : "Pull Blood Panel"}
@@ -744,7 +744,7 @@ export default function DigitalTwinPage() {
                   type="button"
                   onClick={handleRun}
                   disabled={loading || stackReal.length === 0}
-                  className="w-full rounded-xl bg-signal hover:bg-signal-bright disabled:opacity-60 disabled:cursor-not-allowed px-4 py-3 text-sm font-semibold text-base flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
+                  className="w-full rounded-xl bg-signal hover:bg-signal-bright disabled:opacity-60 disabled:cursor-not-allowed px-4 py-3 text-sm font-semibold text-on-signal flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
                 >
                   <Icon icon={loading ? "svg-spinners:180-ring" : "lucide:sparkles"} />
                   {loading ? "Predicting…" : `Predict my Result${stackReal.length > 1 ? ` (${stackReal.length})` : ""}`}

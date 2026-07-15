@@ -1423,7 +1423,7 @@ function MemberReportForm({ vendor, onSignIn }: { vendor: VendorBreakdown; onSig
       <button
         type="submit"
         disabled={submitting}
-        className="w-full min-h-12 rounded-lg bg-signal text-base font-semibold py-3 text-sm hover:bg-signal-bright transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
+        className="w-full min-h-12 rounded-lg bg-signal text-on-signal font-semibold py-3 text-sm hover:bg-signal-bright transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
       >
         {submitting ? (
           <>
@@ -1639,7 +1639,7 @@ function VendorStatementForm({
       <button
         type="submit"
         disabled={submitting}
-        className="w-full min-h-12 rounded-lg bg-signal text-base font-semibold py-3 text-sm hover:bg-signal-bright transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
+        className="w-full min-h-12 rounded-lg bg-signal text-on-signal font-semibold py-3 text-sm hover:bg-signal-bright transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
       >
         {submitting ? (
           <>
