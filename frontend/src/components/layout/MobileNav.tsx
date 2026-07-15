@@ -39,7 +39,7 @@ export function MobileTopBar() {
           type="button"
           onClick={handleSignIn}
           disabled={busy}
-          className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink disabled:opacity-60"
+          className="flex items-center gap-1.5 rounded-lg border border-line px-3.5 py-1.5 min-h-[44px] text-xs font-medium text-ink disabled:opacity-60"
         >
           <Icon
             icon={busy ? "svg-spinners:180-ring" : "logos:google-icon"}
@@ -50,7 +50,7 @@ export function MobileTopBar() {
       ) : (
         <Link
           to="/settings"
-          className="h-8 w-8 rounded-lg bg-surface-2 border border-line flex items-center justify-center"
+          className="h-10 w-10 rounded-lg bg-surface-2 border border-line flex items-center justify-center"
           aria-label="Account"
         >
           <Icon icon="solar:user-linear" className="w-[18px] h-[18px] text-ink" />

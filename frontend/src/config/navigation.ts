@@ -18,7 +18,7 @@ import type { NavItem } from "../types/navigation";
 // wall-clock minute and no few-dollar product can carry that cost.
 export const PLATFORM_NAV: NavItem[] = [
   { label: "Cellar", icon: "solar:database-linear", to: "/explorer" },
-  { label: "Sources", icon: "solar:box-linear", to: "/vendors" },
+  { label: "Vendors", icon: "solar:box-linear", to: "/vendors" },
   { label: "Stack report", icon: "solar:clipboard-list-linear", to: "/report" },
   { label: "Galleria", icon: "solar:heart-pulse-linear", to: "/digital-twin" },
 ];

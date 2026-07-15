@@ -1827,11 +1827,11 @@ function VendorDetail({ vendor, onBack }: { vendor: VendorBreakdown; onBack: () 
             badText="Not certified"
           />
           <BoolFact
-            label="FDA green list"
+            label="FDA 503A Category 1"
             value={vendor.fda_green_list}
             goodWhen
-            goodText="Listed"
-            badText="Not listed"
+            goodText="Category 1"
+            badText="Not Category 1"
           />
           <TextFact label="FDA DMF" value={vendor.fda_dmf} />
           <Fact label="Cost">
@@ -2105,7 +2105,7 @@ export default function VendorsPage() {
       <header className="h-16 flex items-center justify-between gap-3 px-4 md:px-8 border-b border-line shrink-0 z-10 bg-base/80 backdrop-blur-md">
         <div className="flex items-center gap-3 md:gap-4 min-w-0">
           <h1 className="font-display text-lg font-semibold tracking-tight text-ink flex items-center gap-2">
-            <Icon icon="solar:shop-2-linear" className="text-signal text-xl shrink-0" />
+            <Icon icon="solar:box-linear" className="text-signal text-xl shrink-0" />
             Vendors
           </h1>
           <div className="hidden sm:block h-4 w-px bg-line" />
@@ -2118,17 +2118,17 @@ export default function VendorsPage() {
             type="button"
             onClick={() => void loadList()}
             disabled={listLoading}
-            className="text-xs font-medium text-muted hover:text-ink transition-colors flex items-center gap-1.5 disabled:opacity-60"
+            className="text-xs font-medium text-muted hover:text-ink transition-colors flex items-center gap-1.5 disabled:opacity-60 py-2 -my-2"
           >
             <Icon icon="solar:refresh-linear" className={listLoading ? "animate-spin" : ""} />
-            Refresh
+            <span className="hidden sm:inline">Refresh</span>
           </button>
           <Link
             to="/vendors/submit"
-            className="text-xs font-medium text-signal hover:text-signal-bright transition-colors flex items-center gap-1.5"
+            className="text-xs font-medium text-signal hover:text-signal-bright transition-colors flex items-center gap-1.5 py-2 -my-2"
           >
             <Icon icon="solar:add-circle-linear" />
-            Submit a vendor
+            <span className="hidden sm:inline">Submit a vendor</span>
           </Link>
         </div>
       </header>
@@ -2136,7 +2136,9 @@ export default function VendorsPage() {
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6 z-10">
         {selectedId !== null ? (
           detailLoading ? (
-            <p className="text-sm text-faint">Loading vendor…</p>
+            <div className="text-sm text-faint flex items-center gap-2 py-4">
+              <Icon icon="svg-spinners:180-ring" className="text-signal" /> Loading vendor
+            </div>
           ) : detailError !== null ? (
             <Panel className="p-4 max-w-2xl">
               <div className="flex items-center justify-between gap-3">
@@ -2174,28 +2176,6 @@ export default function VendorsPage() {
           )
         ) : (
           <div className="max-w-6xl space-y-5">
-            {/* the honest line of context */}
-            <Panel className="p-5">
-              <p className="text-sm text-muted leading-relaxed max-w-3xl">
-                This index is small and it is growing. PepHouse takes no money from vendors. No vendor
-                can pay for placement, for a rating, or for a better testing grade, and the list below
-                is ordered alphabetically rather than ranked. Where a vendor has never been
-                independently tested, this page says so in plain words instead of leaving the cell
-                blank. Where a vendor has been tested, it also says which axes that testing skipped:
-                a purity certificate is not a safety result, and a testing grade here is a statement
-                about who measured what, never a statement that a product is safe.
-              </p>
-              <div className="flex flex-wrap items-center gap-3 mt-4">
-                <Link
-                  to="/vendors/submit"
-                  className="text-xs font-medium text-signal hover:text-signal-bright transition-colors flex items-center gap-1.5"
-                >
-                  <Icon icon="solar:add-circle-linear" />
-                  Add a vendor, or send us an assay we are missing
-                </Link>
-              </div>
-            </Panel>
-
             {/* how thin the data actually is */}
             {vendors.length > 0 && (
               <Panel className="p-5">
@@ -2244,6 +2224,26 @@ export default function VendorsPage() {
               </Panel>
             )}
 
+            {/* why you can trust this list */}
+            <Panel className="p-5">
+              <p className="text-sm text-muted leading-relaxed max-w-3xl">
+                PepHouse takes no money from vendors — no one can buy placement, a rating, or a
+                testing grade, and the list below is ordered alphabetically rather than ranked. Where
+                a vendor has never been independently tested this page says so in plain words, and
+                where it has, it names the axes that testing skipped: a grade here states who
+                measured what, never that a product is safe.
+              </p>
+              <div className="flex flex-wrap items-center gap-3 mt-4">
+                <Link
+                  to="/vendors/submit"
+                  className="text-xs font-medium text-signal hover:text-signal-bright transition-colors flex items-center gap-1.5"
+                >
+                  <Icon icon="solar:add-circle-linear" />
+                  Add a vendor, or send us an assay we are missing
+                </Link>
+              </div>
+            </Panel>
+
             {listError !== null && (
               <Panel className="p-4">
                 <div className="flex items-center justify-between gap-3">
@@ -2261,11 +2261,13 @@ export default function VendorsPage() {
             )}
 
             {listLoading && vendors.length === 0 ? (
-              <p className="text-sm text-faint">Loading the vendor index…</p>
+              <div className="text-sm text-faint flex items-center gap-2 py-4">
+                <Icon icon="svg-spinners:180-ring" className="text-signal" /> Loading the vendor index
+              </div>
             ) : listError !== null && vendors.length === 0 ? null : vendors.length === 0 ? (
               <Panel className="p-4 md:p-8">
                 <div className="flex flex-col items-center text-center gap-2">
-                  <Icon icon="solar:shop-2-linear" className="text-3xl text-faint" />
+                  <Icon icon="solar:box-linear" className="text-3xl text-faint" />
                   <p className="text-ink font-medium">No vendors in the index yet</p>
                   <p className="text-sm text-faint max-w-md leading-relaxed">
                     The index starts empty and fills up from submissions and lab results. Nothing is

@@ -92,9 +92,8 @@ function TierHeader({ tier, label }: { tier: 1 | 2 | 3 | 4; label: string }) {
     <div className="flex items-center gap-3 pt-3 pb-1">
       <EvidenceMeter tier={tier} className="shrink-0" />
       <span className={`readout text-[10px] font-bold uppercase tracking-widest ${s.text}`}>
-        Tier {tier}
+        {label}
       </span>
-      <span className="eyebrow !text-faint">&middot; {label}</span>
       <span className="text-[10px] text-faint italic ml-1">{s.hint}</span>
       <div className="flex-1 h-px bg-line ml-2" />
     </div>

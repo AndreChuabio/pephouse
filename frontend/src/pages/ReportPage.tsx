@@ -160,7 +160,7 @@ const TIER_META: Record<Tier, TierMeta> = {
     // never fed by a vendor's own certificate: a vendor saying it tested itself is
     // a claim, and a claim is not a measurement. Even at full count, this rung
     // speaks to what is in the vial and says nothing about whether it works.
-    name: "Verified real-world / lab data",
+    name: "Independent lab / sourcing data",
     hint: "Independent assays and sourcing records. What is in the vial, not whether it works.",
     text: "text-tier-2",
     dot: "bg-tier-2",
@@ -320,14 +320,7 @@ function EvidenceLadder({ ladder }: LadderProps) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span
-                  className={`readout text-[10px] font-bold uppercase tracking-widest ${
-                    empty ? "text-faint" : meta.text
-                  }`}
-                >
-                  Tier {tier}
-                </span>
-                <span
-                  className={`text-sm ${empty ? "text-muted" : "text-ink"}`}
+                  className={`text-sm font-medium ${empty ? "text-muted" : "text-ink"}`}
                 >
                   {rung.label || meta.name}
                 </span>
@@ -393,14 +386,14 @@ function TrialLine({ trial, evidence }: TrialLineProps) {
           </span>
         )}
       </span>
-      <span className="readout text-[11px] text-faint shrink-0 text-right">
+      <span className="readout text-[11px] text-faint sm:shrink-0 sm:text-right">
         {parts.join(" · ")}
       </span>
     </>
   );
 
   const className =
-    "flex items-center justify-between gap-3 rounded-lg border border-line bg-surface px-3 py-2 group";
+    "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3 rounded-lg border border-line bg-surface px-3 py-2 group";
 
   if (!href) {
     return <div className={className}>{body}</div>;
@@ -892,8 +885,8 @@ export default function ReportPage() {
   return (
     <AppShell>
       <div className="h-16 flex items-center px-4 md:px-8 border-b border-line shrink-0 z-10">
-        <h1 className="font-display text-sm font-medium text-ink tracking-tight flex items-center gap-2">
-          <Icon icon="solar:clipboard-check-linear" className="text-signal" /> Stack report
+        <h1 className="font-display text-lg font-semibold tracking-tight text-ink flex items-center gap-2">
+          <Icon icon="solar:clipboard-check-linear" className="text-signal text-xl shrink-0" /> Stack report
         </h1>
       </div>
 
@@ -996,7 +989,7 @@ export default function ReportPage() {
                 icon="solar:eye-linear"
                 title="The read"
                 action={
-                  <span className="readout text-[10px] uppercase tracking-widest text-measured border border-measured/30 bg-measured/10 rounded px-2 py-0.5">
+                  <span className="readout text-[10px] uppercase tracking-widest text-muted border border-line bg-surface-2 rounded px-2 py-0.5">
                     Free
                   </span>
                 }
@@ -1226,7 +1219,7 @@ export default function ReportPage() {
               {reportState === "ready" && report && (
                 <>
                   {checkoutPhase === "confirmed" && (
-                    <p className="text-xs text-measured flex items-center gap-1.5">
+                    <p className="text-xs text-signal flex items-center gap-1.5">
                       <Icon icon="solar:check-circle-linear" /> Payment confirmed. The full report
                       is below.
                     </p>
@@ -1277,11 +1270,28 @@ export default function ReportPage() {
                     )}
 
                     {!interactions || !interactions.pairs || interactions.pairs.length === 0 ? (
-                      <p className="text-xs text-faint italic">
-                        {knownCount < 2
-                          ? "A stack needs two compounds the registry knows about before there is a pair to read. An empty table here is not a statement about safety."
-                          : "No pairs came back for this stack. That is missing data, not an all-clear, and it must not be read as one."}
-                      </p>
+                      <div className="rounded-lg border border-dashed border-line void-hatch px-3 py-3">
+                        {knownCount < 2 ? (
+                          <>
+                            <p className="text-sm text-muted">
+                              A stack needs two compounds the registry knows about before there is a
+                              pair to read.
+                            </p>
+                            <p className="text-[11px] text-faint mt-1">
+                              An empty table here is not a statement about safety.
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm text-muted">
+                              No pairs came back for this stack.
+                            </p>
+                            <p className="text-[11px] text-faint mt-1">
+                              That is missing data, not an all-clear, and it must not be read as one.
+                            </p>
+                          </>
+                        )}
+                      </div>
                     ) : (
                       <div className="space-y-2">
                         {interactions.pairs.map((pair) => (

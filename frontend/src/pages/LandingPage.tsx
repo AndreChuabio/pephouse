@@ -11,8 +11,8 @@ import { EvidenceMeter } from "../components/ui/EvidenceMeter";
 // in miniature: the meter, the mono verdict, the honest spread.
 const READOUT: ReadonlyArray<{ name: string; tier: number; verdict: string }> = [
   { name: "Tirzepatide", tier: 4, verdict: "TRIAL-BACKED" },
-  { name: "BPC-157", tier: 3, verdict: "OBSERVATIONAL" },
   { name: "CJC-1295", tier: 2, verdict: "SOURCE DATA ONLY" },
+  { name: "BPC-157", tier: 1, verdict: "ANECDOTE ONLY" },
 ];
 
 /** Public front door. Sits outside AppShell so it owns the full viewport. Both
@@ -77,12 +77,13 @@ export default function LandingPage() {
           <span className="eyebrow !text-muted">PepHouse</span>
         </div>
 
-        <h1 className="font-display text-[2.6rem] sm:text-5xl lg:text-[3.4rem] font-semibold tracking-[-0.03em] text-ink leading-[1.02] text-balance">
+        <h1 className="font-display text-4xl sm:text-5xl lg:text-[3.4rem] font-semibold tracking-[-0.03em] text-ink leading-[1.02] text-balance">
           Honest evidence for the peptide-curious.
         </h1>
 
         <p className="mt-6 text-base sm:text-lg text-muted max-w-md leading-relaxed">
-          Tiered clinical evidence, your real biomarkers, no hype.
+          We rank how strong the evidence actually is — completed trials, papers, lab
+          assays, or nothing — and call “no data” what it is: a finding, not a blank.
         </p>
 
         {/* signature: a live assay readout — real compounds against their true
@@ -90,7 +91,7 @@ export default function LandingPage() {
         <div className="mt-11 w-full max-w-md rounded-[var(--radius-card)] border border-line bg-surface/60 backdrop-blur-sm overflow-hidden">
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-line">
             <span className="eyebrow">Live readout</span>
-            <span className="readout text-[11px] text-faint">evidence · tier 4 → 1</span>
+            <span className="readout text-[11px] text-faint">trials → anecdote</span>
           </div>
           <div className="divide-y divide-line/70">
             {READOUT.map((row) => (
@@ -101,7 +102,13 @@ export default function LandingPage() {
                 </span>
                 <span
                   className={`readout text-[10px] tracking-wide ${
-                    row.tier >= 4 ? "text-ink" : row.tier >= 3 ? "text-tier-3" : "text-faint"
+                    row.tier >= 4
+                      ? "text-ink"
+                      : row.tier >= 3
+                        ? "text-tier-3"
+                        : row.tier >= 2
+                          ? "text-tier-2"
+                          : "text-tier-1"
                   }`}
                 >
                   {row.verdict}
@@ -111,13 +118,18 @@ export default function LandingPage() {
           </div>
         </div>
 
+        {/* one honest caption tying the meter to the rule it enforces */}
+        <p className="mt-3 text-[11px] leading-relaxed text-faint max-w-md">
+          Same scale for everything. A completed trial and a forum post never render alike.
+        </p>
+
         <div className="mt-11 flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
           <button
             type="button"
             onClick={handleTryIt}
             className="w-full sm:w-auto rounded-xl bg-signal hover:bg-signal-bright px-7 py-3 text-sm font-semibold text-on-signal flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
           >
-            {signedIn ? "Enter" : "Try it now"}
+            {signedIn ? "Enter" : "Read my stack"}
             <Icon icon="lucide:arrow-right" className="w-4 h-4" />
           </button>
           {!signedIn && (
@@ -158,6 +170,13 @@ export default function LandingPage() {
             {authError}
           </p>
         )}
+
+        {/* the unpurchasable-index thesis, surfaced as a visible trust line rather
+            than left to the footer fine print */}
+        <div className="mt-8 flex items-center gap-2 text-[11px] text-muted">
+          <Icon icon="lucide:lock" className="w-3 h-3 text-faint shrink-0" />
+          <span>No vendor pays us. The index can’t be bought.</span>
+        </div>
       </main>
 
       {/* Required disclosures. This is a health product that takes payment, so
