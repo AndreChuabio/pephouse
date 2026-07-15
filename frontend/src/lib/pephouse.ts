@@ -143,6 +143,11 @@ export async function fetchVendor(id: number): Promise<VendorBreakdown> {
   return apiJson<VendorBreakdown>(`/vendors/${id}`);
 }
 
+/** Sources on file for one compound — the vendor-side view of the match. */
+export async function fetchVendorsForCompound(compoundId: number): Promise<SourceMatch> {
+  return apiJson<SourceMatch>(`/vendors/for-compound/${compoundId}`);
+}
+
 // ----------------------------------------------------------- vendor onboarding
 
 export interface VendorSubmissionInput {
@@ -333,12 +338,12 @@ export interface StackReport {
   summary: StackSummary;
 }
 
-/** The free teaser: the verdict, without the evidence behind it. */
+/** The free teaser: the verdict and the source match, without the evidence detail. */
 export interface StackPreview {
   summary: StackSummary;
   compounds: Pick<
     CompoundSection,
-    "compound_id" | "name" | "top_tier" | "verdict" | "verdict_text"
+    "compound_id" | "name" | "top_tier" | "verdict" | "verdict_text" | "sources"
   >[];
   locked: string[];
 }

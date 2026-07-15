@@ -23,6 +23,7 @@ import type {
   InteractionPair,
   LadderRung,
   MatchedSource,
+  SourceMatch,
   StackPreview,
   StackReport,
   TrialRow,
@@ -652,7 +653,7 @@ function CompoundReport({ section }: CompoundReportProps) {
         />
       </div>
 
-      <SourceMatch section={section} />
+      <SourceMatchBlock name={section.name} match={section.sources} />
     </Panel>
   );
 }
@@ -738,9 +739,9 @@ function SourceRow({ source }: { source: MatchedSource }) {
 
 /** The source match for one compound. Harm reduction, not a storefront: it shows
  *  who has data, grades by independent testing, and names the untested axes. No
- *  buy control, no ranking for sale. */
-function SourceMatch({ section }: { section: CompoundSection }) {
-  const match = section.sources;
+ *  buy control, no ranking for sale. Reused by the free preview and the full
+ *  report — the match ships free either way. */
+function SourceMatchBlock({ name, match }: { name: string; match: SourceMatch }) {
   const sources = match?.sources ?? [];
 
   return (
@@ -749,7 +750,7 @@ function SourceMatch({ section }: { section: CompoundSection }) {
         <Icon icon="solar:box-linear" /> Sources on file
       </h4>
       <p className="text-[11px] text-faint leading-relaxed mb-3">
-        If you are going to source {section.name}, here is what testing actually exists.
+        If you are going to source {name}, here is what testing actually exists.
         Ordered by independent testing, never by payment. Not a recommendation to buy.
       </p>
 
@@ -768,7 +769,7 @@ function SourceMatch({ section }: { section: CompoundSection }) {
       ) : (
         <div className="rounded-lg border border-dashed border-line void-hatch px-3 py-3">
           <p className="text-[11px] text-muted">
-            No sources on file for {section.name}. That absence is a finding, not a clean bill.
+            No sources on file for {name}. That absence is a finding, not a clean bill.
           </p>
         </div>
       )}
@@ -1161,6 +1162,9 @@ export default function ReportPage() {
                         <p className="text-xs text-muted mt-1.5 leading-relaxed">
                           {verdictText(compound.verdict_text)}
                         </p>
+                        {/* The source match ships free: nobody pays to learn no source
+                            was tested for what they inject. */}
+                        <SourceMatchBlock name={compound.name} match={compound.sources} />
                       </div>
                     ))}
                   </div>

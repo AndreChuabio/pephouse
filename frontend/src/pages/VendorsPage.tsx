@@ -10,10 +10,13 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
   fetchVendor,
   fetchVendors,
+  fetchVendorsForCompound,
   submitVendor,
   type IndependentAssay,
+  type MatchedSource,
   type MemberReport,
   type SafetyAxis,
+  type SourceMatch,
   type SourcingRow,
   type TestedAxes,
   type TestingStatus,
@@ -22,6 +25,7 @@ import {
   type VendorSubmissionInput,
   type VendorSummary,
 } from "../lib/pephouse";
+import { fetchCompounds, type RegistryCompound } from "../lib/api";
 
 // The public vendor index.
 //
@@ -1988,6 +1992,57 @@ function VendorDetail({ vendor, onBack }: { vendor: VendorBreakdown; onBack: () 
 
 // ------------------------------------------------------------------ the page
 
+/** One matched source for the compound-match view — same honest grammar as the
+ *  index and the stack report: independent assay vs claim vs none, and the gap. */
+function MatchedSourceRow({ source }: { source: MatchedSource }) {
+  const meta = TESTING_STATUS[source.testing_status] ?? TESTING_STATUS.none;
+  const assay = source.assay;
+  const gapWords = source.safety_gap.map((a) => AXIS_LABEL[a].toLowerCase());
+  return (
+    <Link
+      to={`/vendors?vendor=${source.vendor_id}`}
+      className="block rounded-lg border border-line bg-surface px-3 py-2.5 hover:border-line-bright transition-colors"
+    >
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-display text-sm font-medium text-ink min-w-0 truncate">
+          {source.name ?? "Unnamed source"}
+        </span>
+        <span
+          className={`readout text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border whitespace-nowrap ${meta.badge}`}
+        >
+          {meta.label}
+        </span>
+        {source.source_type ? (
+          <span className="readout text-[10px] text-faint whitespace-nowrap">
+            {source.source_type.replace(/_/g, " ")}
+          </span>
+        ) : null}
+        {source.country ? (
+          <span className="readout text-[10px] text-faint whitespace-nowrap">{source.country}</span>
+        ) : null}
+      </div>
+      {assay ? (
+        <div className="mt-1.5 flex items-center gap-3 flex-wrap readout text-[11px] text-muted">
+          {assay.purity_pct != null ? <span>purity {assay.purity_pct}%</span> : null}
+          {assay.failed ? (
+            <span className="text-danger">
+              failed{assay.fail_reason ? `: ${assay.fail_reason}` : ""}
+            </span>
+          ) : null}
+          {assay.test_lab ? <span className="text-faint">via {assay.test_lab}</span> : null}
+        </div>
+      ) : null}
+      {source.safety_gap.length > 0 ? (
+        <p className="mt-1.5 text-[11px] text-faint">Never tested for {gapWords.join(", ")}.</p>
+      ) : source.testing_status === "independent" ? (
+        <p className="mt-1.5 text-[11px] text-measured">
+          Tested clean on purity, endotoxin, heavy metals, and sterility.
+        </p>
+      ) : null}
+    </Link>
+  );
+}
+
 export default function VendorsPage() {
   useDocumentTitle("PepHouse | Vendors");
 
@@ -2099,6 +2154,83 @@ export default function VendorsPage() {
         (a.name ?? "").localeCompare(b.name ?? "", undefined, { sensitivity: "base" }),
       );
   }, [vendors]);
+
+  // ---- filters (client-side over the loaded index) ----
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<TestingStatus | "all">("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [countryFilter, setCountryFilter] = useState<string>("all");
+
+  const sourceTypes = useMemo(
+    () => Array.from(new Set(vendors.map((v) => v.source_type).filter((t): t is string => !!t))).sort(),
+    [vendors],
+  );
+  const countries = useMemo(
+    () => Array.from(new Set(vendors.map((v) => v.country).filter((c): c is string => !!c))).sort(),
+    [vendors],
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return sorted.filter((v) => {
+      if (q && !(v.name ?? "").toLowerCase().includes(q)) return false;
+      if (statusFilter !== "all" && v.testing_status !== statusFilter) return false;
+      if (typeFilter !== "all" && v.source_type !== typeFilter) return false;
+      if (countryFilter !== "all" && v.country !== countryFilter) return false;
+      return true;
+    });
+  }, [sorted, search, statusFilter, typeFilter, countryFilter]);
+
+  const filtersActive =
+    search.trim() !== "" || statusFilter !== "all" || typeFilter !== "all" || countryFilter !== "all";
+  const clearFilters = useCallback(() => {
+    setSearch("");
+    setStatusFilter("all");
+    setTypeFilter("all");
+    setCountryFilter("all");
+  }, []);
+
+  // ---- compound match (which sources have data for one compound) ----
+  const [compounds, setCompounds] = useState<RegistryCompound[]>([]);
+  const [matchId, setMatchId] = useState<number | null>(null);
+  const [match, setMatch] = useState<SourceMatch | null>(null);
+  const [matchLoading, setMatchLoading] = useState(false);
+  const [matchError, setMatchError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchCompounds()
+      .then(setCompounds)
+      .catch(() => setCompounds([]));
+  }, []);
+
+  useEffect(() => {
+    if (matchId === null) {
+      setMatch(null);
+      setMatchError(null);
+      return;
+    }
+    let active = true;
+    setMatchLoading(true);
+    setMatchError(null);
+    fetchVendorsForCompound(matchId)
+      .then((data) => {
+        if (active) setMatch(data);
+      })
+      .catch((err: unknown) => {
+        if (active) setMatchError(err instanceof Error ? err.message : "could not load sources");
+      })
+      .finally(() => {
+        if (active) setMatchLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [matchId]);
+
+  const matchName = useMemo(
+    () => compounds.find((c) => c.id === matchId)?.name ?? "this compound",
+    [compounds, matchId],
+  );
 
   return (
     <AppShell>
@@ -2244,6 +2376,37 @@ export default function VendorsPage() {
               </div>
             </Panel>
 
+            {/* Find sources for a compound — the input->source match, vendor-side. */}
+            <Panel className="p-4 md:p-5">
+              <PanelHeader icon="solar:magnifer-linear" title="Sources for a compound" />
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <select
+                  value={matchId ?? ""}
+                  onChange={(e) => setMatchId(e.target.value ? Number(e.target.value) : null)}
+                  className="readout text-sm bg-surface-2 border border-line rounded-lg px-3 py-2 text-ink focus:border-signal focus:outline-none w-full sm:w-auto"
+                >
+                  <option value="">Pick a compound...</option>
+                  {compounds.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                {matchId !== null && (
+                  <button
+                    type="button"
+                    onClick={() => setMatchId(null)}
+                    className="text-xs font-medium text-muted hover:text-ink border border-line rounded-lg px-3 py-2 transition-colors self-start sm:self-auto"
+                  >
+                    Back to full index
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-faint mt-3 leading-relaxed">
+                Ordered by independent testing, never by payment. Not a recommendation to buy.
+              </p>
+            </Panel>
+
             {listError !== null && (
               <Panel className="p-4">
                 <div className="flex items-center justify-between gap-3">
@@ -2260,7 +2423,41 @@ export default function VendorsPage() {
               </Panel>
             )}
 
-            {listLoading && vendors.length === 0 ? (
+            {matchId !== null ? (
+              matchLoading ? (
+                <div className="text-sm text-faint flex items-center gap-2 py-4">
+                  <Icon icon="svg-spinners:180-ring" className="text-signal" /> Loading sources for{" "}
+                  {matchName}
+                </div>
+              ) : matchError !== null ? (
+                <Panel className="p-4">
+                  <p className="text-sm text-danger">{matchError}</p>
+                </Panel>
+              ) : (
+                <Panel className="p-4 md:p-5">
+                  <PanelHeader icon="solar:box-linear" title={`Sources on file for ${matchName}`} />
+                  {match?.note ? (
+                    <div className="rounded-lg border border-dashed border-line void-hatch px-3 py-2.5 mb-3">
+                      <p className="text-[11px] text-muted leading-relaxed">{match.note}</p>
+                    </div>
+                  ) : null}
+                  {(match?.sources.length ?? 0) > 0 ? (
+                    <div className="space-y-2">
+                      {match?.sources.map((s) => (
+                        <MatchedSourceRow key={s.vendor_id} source={s} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-line void-hatch px-3 py-3">
+                      <p className="text-[11px] text-muted">
+                        No sources on file for {matchName}. That absence is a finding, not a clean
+                        bill.
+                      </p>
+                    </div>
+                  )}
+                </Panel>
+              )
+            ) : listLoading && vendors.length === 0 ? (
               <div className="text-sm text-faint flex items-center gap-2 py-4">
                 <Icon icon="svg-spinners:180-ring" className="text-signal" /> Loading the vendor index
               </div>
@@ -2283,20 +2480,93 @@ export default function VendorsPage() {
                 </div>
               </Panel>
             ) : (
-              <Panel className="overflow-hidden">
-                <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2.5 border-b border-line bg-surface-2/40">
-                  <span className="col-span-3 eyebrow !text-[10px]">Vendor</span>
-                  <span className="col-span-2 eyebrow !text-[10px]">Country</span>
-                  <span className="col-span-2 eyebrow !text-[10px]">Source type</span>
-                  <span className="col-span-3 eyebrow !text-[10px] !text-muted">Testing status</span>
-                  <span className="col-span-2 eyebrow !text-[10px] justify-self-end">
-                    Assays / claims / reports
-                  </span>
+              <>
+                {/* Filter the index. Filtering is not ranking — order stays alphabetical. */}
+                <div className="flex flex-col md:flex-row md:items-center gap-2.5 flex-wrap">
+                  <div className="relative flex-1 min-w-[140px]">
+                    <Icon
+                      icon="solar:magnifer-linear"
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint text-sm"
+                    />
+                    <input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search vendors"
+                      className="w-full bg-surface-2 border border-line rounded-lg pl-8 pr-3 py-2 text-sm text-ink placeholder:text-faint focus:border-signal focus:outline-none"
+                    />
+                  </div>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as TestingStatus | "all")}
+                    className="readout text-xs bg-surface-2 border border-line rounded-lg px-3 py-2 text-ink focus:border-signal focus:outline-none"
+                  >
+                    <option value="all">All testing</option>
+                    <option value="independent">Independent assay</option>
+                    <option value="vendor_claim">Vendor claim</option>
+                    <option value="none">No data</option>
+                  </select>
+                  <select
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value)}
+                    className="readout text-xs bg-surface-2 border border-line rounded-lg px-3 py-2 text-ink focus:border-signal focus:outline-none"
+                  >
+                    <option value="all">All source types</option>
+                    {sourceTypes.map((t) => (
+                      <option key={t} value={t}>
+                        {t.replace(/_/g, " ")}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={countryFilter}
+                    onChange={(e) => setCountryFilter(e.target.value)}
+                    className="readout text-xs bg-surface-2 border border-line rounded-lg px-3 py-2 text-ink focus:border-signal focus:outline-none"
+                  >
+                    <option value="all">All countries</option>
+                    {countries.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                  {filtersActive && (
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className="text-xs font-medium text-muted hover:text-ink transition-colors px-2 py-2"
+                    >
+                      Clear
+                    </button>
+                  )}
                 </div>
-                {sorted.map((vendor) => (
-                  <VendorRow key={vendor.id} vendor={vendor} onOpen={openVendor} />
-                ))}
-              </Panel>
+
+                <p className="readout text-[11px] text-faint">
+                  {filtered.length} of {vendors.length} vendors
+                </p>
+
+                {filtered.length === 0 ? (
+                  <Panel className="p-4 md:p-6">
+                    <p className="text-sm text-faint text-center">
+                      No vendors match these filters.
+                    </p>
+                  </Panel>
+                ) : (
+                  <Panel className="overflow-hidden">
+                    <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2.5 border-b border-line bg-surface-2/40">
+                      <span className="col-span-3 eyebrow !text-[10px]">Vendor</span>
+                      <span className="col-span-2 eyebrow !text-[10px]">Country</span>
+                      <span className="col-span-2 eyebrow !text-[10px]">Source type</span>
+                      <span className="col-span-3 eyebrow !text-[10px] !text-muted">Testing status</span>
+                      <span className="col-span-2 eyebrow !text-[10px] justify-self-end">
+                        Assays / claims / reports
+                      </span>
+                    </div>
+                    {filtered.map((vendor) => (
+                      <VendorRow key={vendor.id} vendor={vendor} onOpen={openVendor} />
+                    ))}
+                  </Panel>
+                )}
+              </>
             )}
           </div>
         )}

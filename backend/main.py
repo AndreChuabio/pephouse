@@ -548,6 +548,17 @@ def review_vendor_submission(
         raise HTTPException(status_code=502, detail=f"review failed: {exc}")
 
 
+@app.get("/vendors/for-compound/{compound_id}")
+def vendors_for_compound(compound_id: int) -> dict:
+    """Sources on file for one compound — the vendor-side view of the match.
+
+    Same editorial, unpurchasable data the stack report uses, so the Vendors page
+    can filter to "who has data for this compound". Declared before /vendors/{id}
+    so the literal path is not captured by the numeric one.
+    """
+    return vendors.sources_for_compound(compound_id)
+
+
 @app.get("/vendors/{vendor_id}")
 def get_vendor(vendor_id: int) -> dict:
     """The full per-vendor breakdown: assays, claims, member reports, sourcing."""
@@ -684,6 +695,10 @@ def stack_report_preview(body: StackReportRequest) -> dict:
                 "top_tier": c["top_tier"],
                 "verdict": c["verdict"],
                 "verdict_text": c["verdict_text"],
+                # The source match ships FREE: no one should pay a dollar to learn
+                # that no source has been independently tested for what they inject.
+                # That is harm-reduction information, not a paywalled feature.
+                "sources": c["sources"],
             }
             for c in full["compounds"]
         ],
