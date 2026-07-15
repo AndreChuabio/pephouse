@@ -212,16 +212,16 @@ export default function SettingsPage() {
 
   return (
     <AppShell>
-      <div className="h-16 flex items-center px-8 border-b border-line shrink-0 z-10">
+      <div className="h-16 flex items-center px-4 md:px-8 border-b border-line shrink-0 z-10">
         <h1 className="font-display text-sm font-medium text-ink tracking-tight flex items-center gap-2">
           <Icon icon="solar:settings-linear" className="text-signal" /> Settings
         </h1>
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-8 py-10 space-y-8">
+        <div className="max-w-2xl mx-auto px-4 md:px-8 py-8 md:py-10 space-y-8">
           {/* 1 — Account */}
-          <Panel className="p-6">
+          <Panel className="p-4 md:p-6">
             <PanelHeader icon="solar:user-linear" title="Account" />
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-full bg-surface-2 border border-line flex items-center justify-center shrink-0">
@@ -274,7 +274,7 @@ export default function SettingsPage() {
           </Panel>
 
           {/* 2 — Profile */}
-          <Panel className="p-6">
+          <Panel className="p-4 md:p-6">
             <PanelHeader
               icon="lucide:clipboard-list"
               title="Profile"
@@ -389,7 +389,7 @@ export default function SettingsPage() {
           </Panel>
 
           {/* 3 — Connected data */}
-          <Panel className="p-6">
+          <Panel className="p-4 md:p-6">
             <PanelHeader icon="lucide:plug-zap" title="Connected data" />
             <div className="space-y-3">
               {/* Blood panel */}
@@ -525,7 +525,7 @@ export default function SettingsPage() {
           </Panel>
 
           {/* 4 — Data rights */}
-          <Panel className="p-6">
+          <Panel className="p-4 md:p-6">
             <PanelHeader icon="lucide:shield" title="Data rights" />
             <div className="space-y-3">
               <div className="flex items-center gap-3 rounded-lg border border-line bg-base/40 px-4 py-3">
@@ -579,13 +579,13 @@ export default function SettingsPage() {
                       Type <span className="font-mono font-semibold text-danger">DELETE</span> to
                       confirm.
                     </p>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <input
                         value={deleteInput}
                         onChange={(e) => setDeleteInput(e.target.value)}
                         placeholder="DELETE"
                         disabled={deleteStep === "deleting"}
-                        className="flex-1 bg-base border border-line rounded-lg py-1.5 px-3 text-sm text-ink font-mono outline-none focus:border-danger transition-colors"
+                        className="flex-1 min-w-0 bg-base border border-line rounded-lg py-1.5 px-3 text-sm text-ink font-mono outline-none focus:border-danger transition-colors"
                       />
                       <button
                         type="button"

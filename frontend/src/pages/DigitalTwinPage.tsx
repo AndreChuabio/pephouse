@@ -407,14 +407,14 @@ export default function DigitalTwinPage() {
 
   return (
     <AppShell>
-      <div className="h-16 flex items-center px-8 border-b border-line shrink-0 z-10">
+      <div className="h-16 flex items-center px-4 md:px-8 border-b border-line shrink-0 z-10">
         <h1 className="text-sm font-medium text-ink tracking-tight flex items-center gap-2">
           <Icon icon="solar:users-group-two-rounded-linear" className="text-signal" /> Galleria
         </h1>
       </div>
-      <div className="flex flex-row w-full flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row w-full flex-1 min-h-0 overflow-y-auto md:overflow-hidden">
         {/* LEFT — inputs + simulation controls */}
-        <div className="w-[420px] flex-shrink-0 border-r border-line flex flex-col bg-surface h-full overflow-y-auto">
+        <div className="w-full md:w-[420px] flex-shrink-0 border-b md:border-b-0 md:border-r border-line flex flex-col bg-surface md:h-full md:overflow-y-auto">
           <div className="p-4 flex flex-col gap-4">
             {/* Base Demographic (editable, explicit Save) */}
             <div className="bg-surface-2 border border-line rounded-[var(--radius-card)] p-4 flex flex-col gap-3">
@@ -578,8 +578,8 @@ export default function DigitalTwinPage() {
         </div>
 
         {/* CENTER — holographic twin + summary overlay / link-data gate */}
-        <div className="flex-1 flex flex-row bg-base overflow-hidden h-full">
-          <div className="flex-1 relative flex flex-col items-center justify-center h-full p-8 border-r border-line">
+        <div className="flex-1 flex flex-col md:flex-row bg-base md:overflow-hidden md:h-full">
+          <div className="flex-1 relative flex flex-col items-center justify-center min-h-[620px] md:h-full p-4 md:p-8 border-b md:border-b-0 md:border-r border-line overflow-hidden">
             <div className="absolute top-8 left-8 z-20">
               <h1 className="text-2xl font-semibold tracking-tight text-ink flex items-center gap-3">
                 Digital Twin
@@ -598,7 +598,7 @@ export default function DigitalTwinPage() {
             </div>
 
             {/* body — nudged right so it doesn't collide with the top-left summary */}
-            <div className={`translate-x-20 ${connected ? "" : "opacity-40 grayscale transition-all"}`}>
+            <div className={`md:translate-x-20 ${connected ? "" : "opacity-40 grayscale transition-all"}`}>
               <BodyVisualization active={connected} />
             </div>
 
@@ -659,8 +659,8 @@ export default function DigitalTwinPage() {
           </div>
 
           {/* RIGHT — link controls + health summary + (deferred) result */}
-          <div className="w-[480px] flex-shrink-0 h-full overflow-y-auto flex flex-col border-l border-line">
-            <div className="p-6 border-b border-line">
+          <div className="w-full md:w-[480px] flex-shrink-0 md:h-full md:overflow-y-auto flex flex-col border-t md:border-t-0 md:border-l border-line">
+            <div className="p-4 md:p-6 border-b border-line">
               <div className="grid grid-cols-2 gap-3">
                 <SourceCard
                   title="Pull Blood Panels"
@@ -700,7 +700,7 @@ export default function DigitalTwinPage() {
               )}
             </div>
 
-            <div className="p-6 flex-1 flex flex-col gap-6">
+            <div className="p-4 md:p-6 flex-1 flex flex-col gap-6">
               <div className="flex items-start justify-between">
                 <div>
                   <h2 className="text-xl font-semibold text-ink tracking-tight">Health Summary</h2>

@@ -346,17 +346,17 @@ export default function VendorSubmitPage() {
 
   return (
     <AppShell>
-      <div className="h-16 flex items-center px-5 sm:px-8 border-b border-line shrink-0 z-10">
+      <div className="h-16 flex items-center px-4 md:px-8 border-b border-line shrink-0 z-10">
         <h1 className="font-display text-sm font-medium text-ink tracking-tight flex items-center gap-2">
           <Icon icon="solar:shop-2-linear" className="text-signal" /> Submit a vendor
         </h1>
       </div>
 
       <div className="flex-1 overflow-y-auto z-10">
-        <div className="max-w-xl mx-auto px-5 sm:px-8 py-8 pb-16">
+        <div className="max-w-xl mx-auto px-4 md:px-8 py-8 pb-16">
           {receipt !== null ? (
             <div className="space-y-6" role="status">
-              <Panel className="p-6">
+              <Panel className="p-5 sm:p-6">
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-full bg-signal/10 border border-signal/30 flex items-center justify-center shrink-0">
                     <Icon icon="solar:check-read-linear" className="text-lg text-signal" />

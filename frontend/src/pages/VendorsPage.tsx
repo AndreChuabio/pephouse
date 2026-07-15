@@ -513,7 +513,10 @@ function VendorRow({ vendor, onOpen }: { vendor: VendorSummary; onOpen: (id: num
       onClick={() => onOpen(vendor.id)}
       className="w-full text-left px-4 py-3 border-b border-line last:border-b-0 hover:bg-surface-2/40 transition-colors group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-signal/50"
     >
-      <div className="grid grid-cols-12 gap-3 items-center">
+      {/* Desktop: a 12-col table row. Mobile: every cell is full width, so the
+          row reads as a stacked card — name, country, source, testing status,
+          and the assay/claim/report counts, one under the next. */}
+      <div className="grid grid-cols-12 gap-2 md:gap-3 md:items-center">
         <div className="col-span-12 md:col-span-3 min-w-0">
           <p className="font-display tracking-tight text-sm font-medium text-ink truncate group-hover:text-signal transition-colors">
             {isMissing(vendor.name) ? "Unnamed vendor" : text(vendor.name)}
@@ -523,13 +526,13 @@ function VendorRow({ vendor, onOpen }: { vendor: VendorSummary; onOpen: (id: num
           </p>
         </div>
 
-        <div className="col-span-6 md:col-span-2 min-w-0">
+        <div className="col-span-12 md:col-span-2 min-w-0">
           <p className="text-xs text-muted truncate">
             {isMissing(vendor.country) ? <Missing>Country not on file</Missing> : text(vendor.country)}
           </p>
         </div>
 
-        <div className="col-span-6 md:col-span-2 min-w-0">
+        <div className="col-span-12 md:col-span-2 min-w-0">
           {isMissing(vendor.source_type) ? (
             <p className="text-xs truncate">
               <Missing>Source type not on file</Missing>
@@ -1925,7 +1928,7 @@ function VendorDetail({ vendor, onBack }: { vendor: VendorBreakdown; onBack: () 
       </div>
 
       {/* 4. Member reports */}
-      <div className="pl-8 md:pl-16 border-l border-line">
+      <div className="pl-6 md:pl-16 border-l border-line">
         <Panel className="p-4 bg-surface-2/20">
           <PanelHeader
             icon="solar:users-group-rounded-linear"
@@ -2099,18 +2102,18 @@ export default function VendorsPage() {
 
   return (
     <AppShell>
-      <header className="h-16 flex items-center justify-between px-8 border-b border-line shrink-0 z-10 bg-base/80 backdrop-blur-md">
-        <div className="flex items-center gap-4">
+      <header className="h-16 flex items-center justify-between gap-3 px-4 md:px-8 border-b border-line shrink-0 z-10 bg-base/80 backdrop-blur-md">
+        <div className="flex items-center gap-3 md:gap-4 min-w-0">
           <h1 className="font-display text-lg font-semibold tracking-tight text-ink flex items-center gap-2">
-            <Icon icon="solar:shop-2-linear" className="text-signal text-xl" />
+            <Icon icon="solar:shop-2-linear" className="text-signal text-xl shrink-0" />
             Vendors
           </h1>
-          <div className="h-4 w-px bg-line" />
-          <span className="text-xs font-medium text-muted bg-surface border border-line px-2 py-1 rounded-full">
+          <div className="hidden sm:block h-4 w-px bg-line" />
+          <span className="hidden sm:inline-block text-xs font-medium text-muted bg-surface border border-line px-2 py-1 rounded-full whitespace-nowrap">
             <span className="readout">{vendors.length}</span> in the index
           </span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 md:gap-4 shrink-0">
           <button
             type="button"
             onClick={() => void loadList()}
@@ -2130,7 +2133,7 @@ export default function VendorsPage() {
         </div>
       </header>
 
-      <div className="flex-1 min-h-0 overflow-y-auto p-6 z-10">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6 z-10">
         {selectedId !== null ? (
           detailLoading ? (
             <p className="text-sm text-faint">Loading vendor…</p>
@@ -2151,7 +2154,7 @@ export default function VendorsPage() {
             <VendorDetail vendor={detail} onBack={closeVendor} />
           ) : (
             // Not loading, no error, no vendor. Say so rather than render a blank page.
-            <Panel className="p-8 max-w-2xl">
+            <Panel className="p-4 md:p-8 max-w-2xl">
               <div className="flex flex-col items-center text-center gap-2">
                 <Icon icon="solar:file-corrupted-linear" className="text-3xl text-faint" />
                 <p className="text-ink font-medium">No such vendor in the index</p>
@@ -2260,7 +2263,7 @@ export default function VendorsPage() {
             {listLoading && vendors.length === 0 ? (
               <p className="text-sm text-faint">Loading the vendor index…</p>
             ) : listError !== null && vendors.length === 0 ? null : vendors.length === 0 ? (
-              <Panel className="p-8">
+              <Panel className="p-4 md:p-8">
                 <div className="flex flex-col items-center text-center gap-2">
                   <Icon icon="solar:shop-2-linear" className="text-3xl text-faint" />
                   <p className="text-ink font-medium">No vendors in the index yet</p>

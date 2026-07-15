@@ -891,14 +891,14 @@ export default function ReportPage() {
 
   return (
     <AppShell>
-      <div className="h-16 flex items-center px-6 sm:px-8 border-b border-line shrink-0 z-10">
+      <div className="h-16 flex items-center px-4 md:px-8 border-b border-line shrink-0 z-10">
         <h1 className="font-display text-sm font-medium text-ink tracking-tight flex items-center gap-2">
           <Icon icon="solar:clipboard-check-linear" className="text-signal" /> Stack report
         </h1>
       </div>
 
       <div className="flex-1 overflow-y-auto z-10">
-        <div className="max-w-3xl mx-auto px-4 sm:px-8 py-8 space-y-6">
+        <div className="max-w-3xl mx-auto px-4 md:px-8 py-6 md:py-8 space-y-6">
           {/* ---------------------------------------------------- stack builder */}
           <Panel className="p-5 sm:p-6">
             <PanelHeader
@@ -948,7 +948,7 @@ export default function ReportPage() {
                     Nothing in the registry matches that.
                   </p>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-1">
                     {visibleCompounds.map((compound) => {
                       const on = selected.includes(compound.id);
                       return (

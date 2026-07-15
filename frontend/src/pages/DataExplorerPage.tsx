@@ -158,15 +158,15 @@ export default function DataExplorerPage() {
 
   return (
     <AppShell>
-      <div className="h-16 flex items-center px-8 border-b border-line shrink-0 z-10">
+      <div className="h-16 flex items-center px-4 md:px-8 border-b border-line shrink-0 z-10">
         <h1 className="text-sm font-medium text-ink tracking-tight flex items-center gap-2">
           <Icon icon="solar:database-linear" className="text-signal" /> Cellar
         </h1>
       </div>
 
-      <div className="flex-1 overflow-hidden flex z-10">
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden z-10">
         {/* compound list */}
-        <div className="w-64 border-r border-line overflow-y-auto shrink-0">
+        <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-line md:overflow-y-auto shrink-0">
           {compounds.map((c) => (
             <button
               key={c.id}
@@ -186,7 +186,7 @@ export default function DataExplorerPage() {
         </div>
 
         {/* detail */}
-        <div className="flex-1 overflow-y-auto p-8">
+        <div className="flex-1 md:overflow-y-auto p-4 md:p-8">
           {!selected ? (
             <p className="text-muted">Loading compounds&hellip;</p>
           ) : (
