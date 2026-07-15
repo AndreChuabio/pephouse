@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { AppShell } from "../components/layout/AppShell";
 import { EvidenceMeter } from "../components/ui/EvidenceMeter";
 import { Panel } from "../components/ui/Panel";
@@ -22,6 +22,7 @@ import type {
   CompoundSection,
   InteractionPair,
   LadderRung,
+  MatchedSource,
   StackPreview,
   StackReport,
   TrialRow,
@@ -650,7 +651,128 @@ function CompoundReport({ section }: CompoundReportProps) {
           count={section.lab_results ?? 0}
         />
       </div>
+
+      <SourceMatch section={section} />
     </Panel>
+  );
+}
+
+const AXIS_LABEL: Record<string, string> = {
+  endotoxin: "endotoxin",
+  heavy_metals: "heavy metals",
+  sterility: "sterility",
+};
+
+const SOURCE_STATUS: Record<
+  MatchedSource["testing_status"],
+  { label: string; text: string; bg: string; border: string }
+> = {
+  independent: {
+    label: "Independently tested",
+    text: "text-measured",
+    bg: "bg-measured/10",
+    border: "border-measured/30",
+  },
+  vendor_claim: {
+    label: "Vendor claim only",
+    text: "text-signal",
+    bg: "bg-signal/10",
+    border: "border-signal/25",
+  },
+  none: {
+    label: "No testing on file",
+    text: "text-faint",
+    bg: "bg-transparent",
+    border: "border-line",
+  },
+};
+
+/** One matched source row: who has data for this compound, graded honestly. */
+function SourceRow({ source }: { source: MatchedSource }) {
+  const meta = SOURCE_STATUS[source.testing_status];
+  const assay = source.assay;
+  return (
+    <Link
+      to={`/vendors?vendor=${source.vendor_id}`}
+      className="block rounded-lg border border-line bg-surface px-3 py-2.5 hover:border-line-bright transition-colors"
+    >
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-display text-sm font-medium text-ink min-w-0 truncate">
+          {source.name ?? "Unnamed source"}
+        </span>
+        <span
+          className={`readout text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border ${meta.text} ${meta.bg} ${meta.border} whitespace-nowrap`}
+        >
+          {meta.label}
+        </span>
+        {source.source_type ? (
+          <span className="readout text-[10px] text-faint whitespace-nowrap">
+            {source.source_type.replace(/_/g, " ")}
+          </span>
+        ) : null}
+      </div>
+
+      {assay ? (
+        <div className="mt-1.5 flex items-center gap-3 flex-wrap readout text-[11px] text-muted">
+          {assay.purity_pct != null ? <span>purity {assay.purity_pct}%</span> : null}
+          {assay.failed ? (
+            <span className="text-danger">failed{assay.fail_reason ? `: ${assay.fail_reason}` : ""}</span>
+          ) : null}
+          {assay.test_lab ? <span className="text-faint">via {assay.test_lab}</span> : null}
+        </div>
+      ) : null}
+
+      {/* The gap is the point: a purity certificate is not a safety result. */}
+      {source.safety_gap.length > 0 ? (
+        <p className="mt-1.5 text-[11px] text-faint">
+          Never tested for {source.safety_gap.map((a) => AXIS_LABEL[a] ?? a).join(", ")}.
+        </p>
+      ) : source.testing_status === "independent" ? (
+        <p className="mt-1.5 text-[11px] text-measured">
+          Tested clean on purity, endotoxin, heavy metals, and sterility.
+        </p>
+      ) : null}
+    </Link>
+  );
+}
+
+/** The source match for one compound. Harm reduction, not a storefront: it shows
+ *  who has data, grades by independent testing, and names the untested axes. No
+ *  buy control, no ranking for sale. */
+function SourceMatch({ section }: { section: CompoundSection }) {
+  const match = section.sources;
+  const sources = match?.sources ?? [];
+
+  return (
+    <div className="mt-6 pt-5 border-t border-line">
+      <h4 className="eyebrow mb-1 flex items-center gap-1.5">
+        <Icon icon="solar:box-linear" /> Sources on file
+      </h4>
+      <p className="text-[11px] text-faint leading-relaxed mb-3">
+        If you are going to source {section.name}, here is what testing actually exists.
+        Ordered by independent testing, never by payment. Not a recommendation to buy.
+      </p>
+
+      {match?.note ? (
+        <div className="rounded-lg border border-dashed border-line void-hatch px-3 py-2.5 mb-3">
+          <p className="text-[11px] text-muted leading-relaxed">{match.note}</p>
+        </div>
+      ) : null}
+
+      {sources.length > 0 ? (
+        <div className="space-y-2">
+          {sources.map((s) => (
+            <SourceRow key={s.vendor_id} source={s} />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-line void-hatch px-3 py-3">
+          <p className="text-[11px] text-muted">
+            No sources on file for {section.name}. That absence is a finding, not a clean bill.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 

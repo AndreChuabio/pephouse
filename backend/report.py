@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 
 import db
+import vendors
 from evidence import build_simulation_data, completed_trials, unfinished_trials
 
 logger = logging.getLogger("pephouse.report")
@@ -141,6 +142,11 @@ def _compound_section(compound_id: int) -> dict | None:
         "case_studies": len(tables.get("case_studies", [])),
         "anecdotes": len(tables.get("anecdotes", [])),
         "lab_results": len(tables.get("vendor_lab_results", [])),
+        # Source match: the sources on file for this specific compound, graded by
+        # whether an independent assay exists for it and which safety axes went
+        # untested. Harm reduction for someone sourcing anyway — not a storefront,
+        # not ranked for money, no recommendation to buy.
+        "sources": vendors.sources_for_compound(compound_id),
     }
 
 

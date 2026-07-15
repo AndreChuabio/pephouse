@@ -238,6 +238,41 @@ export interface TrialRow {
   source_url: string | null;
 }
 
+/** An independent assay result for one source, on one compound. */
+export interface MatchedAssay {
+  purity_pct: number | null;
+  potency_factor: number | null;
+  identity_verified: boolean | null;
+  endotoxin_detected: boolean | null;
+  heavy_metals_detected: boolean | null;
+  sterility_pass: boolean | null;
+  failed: boolean | null;
+  fail_reason: string | null;
+  test_lab: string | null;
+  test_date: string | null;
+}
+
+/** A source on file for a compound, graded by whether it was independently tested. */
+export interface MatchedSource {
+  vendor_id: number;
+  name: string | null;
+  source_type: string | null;
+  country: string | null;
+  testing_status: TestingStatus;
+  assay: MatchedAssay | null;
+  tested_axes: TestedAxes;
+  safety_gap: SafetyAxis[];
+  member_reports: number;
+}
+
+/** The source match for one compound. Editorial, unpurchasable, not a buy list. */
+export interface SourceMatch {
+  sources: MatchedSource[];
+  any_independent_tested: boolean;
+  /** Present when no source has an independent assay for this compound. */
+  note: string | null;
+}
+
 export interface CompoundSection {
   compound_id: number;
   name: string;
@@ -249,6 +284,8 @@ export interface CompoundSection {
   top_tier: EvidenceTier;
   verdict: Verdict;
   verdict_text: string;
+  /** Sources on file for this compound (full report only). */
+  sources: SourceMatch;
   /** Trials that finished. These, and only these, are evidence. */
   completed_trials: TrialRow[];
   /** Registered but unfinished. Worth knowing, never evidence. */

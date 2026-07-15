@@ -291,6 +291,96 @@ def get_breakdown(vendor_id: int) -> dict | None:
     }
 
 
+def sources_for_compound(compound_id: int) -> dict:
+    """The sources on file for one compound — the stack report's source match.
+
+    Harm reduction, not a storefront. It surfaces which sources have any data for
+    THIS compound, grades each by whether an INDEPENDENT assay exists for it (a
+    vendor's own claim is never counted as tested), and names the safety axes that
+    were never checked. When no source has been independently tested for the
+    compound — the common case in this market — it says so plainly. Nothing here
+    is ranked for money and nothing is a recommendation to buy: it informs someone
+    who is going to source anyway.
+    """
+    assays = _rows("vendor_lab_results", compound_id=compound_id)
+    reports = _rows("user_reports", compound_id=compound_id)
+    sourcing = _rows("sourcing", compound_id=compound_id)
+
+    vendor_ids = {
+        row["vendor_id"]
+        for row in assays + reports + sourcing
+        if row.get("vendor_id") is not None
+    }
+    if not vendor_ids:
+        return {"sources": [], "any_independent_tested": False, "note": "No sources on file for this compound."}
+
+    try:
+        vendor_rows = supabase.table("vendors").select("*").in_("id", list(vendor_ids)).execute().data or []
+    except Exception:  # noqa: BLE001 - a lookup miss yields an empty match, not a crash
+        logger.warning("vendors: could not resolve vendors for compound %s", compound_id, exc_info=True)
+        vendor_rows = []
+    vendors_by_id = {r["id"]: r for r in vendor_rows}
+
+    sources: list[dict] = []
+    for vid in vendor_ids:
+        vendor = vendors_by_id.get(vid, {})
+        v_assays = [a for a in assays if a.get("vendor_id") == vid]
+        v_reports = [r for r in reports if r.get("vendor_id") == vid]
+        claims = _published_claims(vid)
+        covered = _tested_axes(v_assays)
+
+        # The most informative assay to surface: a failure outranks a pass, since
+        # a failed assay is the single most important thing to show.
+        assay = None
+        if v_assays:
+            failed = [a for a in v_assays if a.get("failed")]
+            a = (failed or v_assays)[0]
+            assay = {
+                "purity_pct": a.get("purity_pct"),
+                "potency_factor": a.get("potency_factor"),
+                "identity_verified": a.get("identity_verified"),
+                "endotoxin_detected": a.get("endotoxin_detected"),
+                "heavy_metals_detected": a.get("heavy_metals_detected"),
+                "sterility_pass": a.get("sterility_pass"),
+                "failed": a.get("failed"),
+                "fail_reason": a.get("fail_reason"),
+                "test_lab": a.get("test_lab"),
+                "test_date": a.get("test_date"),
+            }
+
+        sources.append(
+            {
+                "vendor_id": vid,
+                "name": vendor.get("name"),
+                "source_type": vendor.get("source_type"),
+                "country": vendor.get("country"),
+                "testing_status": _testing_status(v_assays, claims),
+                "assay": assay,
+                "tested_axes": covered,
+                "safety_gap": _safety_gap(covered),
+                "member_reports": len(v_reports),
+            }
+        )
+
+    # Editorial order only: independent assays first, then claims, then unknowns.
+    order = {TESTING_INDEPENDENT: 0, TESTING_VENDOR_CLAIM: 1, TESTING_NONE: 2}
+    sources.sort(key=lambda s: (order[s["testing_status"]], 0 if s["assay"] else 1, s["name"] or ""))
+
+    any_independent = any(s["testing_status"] == TESTING_INDEPENDENT for s in sources)
+    return {
+        "sources": sources,
+        "any_independent_tested": any_independent,
+        "note": (
+            None
+            if any_independent
+            else (
+                "No source has been independently tested for this compound. What is "
+                "shown below is a vendor claim or an absence, not a verified result."
+            )
+        ),
+    }
+
+
 def submit(payload: dict, submitter_ref: str) -> dict:
     """Record a vendor claim or a buyer report against a source.
 
