@@ -678,13 +678,13 @@ const SOURCE_STATUS: Record<
     label: "Vendor claim only",
     text: "text-signal",
     bg: "bg-signal/10",
-    border: "border-signal/25",
+    border: "border-signal/30 border-dashed",
   },
   none: {
     label: "No testing on file",
     text: "text-faint",
-    bg: "bg-transparent",
-    border: "border-line",
+    bg: "bg-surface void-hatch",
+    border: "border-line border-dashed",
   },
 };
 
@@ -692,6 +692,17 @@ const SOURCE_STATUS: Record<
 function SourceRow({ source }: { source: MatchedSource }) {
   const meta = SOURCE_STATUS[source.testing_status];
   const assay = source.assay;
+  // A clean bill requires PASSING results on every safety axis, not merely that the
+  // axis was covered. safety_gap is presence-only: an assay that DETECTED endotoxin,
+  // failed sterility, or was the wrong compound still leaves it empty. Gating on
+  // coverage would print a false all-clear on the exact axes that hospitalize people.
+  const safetyClear =
+    !!assay &&
+    !assay.failed &&
+    assay.endotoxin_detected === false &&
+    assay.heavy_metals_detected === false &&
+    assay.sterility_pass === true &&
+    assay.identity_verified !== false;
   return (
     <Link
       to={`/vendors?vendor=${source.vendor_id}`}
@@ -728,9 +739,9 @@ function SourceRow({ source }: { source: MatchedSource }) {
         <p className="mt-1.5 text-[11px] text-faint">
           Never tested for {source.safety_gap.map((a) => AXIS_LABEL[a] ?? a).join(", ")}.
         </p>
-      ) : source.testing_status === "independent" ? (
+      ) : safetyClear ? (
         <p className="mt-1.5 text-[11px] text-measured">
-          Tested clean on purity, endotoxin, heavy metals, and sterility.
+          Independently tested for endotoxin, heavy metals, and sterility — none detected.
         </p>
       ) : null}
     </Link>
@@ -1163,8 +1174,12 @@ export default function ReportPage() {
                           {verdictText(compound.verdict_text)}
                         </p>
                         {/* The source match ships free: nobody pays to learn no source
-                            was tested for what they inject. */}
-                        <SourceMatchBlock name={compound.name} match={compound.sources} />
+                            was tested for what they inject. A payer already gets it once
+                            inside the full report below, so the preview drops it for them
+                            rather than rendering the same block twice. */}
+                        {!hasAccess && (
+                          <SourceMatchBlock name={compound.name} match={compound.sources} />
+                        )}
                       </div>
                     ))}
                   </div>

@@ -326,7 +326,6 @@ def sources_for_compound(compound_id: int) -> dict:
         vendor = vendors_by_id.get(vid, {})
         v_assays = [a for a in assays if a.get("vendor_id") == vid]
         v_reports = [r for r in reports if r.get("vendor_id") == vid]
-        claims = _published_claims(vid)
         covered = _tested_axes(v_assays)
 
         # The most informative assay to surface: a failure outranks a pass, since
@@ -354,7 +353,18 @@ def sources_for_compound(compound_id: int) -> dict:
                 "name": vendor.get("name"),
                 "source_type": vendor.get("source_type"),
                 "country": vendor.get("country"),
-                "testing_status": _testing_status(v_assays, claims),
+                # Graded on THIS compound's independent assays only. A vendor's
+                # published "we third-party test" disclosure is a blanket,
+                # vendor-level claim with no compound scope — vendor_submissions
+                # carries no compound_id — so it must not grade a specific
+                # compound as "vendor_claim" here. Doing so would promote a
+                # marketing claim into a compound-specific one it never made.
+                # Absent an independent assay for this compound, the source reads
+                # as "none" for it; the general claim still shows on the vendor's
+                # own page, where it is not misattributed to any one compound.
+                "testing_status": (
+                    TESTING_INDEPENDENT if v_assays else TESTING_NONE
+                ),
                 "assay": assay,
                 "tested_axes": covered,
                 "safety_gap": _safety_gap(covered),

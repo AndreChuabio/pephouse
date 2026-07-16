@@ -1020,6 +1020,15 @@ const FORM_INPUT =
   "w-full bg-base border border-line rounded-lg py-2.5 px-3 text-sm text-ink " +
   "placeholder:text-faint outline-none focus:border-line-bright focus-visible:ring-1 focus-visible:ring-signal transition-colors";
 
+// The index filter + compound-picker selects share the canonical input treatment
+// (see FORM_INPUT): bg-base, an animated border, and the signal focus ring. They
+// also carry a 44px touch height and 16px text so a phone never zoom-jerks on
+// focus, and they drop the OS chevron (appearance-none + pr-9) for the Solar arrow
+// overlaid by SelectChevron, so the dropdowns read as the same custom control family.
+const FILTER_SELECT =
+  "readout w-full bg-base border border-line rounded-lg py-2.5 pl-3 pr-9 min-h-11 text-base text-ink " +
+  "appearance-none outline-none focus:border-line-bright focus-visible:ring-1 focus-visible:ring-signal transition-colors";
+
 type TriState = "yes" | "no" | "unknown";
 type Sentiment = "positive" | "neutral" | "negative";
 
@@ -1998,13 +2007,24 @@ function MatchedSourceRow({ source }: { source: MatchedSource }) {
   const meta = TESTING_STATUS[source.testing_status] ?? TESTING_STATUS.none;
   const assay = source.assay;
   const gapWords = source.safety_gap.map((a) => AXIS_LABEL[a].toLowerCase());
+  // safety_gap being empty only means a value exists on all three safety axes,
+  // never that any of them passed. A positive line is earned only when the assay
+  // is on file, did not fail overall, and each safety axis came back negative /
+  // sterile with identity confirmed — never by the mere presence of a result.
+  const cleanBill =
+    assay != null &&
+    !assay.failed &&
+    assay.endotoxin_detected === false &&
+    assay.heavy_metals_detected === false &&
+    assay.sterility_pass === true &&
+    assay.identity_verified !== false;
   return (
     <Link
       to={`/vendors?vendor=${source.vendor_id}`}
       className="block rounded-lg border border-line bg-surface px-3 py-2.5 hover:border-line-bright transition-colors"
     >
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="font-display text-sm font-medium text-ink min-w-0 truncate">
+        <span className="font-display text-sm font-medium text-ink min-w-0 basis-full sm:basis-auto truncate">
           {source.name ?? "Unnamed source"}
         </span>
         <span
@@ -2034,12 +2054,24 @@ function MatchedSourceRow({ source }: { source: MatchedSource }) {
       ) : null}
       {source.safety_gap.length > 0 ? (
         <p className="mt-1.5 text-[11px] text-faint">Never tested for {gapWords.join(", ")}.</p>
-      ) : source.testing_status === "independent" ? (
+      ) : source.testing_status === "independent" && cleanBill ? (
         <p className="mt-1.5 text-[11px] text-measured">
-          Tested clean on purity, endotoxin, heavy metals, and sterility.
+          Independently tested for endotoxin, heavy metals, and sterility — none detected.
         </p>
       ) : null}
     </Link>
+  );
+}
+
+/** The Solar chevron overlaid on a native <select> stripped of its OS arrow, so
+ *  the dropdowns match the custom Instrument controls. Absolutely positioned; the
+ *  parent must be `relative` and the select must reserve `pr-9`. */
+function SelectChevron() {
+  return (
+    <Icon
+      icon="solar:alt-arrow-down-linear"
+      className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-faint text-sm"
+    />
   );
 }
 
@@ -2379,32 +2411,41 @@ export default function VendorsPage() {
             {/* Find sources for a compound — the input->source match, vendor-side. */}
             <Panel className="p-4 md:p-5">
               <PanelHeader icon="solar:magnifer-linear" title="Sources for a compound" />
+              <p className="text-[11px] text-faint mb-3 leading-relaxed">
+                Running something specific? Pick it to see which sources have data for that
+                compound — this replaces the index below.
+              </p>
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <select
-                  value={matchId ?? ""}
-                  onChange={(e) => setMatchId(e.target.value ? Number(e.target.value) : null)}
-                  className="readout text-sm bg-surface-2 border border-line rounded-lg px-3 py-2 text-ink focus:border-signal focus:outline-none w-full sm:w-auto"
-                >
-                  <option value="">Pick a compound...</option>
-                  {compounds.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative w-full sm:w-auto">
+                  <select
+                    value={matchId ?? ""}
+                    onChange={(e) => setMatchId(e.target.value ? Number(e.target.value) : null)}
+                    className={FILTER_SELECT}
+                  >
+                    <option value="">Pick a compound...</option>
+                    {compounds.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <SelectChevron />
+                </div>
                 {matchId !== null && (
                   <button
                     type="button"
                     onClick={() => setMatchId(null)}
-                    className="text-xs font-medium text-muted hover:text-ink border border-line rounded-lg px-3 py-2 transition-colors self-start sm:self-auto"
+                    className="text-xs font-medium text-muted hover:text-ink border border-line rounded-lg px-3 min-h-11 inline-flex items-center transition-colors self-start sm:self-auto"
                   >
                     Back to full index
                   </button>
                 )}
               </div>
-              <p className="text-[11px] text-faint mt-3 leading-relaxed">
-                Ordered by independent testing, never by payment. Not a recommendation to buy.
-              </p>
+              {matchId !== null && (
+                <p className="text-[11px] text-faint mt-3 leading-relaxed">
+                  Ordered by independent testing, never by payment. Not a recommendation to buy.
+                </p>
+              )}
             </Panel>
 
             {listError !== null && (
@@ -2492,48 +2533,57 @@ export default function VendorsPage() {
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Search vendors"
-                      className="w-full bg-surface-2 border border-line rounded-lg pl-8 pr-3 py-2 text-sm text-ink placeholder:text-faint focus:border-signal focus:outline-none"
+                      className="w-full bg-base border border-line rounded-lg pl-8 pr-3 py-2.5 min-h-11 text-base text-ink placeholder:text-faint outline-none focus:border-line-bright focus-visible:ring-1 focus-visible:ring-signal transition-colors"
                     />
                   </div>
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value as TestingStatus | "all")}
-                    className="readout text-xs bg-surface-2 border border-line rounded-lg px-3 py-2 text-ink focus:border-signal focus:outline-none"
-                  >
-                    <option value="all">All testing</option>
-                    <option value="independent">Independent assay</option>
-                    <option value="vendor_claim">Vendor claim</option>
-                    <option value="none">No data</option>
-                  </select>
-                  <select
-                    value={typeFilter}
-                    onChange={(e) => setTypeFilter(e.target.value)}
-                    className="readout text-xs bg-surface-2 border border-line rounded-lg px-3 py-2 text-ink focus:border-signal focus:outline-none"
-                  >
-                    <option value="all">All source types</option>
-                    {sourceTypes.map((t) => (
-                      <option key={t} value={t}>
-                        {t.replace(/_/g, " ")}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={countryFilter}
-                    onChange={(e) => setCountryFilter(e.target.value)}
-                    className="readout text-xs bg-surface-2 border border-line rounded-lg px-3 py-2 text-ink focus:border-signal focus:outline-none"
-                  >
-                    <option value="all">All countries</option>
-                    {countries.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative min-w-[130px]">
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value as TestingStatus | "all")}
+                      className={FILTER_SELECT}
+                    >
+                      <option value="all">All testing</option>
+                      <option value="independent">Independent assay</option>
+                      <option value="vendor_claim">Vendor claim</option>
+                      <option value="none">No data</option>
+                    </select>
+                    <SelectChevron />
+                  </div>
+                  <div className="relative min-w-[130px]">
+                    <select
+                      value={typeFilter}
+                      onChange={(e) => setTypeFilter(e.target.value)}
+                      className={FILTER_SELECT}
+                    >
+                      <option value="all">All source types</option>
+                      {sourceTypes.map((t) => (
+                        <option key={t} value={t}>
+                          {t.replace(/_/g, " ")}
+                        </option>
+                      ))}
+                    </select>
+                    <SelectChevron />
+                  </div>
+                  <div className="relative min-w-[130px]">
+                    <select
+                      value={countryFilter}
+                      onChange={(e) => setCountryFilter(e.target.value)}
+                      className={FILTER_SELECT}
+                    >
+                      <option value="all">All countries</option>
+                      {countries.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                    <SelectChevron />
+                  </div>
                   {filtersActive && (
                     <button
                       type="button"
                       onClick={clearFilters}
-                      className="text-xs font-medium text-muted hover:text-ink transition-colors px-2 py-2"
+                      className="text-xs font-medium text-muted hover:text-ink transition-colors px-2 min-h-11 inline-flex items-center self-start"
                     >
                       Clear
                     </button>
