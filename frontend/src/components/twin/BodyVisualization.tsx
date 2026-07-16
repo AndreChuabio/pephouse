@@ -20,32 +20,35 @@ export function BodyVisualization({ active }: BodyVisualizationProps) {
           onError={() => setImageOk(false)}
           className="h-[600px] w-auto object-contain relative z-10 transition-all duration-700"
           style={{
-            filter: active ? "drop-shadow(0 0 14px rgba(56,189,248,0.5))" : "grayscale(0.7) brightness(0.55)",
+            filter: active ? "drop-shadow(0 0 14px rgba(245,176,62,0.5))" : "grayscale(0.7) brightness(0.55)",
             opacity: active ? 1 : 0.6,
           }}
         />
         {/* base platform */}
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-[300px] h-16 pointer-events-none">
-          <div className="absolute inset-0 rounded-[100%] border border-sky-500/40" style={{ transform: "rotateX(73deg)", boxShadow: active ? "0 0 34px rgba(56,189,248,0.4)" : "none" }} />
-          <div className="absolute inset-x-12 inset-y-3 rounded-[100%] border border-blue-400/50" style={{ transform: "rotateX(73deg)" }} />
-          <div className={`absolute inset-x-24 inset-y-5 rounded-[100%] ${active ? "bg-sky-500/25" : "bg-zinc-700/10"}`} style={{ transform: "rotateX(73deg)" }} />
+          <div className="absolute inset-0 rounded-[100%] border border-signal/40" style={{ transform: "rotateX(73deg)", boxShadow: active ? "0 0 34px rgba(245,176,62,0.4)" : "none" }} />
+          <div className="absolute inset-x-12 inset-y-3 rounded-[100%] border border-signal/50" style={{ transform: "rotateX(73deg)" }} />
+          <div className={`absolute inset-x-24 inset-y-5 rounded-[100%] ${active ? "bg-signal/25" : "bg-line/10"}`} style={{ transform: "rotateX(73deg)" }} />
         </div>
         {active && (
-          <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-44 h-80 bg-gradient-to-t from-sky-400/15 via-sky-500/5 to-transparent blur-2xl rounded-[100%] pointer-events-none" />
+          <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-44 h-80 bg-gradient-to-t from-signal/15 via-signal/5 to-transparent blur-2xl rounded-[100%] pointer-events-none" />
         )}
       </div>
     );
   }
 
-  const line = active ? "#38bdf8" : "#3f3f46";
-  const fill = active ? "#0ea5e9" : "#27272a";
+  // Instrument palette: warm signal when the twin is live, ghosted line and
+  // surface-2 when it is idle. Hex mirrors the tokens in index.css because SVG
+  // presentation attributes do not resolve CSS var().
+  const line = active ? "#f5b03e" : "#3a4256";
+  const fill = active ? "#f5b03e" : "#141a29";
 
   return (
     <div className="relative w-full max-w-sm mx-auto h-[600px] flex items-center justify-center">
       <svg
         viewBox="0 0 220 480"
         className="h-full w-auto relative z-10"
-        style={{ filter: active ? "drop-shadow(0 0 10px rgba(56,189,248,0.55))" : "none", transition: "filter 600ms ease" }}
+        style={{ filter: active ? "drop-shadow(0 0 10px rgba(245,176,62,0.55))" : "none", transition: "filter 600ms ease" }}
         aria-label="Digital twin body"
       >
         <defs>
@@ -54,12 +57,12 @@ export function BodyVisualization({ active }: BodyVisualizationProps) {
             <stop offset="100%" stopColor={fill} stopOpacity={active ? 0.12 : 0.05} />
           </linearGradient>
           <radialGradient id="lungGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#f59e0b" stopOpacity={active ? 0.7 : 0} />
-            <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
+            <stop offset="0%" stopColor="#f5b03e" stopOpacity={active ? 0.7 : 0} />
+            <stop offset="100%" stopColor="#f5b03e" stopOpacity="0" />
           </radialGradient>
           <radialGradient id="gutGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#38bdf8" stopOpacity={active ? 0.5 : 0.05} />
-            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
+            <stop offset="0%" stopColor="#f5b03e" stopOpacity={active ? 0.5 : 0.05} />
+            <stop offset="100%" stopColor="#f5b03e" stopOpacity="0" />
           </radialGradient>
         </defs>
 
@@ -92,20 +95,20 @@ export function BodyVisualization({ active }: BodyVisualizationProps) {
         </g>
 
         {/* heart node */}
-        <circle cx="103" cy="150" r="3.5" fill={active ? "#fcd34d" : "#52525b"}>
+        <circle cx="103" cy="150" r="3.5" fill={active ? "#ffc766" : "#566072"}>
           {active && <animate attributeName="r" values="3;5;3" dur="1.8s" repeatCount="indefinite" />}
         </circle>
       </svg>
 
       {/* holographic base platform */}
       <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[280px] h-16 pointer-events-none">
-        <div className="absolute inset-0 rounded-[100%] border border-sky-500/40" style={{ transform: "rotateX(73deg)", boxShadow: active ? "0 0 34px rgba(56,189,248,0.4)" : "none" }} />
-        <div className="absolute inset-x-12 inset-y-3 rounded-[100%] border border-blue-400/50" style={{ transform: "rotateX(73deg)" }} />
-        <div className={`absolute inset-x-24 inset-y-5 rounded-[100%] ${active ? "bg-sky-500/25" : "bg-zinc-700/10"}`} style={{ transform: "rotateX(73deg)" }} />
+        <div className="absolute inset-0 rounded-[100%] border border-signal/40" style={{ transform: "rotateX(73deg)", boxShadow: active ? "0 0 34px rgba(245,176,62,0.4)" : "none" }} />
+        <div className="absolute inset-x-12 inset-y-3 rounded-[100%] border border-signal/50" style={{ transform: "rotateX(73deg)" }} />
+        <div className={`absolute inset-x-24 inset-y-5 rounded-[100%] ${active ? "bg-signal/25" : "bg-line/10"}`} style={{ transform: "rotateX(73deg)" }} />
       </div>
 
       {active && (
-        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 w-44 h-80 bg-gradient-to-t from-sky-400/15 via-sky-500/5 to-transparent blur-2xl rounded-[100%] pointer-events-none" />
+        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 w-44 h-80 bg-gradient-to-t from-signal/15 via-signal/5 to-transparent blur-2xl rounded-[100%] pointer-events-none" />
       )}
     </div>
   );

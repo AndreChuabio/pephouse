@@ -343,3 +343,89 @@ class IntakeResult(BaseModel):
 class LabUploadResponse(BaseModel):
     connected: bool
     extracted_count: int
+
+
+# ---- Vendor registry (GET /vendors, POST /vendors/submissions) ----------------
+# The vendor index is an education surface. Nothing here carries a price, a bid,
+# or a placement: a vendor can submit data and be listed, and that is all the
+# relationship there is. Submissions are CLAIMS until an independent assay backs
+# them, and the API keeps that distinction rather than flattening it.
+
+
+class VendorSubmission(BaseModel):
+    """Body for POST /vendors/submissions — a vendor disclosing itself, or a
+    member reporting a source they buy from.
+
+    Lands as `pending`. Nothing is published unreviewed: an open write path into
+    a public index invites a vendor to inflate itself with an invented COA, a
+    competitor to smear a rival with an invented failure, and a vendor to flood
+    its own page with five-star reports.
+    """
+
+    vendor_name: str
+    # Set when adding to an EXISTING vendor from its page; the report/claim
+    # attaches on publish without a name-match guess.
+    vendor_id: int | None = None
+    # 'vendor' = a self-disclosure/claim; 'member' = a buyer report.
+    submission_kind: str = "vendor"
+    manufacturer: str | None = None
+    country: str | None = None
+    # compounding_pharmacy | vendor_tested | gray_market | research_chem | brand
+    source_type: str | None = None
+    # Contact — a grey-market source may have only a channel, no website.
+    website: str | None = None
+    telegram: str | None = None
+    whatsapp: str | None = None
+    contact_other: str | None = None
+    # Vendor-claim fields. A CLAIM by the submitter; only a third-party assay is
+    # evidence of testing.
+    third_party_tested: bool | None = None
+    test_labs: list[str] | None = None
+    coa_url: str | None = None
+    gmp_certified: bool | None = None
+    # Member-report fields (used when submission_kind == 'member').
+    report_compound_id: int | None = None
+    report_sentiment: str | None = None  # positive | neutral | negative
+    report_cost_usd: float | None = None
+    report_batch_lab_tested: bool | None = None
+    submitted_by: str = "vendor"  # vendor | member | operator
+    notes: str | None = None
+
+
+class VendorSubmissionResult(BaseModel):
+    id: int | None = None
+    status: str
+
+
+class VendorReview(BaseModel):
+    """Body for the operator review of a pending submission."""
+
+    status: str  # published | rejected
+    review_note: str | None = None
+    vendor_id: int | None = None
+
+
+# ---- Stack report + billing --------------------------------------------------
+
+
+class StackReportRequest(BaseModel):
+    """Body for POST /report — the compounds a member is running."""
+
+    compounds: list[int]
+
+
+class CheckoutResponse(BaseModel):
+    checkout_url: str
+
+
+class BillingStatus(BaseModel):
+    """Whether this member can open the paid report, and whether we can sell it."""
+
+    has_access: bool
+    configured: bool
+    price_cents: int
+    currency: str
+
+
+class ConfirmRequest(BaseModel):
+    session_id: str

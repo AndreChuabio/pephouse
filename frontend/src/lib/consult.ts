@@ -16,10 +16,7 @@
 
 import type { DailyCall } from "@daily-co/daily-js";
 import { dossierTiers, type DossierTierEntry } from "../data/dossierTiers";
-
-const API_BASE =
-  import.meta.env.VITE_API_URL ??
-  "https://pephouse-backend-production.up.railway.app";
+import { apiFetch } from "./http";
 
 // =============================================================== session mint
 
@@ -44,7 +41,7 @@ export async function startConsultSession(
   if (goal) body.goal = goal;
   if (compoundName) body.compound_name = compoundName;
 
-  const res = await fetch(`${API_BASE}/consult/session`, {
+  const res = await apiFetch(`/consult/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -365,7 +362,7 @@ export type ConsultToolName =
   | "submit_intake"
   | "intake";
 
-const INTAKE_ENDPOINT = `${API_BASE}/consult/intake`;
+const INTAKE_ENDPOINT = "/consult/intake";
 
 /** Map a persona tool name to the backend endpoint that answers it.
  * The persona registers the intake tool as `submit_trial_intake`
@@ -373,9 +370,9 @@ const INTAKE_ENDPOINT = `${API_BASE}/consult/intake`;
 function toolEndpoint(name: string): string | null {
   switch (name) {
     case "get_compound_evidence":
-      return `${API_BASE}/consult/tools/get_compound_evidence`;
+      return "/consult/tools/get_compound_evidence";
     case "screen_eligibility":
-      return `${API_BASE}/consult/tools/screen_eligibility`;
+      return "/consult/tools/screen_eligibility";
     case "submit_trial_intake":
     case "submit_intake":
     case "intake":
@@ -406,7 +403,7 @@ export async function dispatchToolCall(
     endpoint === INTAKE_ENDPOINT && userRef
       ? { ...evt.args, user_ref: userRef }
       : evt.args;
-  const res = await fetch(endpoint, {
+  const res = await apiFetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -467,7 +464,7 @@ export interface TrialIntakeRow {
 
 /** Read the coordinator queue, most recent first. */
 export async function fetchIntakes(limit = 100): Promise<TrialIntakeRow[]> {
-  const res = await fetch(`${API_BASE}/consult/intakes?limit=${limit}`);
+  const res = await apiFetch(`/consult/intakes?limit=${limit}`);
   if (!res.ok) {
     throw new Error((await res.text()) || `intakes failed (${res.status})`);
   }

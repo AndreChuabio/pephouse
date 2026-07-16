@@ -126,9 +126,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [applySession, startAnonymous, applyFallback]);
 
   const signInWithGoogle = useCallback(async (): Promise<void> => {
-    // Land on the twin after OAuth: "/" renders the marketing LandingPage
-    // unconditionally, which reads as a failed sign-in to a returning user.
-    const redirectTo = `${window.location.origin}/digital-twin`;
+    // Land on the stack report after OAuth: "/" renders the marketing
+    // LandingPage unconditionally, which reads as a failed sign-in to a
+    // returning user. The report is also where a buyer needs to end up, since a
+    // purchase requires a durable account.
+    const redirectTo = `${window.location.origin}/report`;
     // Always sign in with Google outright. Linking Google to an anonymous
     // session (the old upgrade path) breaks for any returning user: their
     // Google identity is already linked to their real account, so linkIdentity

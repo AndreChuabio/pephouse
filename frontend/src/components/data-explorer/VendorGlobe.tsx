@@ -24,21 +24,26 @@ const SOURCE_LABEL: Record<string, string> = {
   brand: "Brand / pharma-grade",
 };
 
-const SOURCE_TONE: Record<string, "green" | "orange" | "zinc"> = {
-  compounding_pharmacy: "green",
-  brand: "green",
-  vendor_tested: "orange",
-  gray_market: "orange",
-  research_chem: "zinc",
+// Source trust ramp, recolored to the Instrument system: pharma-grade origins
+// read as an independently measured fact (teal), gray-market origins as the
+// brand's caution voice (amber), and research chemicals as neutral/unknown.
+type SourceTone = "verified" | "caution" | "neutral";
+
+const SOURCE_TONE: Record<string, SourceTone> = {
+  compounding_pharmacy: "verified",
+  brand: "verified",
+  vendor_tested: "caution",
+  gray_market: "caution",
+  research_chem: "neutral",
 };
 
-const TONE_CLASS: Record<"green" | "orange" | "zinc", string> = {
-  green: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-  orange: "bg-orange-500/10 text-orange-400 border-orange-500/20",
-  zinc: "bg-zinc-800 text-zinc-400 border-zinc-700",
+const TONE_CLASS: Record<SourceTone, string> = {
+  verified: "bg-measured/10 text-measured border-measured/30",
+  caution: "bg-signal/10 text-signal border-signal/30",
+  neutral: "bg-surface text-faint border-line",
 };
 
-function Badge({ tone, children }: { tone: "green" | "orange" | "zinc"; children: React.ReactNode }) {
+function Badge({ tone, children }: { tone: SourceTone; children: React.ReactNode }) {
   return (
     <span
       className={`px-1.5 py-0.5 rounded text-[10px] font-medium border uppercase tracking-wider whitespace-nowrap shrink-0 ${TONE_CLASS[tone]}`}
@@ -207,11 +212,12 @@ function Marker({ position, pulseSeed }: { position: THREE.Vector3; pulseSeed: n
     <group position={position}>
       <mesh>
         <sphereGeometry args={[0.02, 16, 16]} />
-        <meshBasicMaterial color="#22d3a0" />
+        {/* --color-measured: an independently measured data point on the globe. */}
+        <meshBasicMaterial color="#46d6bd" />
       </mesh>
       <mesh ref={haloRef}>
         <sphereGeometry args={[0.032, 16, 16]} />
-        <meshBasicMaterial color="#22d3a0" transparent opacity={0.45} />
+        <meshBasicMaterial color="#46d6bd" transparent opacity={0.45} />
       </mesh>
     </group>
   );
@@ -287,14 +293,13 @@ export function VendorGlobe({ vendors, compoundName }: { vendors: Vendor[]; comp
   }, [activeCountry, byCountry]);
 
   return (
-    <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-lg overflow-hidden">
-      <div className="px-4 py-3 border-b border-zinc-800/60 flex items-center gap-2 flex-wrap">
-        <Icon icon="solar:global-linear" className="text-blue-500" />
-        <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-widest">
-          Global Sourcing
-        </h3>
-        <span className="text-xs text-zinc-600">
-          {compoundName} &middot; {vendorTotal} vendor{vendorTotal === 1 ? "" : "s"} across {countryTotal}{" "}
+    <div className="bg-surface/30 border border-line rounded-lg overflow-hidden">
+      <div className="px-4 py-3 border-b border-line flex items-center gap-2 flex-wrap">
+        <Icon icon="solar:global-linear" className="text-signal" />
+        <h3 className="eyebrow !text-muted">Global Sourcing</h3>
+        <span className="text-xs text-faint">
+          {compoundName} &middot; <span className="readout">{vendorTotal}</span> vendor
+          {vendorTotal === 1 ? "" : "s"} across <span className="readout">{countryTotal}</span>{" "}
           countr{countryTotal === 1 ? "y" : "ies"}
         </span>
       </div>
@@ -334,26 +339,28 @@ export function VendorGlobe({ vendors, compoundName }: { vendors: Vendor[]; comp
           </Canvas>
           {markers.length === 0 && (
             <div className="absolute inset-x-0 bottom-3 flex items-center justify-center pointer-events-none">
-              <p className="text-xs text-zinc-500 italic bg-zinc-950/60 px-2 py-1 rounded">
+              <p className="text-xs text-faint italic bg-base/60 px-2 py-1 rounded">
                 no mapped vendor origins
               </p>
             </div>
           )}
 
           {activeCountry && (
-            <div className="absolute bottom-3 left-3 right-3 md:right-auto md:max-w-xs z-10 bg-zinc-950/95 border border-zinc-800 rounded-lg shadow-2xl backdrop-blur-md p-3 animate-in fade-in duration-150">
+            <div className="absolute bottom-3 left-3 right-3 md:right-auto md:max-w-xs z-10 bg-base/95 border border-line rounded-lg shadow-2xl backdrop-blur-md p-3 animate-in fade-in duration-150">
               <div className="flex items-center justify-between gap-2 mb-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <Icon icon="solar:map-point-linear" className="text-emerald-400/80 shrink-0" />
-                  <h4 className="text-sm font-semibold text-zinc-100 truncate">{activeCountry}</h4>
-                  <span className="text-[10px] text-zinc-500 font-mono shrink-0">
+                  <Icon icon="solar:map-point-linear" className="text-measured/80 shrink-0" />
+                  <h4 className="font-display tracking-tight text-sm font-semibold text-ink truncate">
+                    {activeCountry}
+                  </h4>
+                  <span className="readout text-[10px] text-faint shrink-0">
                     {activeVendors.length} vendor{activeVendors.length === 1 ? "" : "s"}
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setActiveCountry(null)}
-                  className="text-zinc-500 hover:text-zinc-200 shrink-0 -m-1 p-1"
+                  className="text-faint hover:text-ink shrink-0 -m-1 p-1"
                   aria-label="Close"
                 >
                   <Icon icon="solar:close-circle-linear" className="text-base" />
@@ -362,12 +369,14 @@ export function VendorGlobe({ vendors, compoundName }: { vendors: Vendor[]; comp
               <ul className="space-y-1.5 max-h-48 overflow-y-auto">
                 {activeVendors.map((v) => (
                   <li key={v.id ?? v.name} className="flex items-center gap-2 text-xs">
-                    <Badge tone={SOURCE_TONE[v.source_type ?? ""] ?? "zinc"}>
+                    <Badge tone={SOURCE_TONE[v.source_type ?? ""] ?? "neutral"}>
                       {SOURCE_LABEL[v.source_type ?? ""] ?? v.source_type ?? "unknown"}
                     </Badge>
-                    <span className="text-zinc-200 truncate flex-1">{v.name}</span>
+                    <span className="font-display tracking-tight text-ink truncate flex-1">
+                      {v.name}
+                    </span>
                     {v.reliability_score != null && (
-                      <span className="font-mono text-zinc-500 shrink-0">{v.reliability_score}</span>
+                      <span className="readout text-faint shrink-0">{v.reliability_score}</span>
                     )}
                   </li>
                 ))}
@@ -376,10 +385,10 @@ export function VendorGlobe({ vendors, compoundName }: { vendors: Vendor[]; comp
           )}
         </div>
 
-        <div className="border-t md:border-t-0 md:border-l border-zinc-800/60 p-3 space-y-1 max-h-[380px] overflow-y-auto">
-          <p className="text-[10px] uppercase tracking-widest text-zinc-600 px-1 pb-1">Vendors &amp; Sellers</p>
+        <div className="border-t md:border-t-0 md:border-l border-line p-3 space-y-1 max-h-[380px] overflow-y-auto">
+          <p className="eyebrow px-1 pb-1">Vendors &amp; Sellers</p>
           {vendors.length === 0 ? (
-            <p className="text-xs text-zinc-600 italic px-1">none</p>
+            <p className="text-xs text-faint italic px-1">none</p>
           ) : (
             vendors.map((v) => {
               const country = v.country?.trim();
@@ -390,16 +399,20 @@ export function VendorGlobe({ vendors, compoundName }: { vendors: Vendor[]; comp
                   type="button"
                   onClick={() => country && setActiveCountry(isActive ? null : country)}
                   className={`w-full flex items-center justify-between gap-2 text-xs px-1.5 py-1 rounded text-left transition-colors ${
-                    isActive ? "bg-emerald-500/10 ring-1 ring-emerald-400/30" : "hover:bg-zinc-800/80"
+                    isActive ? "bg-measured/10 ring-1 ring-measured/30" : "hover:bg-surface-2"
                   }`}
                 >
                   <span className="flex items-center gap-2 min-w-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/80 shrink-0" />
-                    <span className={`truncate ${isActive ? "text-emerald-300" : "text-zinc-300"}`}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-measured/80 shrink-0" />
+                    <span
+                      className={`font-display tracking-tight truncate ${
+                        isActive ? "text-measured" : "text-muted"
+                      }`}
+                    >
                       {v.name ?? "unknown vendor"}
                     </span>
                   </span>
-                  <span className="text-[10px] font-mono text-zinc-500 shrink-0 uppercase tracking-wider">
+                  <span className="readout text-[10px] text-faint shrink-0 uppercase tracking-wider">
                     {country ?? "—"}
                   </span>
                 </button>
@@ -407,7 +420,9 @@ export function VendorGlobe({ vendors, compoundName }: { vendors: Vendor[]; comp
             })
           )}
           {unmapped > 0 && (
-            <p className="text-[10px] text-zinc-600 italic px-1 pt-1">+{unmapped} country unmapped on globe</p>
+            <p className="text-[10px] text-faint italic px-1 pt-1">
+              <span className="readout">+{unmapped}</span> country unmapped on globe
+            </p>
           )}
         </div>
       </div>

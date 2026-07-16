@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "../components/layout/AppShell";
 import { BodyVisualization } from "../components/twin/BodyVisualization";
 import { MultiSelectDropdown } from "../components/twin/MultiSelectDropdown";
+import { EvidenceMeter } from "../components/ui/EvidenceMeter";
 import { saveUserData, twinSimulate } from "../lib/api";
 import { getUserRef } from "../lib/userRef";
 import { DEMOGRAPHICS } from "../data/mockSimulation";
@@ -10,7 +11,6 @@ import { CONDITION_OPTIONS, GOAL_OPTIONS } from "../data/profileOptions";
 import {
   BODY_SYSTEMS,
   gradeFor,
-  gradeMeta,
   labsForSystem,
   statusMeta,
 } from "../lib/biomarkers";
@@ -28,12 +28,23 @@ const SOURCE_OPTIONS = [
 ];
 
 // realId = registry compound_id used by /twin/simulate (BPC-157=1, Tirzepatide=3).
+// tier = top evidence tier for the meter (4 = trial-backed, matches the landing readout).
 const DEMO_COMPOUNDS = [
-  { id: "bpc-157", realId: 1, name: "BPC-157", tag: "GRAY MKT", tagClass: "bg-zinc-800 text-zinc-400", desc: "Body Protective Compound" },
-  { id: "tirzepatide", realId: 3, name: "Tirzepatide", tag: "FDA APPRV", tagClass: "bg-emerald-950/50 border border-emerald-900/50 text-emerald-400", desc: "GLP-1 / GIP Agonist" },
+  { id: "bpc-157", realId: 1, name: "BPC-157", tier: 3, tag: "GRAY MKT", tagClass: "bg-surface-2 text-muted", desc: "Body Protective Compound" },
+  { id: "tirzepatide", realId: 3, name: "Tirzepatide", tier: 4, tag: "FDA APPRV", tagClass: "bg-measured/10 border border-measured/30 text-measured", desc: "GLP-1 / GIP Agonist" },
 ] as const;
 
 const AGE_PRESETS = [10, 25, 35, 45, 55, 65, 75];
+
+// Health grade -> Instrument tokens. A = measured (in range), B = signal
+// (borderline), C = danger (out of range). Health status is a semantic axis,
+// distinct from the evidence luminance ramp, so a hue is correct here.
+function gradeTone(grade: string): { text: string; border: string; bg: string } {
+  if (grade === "A") return { text: "text-measured", border: "border-measured/40", bg: "bg-measured/10" };
+  if (grade === "B") return { text: "text-signal", border: "border-signal/40", bg: "bg-signal/10" };
+  if (grade === "C") return { text: "text-danger", border: "border-danger/40", bg: "bg-danger/10" };
+  return { text: "text-faint", border: "border-line", bg: "bg-surface-2" };
+}
 
 function Sparkline({ tone }: { tone: string }) {
   const bars = [2, 3, 4, 5, 6];
@@ -48,27 +59,36 @@ function Sparkline({ tone }: { tone: string }) {
 
 function BiomarkerRow({ lab }: { lab: LabValue }) {
   const meta = statusMeta(lab.status);
+  // Flag temperature: out-of-range high is the loud danger, borderline low /
+  // abnormal is the warm signal, in-range is a measured (teal) fact. Never
+  // green-good / red-bad.
+  const flag =
+    lab.status === "high"
+      ? { text: "text-danger", dot: "bg-danger" }
+      : lab.status === "low" || lab.status === "abnormal"
+        ? { text: "text-signal", dot: "bg-signal" }
+        : { text: "text-measured", dot: "bg-measured" };
   const toneBar =
     lab.status === "high"
-      ? "bg-rose-500/60"
+      ? "bg-danger/60"
       : lab.status === "low" || lab.status === "abnormal"
-        ? "bg-amber-500/60"
-        : "bg-emerald-500/60";
+        ? "bg-signal/60"
+        : "bg-measured/60";
   return (
-    <div className="flex items-center justify-between p-3 hover:bg-zinc-800/20 rounded-lg transition-colors group">
+    <div className="flex items-center justify-between p-3 hover:bg-surface-2/50 rounded-lg transition-colors group">
       <div className="flex flex-col min-w-0">
-        <span className="text-sm font-medium text-zinc-200 truncate">{lab.name}</span>
-        <span className="text-[10px] text-zinc-500">Blood Test · Junction</span>
+        <span className="text-sm font-medium text-ink truncate">{lab.name}</span>
+        <span className="text-[10px] text-faint">Blood Test · Junction</span>
       </div>
       <div className="flex items-center gap-6">
         <div className="flex flex-col text-right w-24">
-          <span className={`text-xs font-medium flex items-center justify-end gap-1 ${meta.text}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+          <span className={`text-xs font-medium flex items-center justify-end gap-1 ${flag.text}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${flag.dot}`} />
             {meta.label}
           </span>
-          <span className="text-sm text-zinc-300">
+          <span className="readout text-sm text-ink">
             {lab.value}
-            {lab.unit ? <span className="text-[10px] text-zinc-500"> {lab.unit}</span> : null}
+            {lab.unit ? <span className="text-[10px] text-faint"> {lab.unit}</span> : null}
           </span>
         </div>
         <Sparkline tone={toneBar} />
@@ -100,25 +120,25 @@ function ProjectedTrajectory({
   const unit = outcome?.unit === "percent" ? "%" : outcome?.unit ?? "%";
   const wp = outcome ? weightProjection(outcome, baselineWeightKg) : null;
   return (
-    <div className="bg-zinc-800/30 border border-zinc-800/50 rounded-xl p-4">
+    <div className="bg-surface-2 border border-line rounded-[var(--radius-card)] p-4">
       <div className="flex justify-between items-center mb-2">
-        <span className="text-xs font-medium text-zinc-300 flex items-center gap-1.5">
-          <Icon icon="lucide:trending-up" className="w-3.5 h-3.5 text-blue-400" />
+        <span className="text-xs font-medium text-muted flex items-center gap-1.5">
+          <Icon icon="lucide:trending-up" className="w-3.5 h-3.5 text-signal" />
           Projected Trajectory
         </span>
-        <span className="text-[10px] text-zinc-500">{compoundName}</span>
+        <span className="font-display text-[10px] text-faint">{compoundName}</span>
       </div>
       {loading ? (
-        <div className="text-sm text-zinc-400 flex items-center gap-2">
-          <Icon icon="svg-spinners:180-ring" className="text-blue-400" /> Running synthetic patients…
+        <div className="text-sm text-muted flex items-center gap-2">
+          <Icon icon="svg-spinners:180-ring" className="text-signal" /> Running synthetic patients…
         </div>
       ) : excludedReason ? (
-        <div className="text-sm text-amber-300">
+        <div className="text-sm text-signal">
           {compoundName} excluded — {excludedReason.replace(/_/g, " ")}. Patient is outside the
           trial's eligibility window.
         </div>
       ) : outcome?.distribution_void ? (
-        <div className="text-sm text-amber-300">
+        <div className="text-sm text-signal">
           No controlled-trial distribution — {compoundName} is anecdote-only. The twin can't
           honestly project a curve.
         </div>
@@ -127,14 +147,14 @@ function ProjectedTrajectory({
           {/* actual metric change (weight) */}
           {wp ? (
             <div className="mb-2">
-              <div className="text-base font-semibold text-emerald-400">
+              <div className="readout text-[15px] font-semibold text-ink">
                 Weight {wp.from} kg → {wp.to} kg
-                <span className="text-zinc-500 text-sm font-normal"> ({wp.delta > 0 ? "+" : ""}{wp.delta} kg · {outcome.p50!.toFixed(1)}%)</span>
+                <span className="text-faint text-sm font-normal"> ({wp.delta > 0 ? "+" : ""}{wp.delta} kg · {outcome.p50!.toFixed(1)}%)</span>
               </div>
-              <div className="text-[10px] text-zinc-500">median over {(outcome.quarters ?? []).at(-1)?.month ?? 12} months</div>
+              <div className="text-[10px] text-faint">median over {(outcome.quarters ?? []).at(-1)?.month ?? 12} months</div>
             </div>
           ) : (
-            <div className="text-sm font-semibold text-emerald-400 mb-2">
+            <div className="readout text-sm font-semibold text-ink mb-2">
               {outcome.p50 != null ? `${outcome.p50.toFixed(1)}${unit} median` : "Projection ready"}
             </div>
           )}
@@ -145,7 +165,7 @@ function ProjectedTrajectory({
               return (
                 <div
                   key={q.q}
-                  className="flex-1 bg-emerald-500/60 rounded-t"
+                  className="flex-1 bg-signal/50 rounded-t"
                   style={{ height: `${h}px` }}
                   title={`Q${q.q} (m${q.month}): p10 ${q.p10.toFixed(1)} · p50 ${q.p50.toFixed(1)} · p90 ${q.p90.toFixed(1)}`}
                 />
@@ -154,9 +174,9 @@ function ProjectedTrajectory({
           </div>
           {/* distribution spread, like the Arena's Projected Outcomes */}
           <div className="grid grid-cols-3 gap-2 mt-3 text-center">
-            <div><div className="text-[9px] text-zinc-500 uppercase tracking-wider">p10</div><div className="text-xs text-zinc-300">{outcome.p10?.toFixed(1)}{unit}</div></div>
-            <div><div className="text-[9px] text-zinc-500 uppercase tracking-wider">mean</div><div className="text-xs text-zinc-300">{outcome.mean?.toFixed(1)}{unit}</div></div>
-            <div><div className="text-[9px] text-zinc-500 uppercase tracking-wider">p90</div><div className="text-xs text-zinc-300">{outcome.p90?.toFixed(1)}{unit}</div></div>
+            <div><div className="readout text-[9px] text-faint uppercase tracking-wider">p10</div><div className="readout text-xs text-ink">{outcome.p10?.toFixed(1)}{unit}</div></div>
+            <div><div className="readout text-[9px] text-faint uppercase tracking-wider">mean</div><div className="readout text-xs text-ink">{outcome.mean?.toFixed(1)}{unit}</div></div>
+            <div><div className="readout text-[9px] text-faint uppercase tracking-wider">p90</div><div className="readout text-xs text-ink">{outcome.p90?.toFixed(1)}{unit}</div></div>
           </div>
         </>
       ) : null}
@@ -166,17 +186,17 @@ function ProjectedTrajectory({
 
 function MetricChip({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
-    <div className="flex-1 bg-zinc-900/40 border border-zinc-800 rounded-lg p-3">
-      <div className="text-[10px] text-zinc-500 flex items-center gap-1.5 mb-1">
+    <div className="flex-1 bg-surface-2 border border-line rounded-lg p-3">
+      <div className="text-[10px] text-faint flex items-center gap-1.5 mb-1">
         <Icon icon={icon} /> {label}
       </div>
-      <div className="text-sm font-semibold text-zinc-200">{value}</div>
+      <div className="readout text-sm font-semibold text-ink">{value}</div>
     </div>
   );
 }
 
-// A connectable data source (blood panel / wearable): connect when off, green +
-// disconnect when on.
+// A connectable data source (blood panel / wearable): connect when off, a live
+// measured source when on, danger-tinted disconnect on hover.
 function SourceCard({
   title,
   subtitle,
@@ -201,20 +221,20 @@ function SourceCard({
       disabled={working}
       className={`text-xs p-3 rounded-xl flex flex-col gap-2 transition-colors text-left group border disabled:opacity-70 ${
         connected
-          ? "bg-emerald-950/20 border-emerald-800/40 hover:bg-rose-950/20 hover:border-rose-800/50"
-          : "bg-zinc-900 hover:bg-zinc-800 border-zinc-700/50"
+          ? "bg-measured/10 border-measured/30 hover:bg-danger/10 hover:border-danger/40"
+          : "bg-surface hover:bg-surface-2 border-line"
       }`}
     >
       <div className="flex justify-between items-center w-full">
         <Icon
           icon={working ? "svg-spinners:180-ring" : connected ? "lucide:check-circle-2" : icon}
-          className={`w-4 h-4 ${connected ? "text-emerald-400" : "text-zinc-500 group-hover:text-zinc-300"}`}
+          className={`w-4 h-4 ${connected ? "text-measured" : "text-faint group-hover:text-muted"}`}
         />
-        <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-500" : "bg-zinc-600"}`} />
+        <span className={`w-2 h-2 rounded-full ${connected ? "bg-measured" : "bg-ghost"}`} />
       </div>
       <div>
-        <div className="text-zinc-200 font-semibold mb-0.5">{title}</div>
-        <div className="text-[10px] text-zinc-500">
+        <div className="text-ink font-semibold mb-0.5">{title}</div>
+        <div className="text-[10px] text-faint">
           {connected ? "Connected · click to disconnect" : working ? "Pulling…" : subtitle}
         </div>
       </div>
@@ -224,11 +244,11 @@ function SourceCard({
 
 function WearableStat({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
-    <div className="bg-zinc-900/40 border border-zinc-800 rounded-lg px-3 py-2 flex items-center gap-2.5">
-      <Icon icon={icon} className="w-4 h-4 text-cyan-400 shrink-0" />
+    <div className="bg-surface-2 border border-line rounded-lg px-3 py-2 flex items-center gap-2.5">
+      <Icon icon={icon} className="w-4 h-4 text-measured shrink-0" />
       <div className="min-w-0">
-        <div className="text-[10px] text-zinc-500">{label}</div>
-        <div className="text-sm font-semibold text-zinc-200 truncate">{value}</div>
+        <div className="text-[10px] text-faint">{label}</div>
+        <div className="readout text-sm font-semibold text-ink truncate">{value}</div>
       </div>
     </div>
   );
@@ -318,7 +338,7 @@ export default function DigitalTwinPage() {
   };
 
   const overallGrade = useMemo(() => gradeFor(imp.labs), [imp.labs]);
-  const og = gradeMeta(overallGrade);
+  const og = gradeTone(overallGrade);
   const score = useMemo(() => healthScore(imp.labs), [imp.labs]);
 
   const outcomeFor = (realId: number) =>
@@ -387,27 +407,27 @@ export default function DigitalTwinPage() {
 
   return (
     <AppShell>
-      <div className="h-16 flex items-center px-8 border-b border-zinc-800/60 shrink-0 z-10">
-        <h1 className="text-sm font-medium text-white tracking-tight flex items-center gap-2">
-          <Icon icon="solar:users-group-two-rounded-linear" className="text-emerald-500" /> Galleria
+      <div className="h-16 flex items-center px-4 md:px-8 border-b border-line shrink-0 z-10">
+        <h1 className="text-sm font-medium text-ink tracking-tight flex items-center gap-2">
+          <Icon icon="solar:users-group-two-rounded-linear" className="text-signal" /> Galleria
         </h1>
       </div>
-      <div className="flex flex-row w-full flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row w-full flex-1 min-h-0 overflow-y-auto md:overflow-hidden">
         {/* LEFT — inputs + simulation controls */}
-        <div className="w-[420px] flex-shrink-0 border-r border-zinc-800/60 flex flex-col bg-[#121214] h-full overflow-y-auto">
+        <div className="w-full md:w-[420px] flex-shrink-0 border-b md:border-b-0 md:border-r border-line flex flex-col bg-surface md:h-full md:overflow-y-auto">
           <div className="p-4 flex flex-col gap-4">
             {/* Base Demographic (editable, explicit Save) */}
-            <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-lg p-4 flex flex-col gap-3">
-              <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-widest flex items-center gap-2">
-                <Icon icon="lucide:user" className="text-zinc-500" /> Base Demographic
+            <div className="bg-surface-2 border border-line rounded-[var(--radius-card)] p-4 flex flex-col gap-3">
+              <h3 className="eyebrow flex items-center gap-2">
+                <Icon icon="lucide:user" className="text-faint" /> Base Demographic
               </h3>
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <label className="text-[12px] font-medium text-zinc-500 mb-1.5 block">Age</label>
+                  <label className="text-[12px] font-medium text-faint mb-1.5 block">Age</label>
                   <select
                     value={patient.age}
                     onChange={(e) => editProfile({ age: Number(e.target.value) })}
-                    className="w-full bg-[#0a0a0a] border border-zinc-700/80 rounded-lg py-2 px-3 text-sm text-zinc-200 outline-none focus:border-zinc-500 transition-colors cursor-pointer"
+                    className="w-full bg-base border border-line rounded-lg py-2 px-3 text-sm text-ink outline-none focus:border-signal transition-colors cursor-pointer"
                   >
                     {ageOptions.map((a) => (
                       <option key={a} value={a}>{a} years</option>
@@ -415,11 +435,11 @@ export default function DigitalTwinPage() {
                   </select>
                 </div>
                 <div className="flex-1">
-                  <label className="text-[12px] font-medium text-zinc-500 mb-1.5 block">Sex</label>
+                  <label className="text-[12px] font-medium text-faint mb-1.5 block">Sex</label>
                   <select
                     value={patient.sex}
                     onChange={(e) => editProfile({ sex: e.target.value as "M" | "F" })}
-                    className="w-full bg-[#0a0a0a] border border-zinc-700/80 rounded-lg py-2 px-3 text-sm text-zinc-200 outline-none focus:border-zinc-500 transition-colors cursor-pointer"
+                    className="w-full bg-base border border-line rounded-lg py-2 px-3 text-sm text-ink outline-none focus:border-signal transition-colors cursor-pointer"
                   >
                     <option value="M">Male</option>
                     <option value="F">Female</option>
@@ -428,10 +448,10 @@ export default function DigitalTwinPage() {
               </div>
               <div className="mt-1">
                 <div className="flex justify-between items-end mb-2.5">
-                  <span className="text-[12px] font-medium text-zinc-500">Weight (baseline)</span>
-                  <span className="text-xs text-zinc-300 font-mono">
+                  <span className="text-[12px] font-medium text-faint">Weight (baseline)</span>
+                  <span className="readout text-xs text-ink">
                     {patient.weightKg}
-                    <span className="text-zinc-500 font-sans ml-0.5">kg</span>
+                    <span className="text-faint font-sans ml-0.5">kg</span>
                   </span>
                 </div>
                 <input
@@ -440,9 +460,9 @@ export default function DigitalTwinPage() {
                   max={300}
                   value={patient.weightKg}
                   onChange={(e) => editProfile({ weightKg: Number(e.target.value) })}
-                  className="w-full accent-cyan-500"
+                  className="w-full accent-signal"
                   aria-label="Weight in kilograms"
-                  style={{ background: `linear-gradient(to right, #22d3ee ${weightPct}%, #27272a ${weightPct}%)` }}
+                  style={{ background: `linear-gradient(to right, #f5b03e ${weightPct}%, #232b3d ${weightPct}%)` }}
                 />
               </div>
 
@@ -469,10 +489,10 @@ export default function DigitalTwinPage() {
                 disabled={saveState === "saving"}
                 className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 ${
                   saveState === "saved"
-                    ? "bg-emerald-600/90 text-white"
+                    ? "bg-measured/15 text-measured border border-measured/30"
                     : saveState === "error"
-                      ? "bg-amber-600/90 text-white"
-                      : "bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700"
+                      ? "bg-danger/15 text-danger border border-danger/30"
+                      : "bg-surface-2 hover:bg-raised text-ink border border-line"
                 }`}
               >
                 <Icon icon={saveState === "saving" ? "svg-spinners:180-ring" : saveState === "saved" ? "lucide:check" : "lucide:save"} className="w-4 h-4" />
@@ -481,9 +501,9 @@ export default function DigitalTwinPage() {
             </div>
 
             {/* Compound (multi-select) + Run */}
-            <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-lg p-4 flex flex-col gap-3">
-              <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-widest flex items-center gap-2">
-                <Icon icon="lucide:test-tube" className="text-zinc-500" /> Compound
+            <div className="bg-surface-2 border border-line rounded-[var(--radius-card)] p-4 flex flex-col gap-3">
+              <h3 className="eyebrow flex items-center gap-2">
+                <Icon icon="lucide:test-tube" className="text-faint" /> Compound
               </h3>
               {DEMO_COMPOUNDS.map((c) => {
                 const ex = compoundExtras[c.realId];
@@ -491,23 +511,24 @@ export default function DigitalTwinPage() {
                 const dose = draftDose[c.realId] ?? ex?.dose ?? "";
                 const source = draftSource[c.realId] ?? "label_dose";
                 return (
-                  <div key={c.id} className={`rounded-xl border p-4 space-y-3 ${added ? "border-cyan-600/60 bg-cyan-950/10" : "border-zinc-700"}`}>
+                  <div key={c.id} className={`rounded-xl border p-4 space-y-3 ${added ? "border-signal/50 bg-signal/10" : "border-line"}`}>
                     <div className="flex items-center gap-3">
-                      <span className="text-[15px] font-medium text-zinc-100">{c.name}</span>
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded tracking-wider uppercase ${c.tagClass}`}>{c.tag}</span>
-                      {added && <span className="ml-auto text-[10px] text-cyan-300 flex items-center gap-1"><Icon icon="lucide:check" className="w-3 h-3" /> in stack</span>}
+                      <EvidenceMeter tier={c.tier} className="shrink-0" />
+                      <span className="font-display text-[15px] font-medium text-ink tracking-tight">{c.name}</span>
+                      <span className={`readout text-[10px] font-semibold px-2 py-0.5 rounded tracking-wider uppercase ${c.tagClass}`}>{c.tag}</span>
+                      {added && <span className="ml-auto readout text-[10px] text-signal flex items-center gap-1"><Icon icon="lucide:check" className="w-3 h-3" /> in stack</span>}
                     </div>
-                    <div className="text-[13px] text-zinc-500">{c.desc}</div>
+                    <div className="text-[13px] text-faint">{c.desc}</div>
 
                     {ex?.vendors && ex.vendors.length > 0 && (
                       <div>
-                        <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Where to get it</div>
+                        <div className="eyebrow mb-1">Where to get it</div>
                         <div className="flex flex-wrap gap-1.5">
                           {ex.vendors.map((v) => (
-                            <a key={v.name} href={v.url ?? "#"} target="_blank" rel="noopener noreferrer" className="text-[11px] px-2 py-1 rounded-lg border border-zinc-700 bg-zinc-950 text-cyan-300 hover:border-cyan-700 hover:bg-cyan-950/20 flex items-center gap-1">
+                            <a key={v.name} href={v.url ?? "#"} target="_blank" rel="noopener noreferrer" className="text-[11px] px-2 py-1 rounded-lg border border-line bg-surface text-signal hover:border-signal hover:bg-signal/10 flex items-center gap-1 transition-colors">
                               <Icon icon="lucide:external-link" className="w-3 h-3" />
                               {v.name}
-                              {v.costPerVial ? <span className="text-zinc-500">${v.costPerVial}</span> : null}
+                              {v.costPerVial ? <span className="readout text-faint">${v.costPerVial}</span> : null}
                             </a>
                           ))}
                         </div>
@@ -517,20 +538,20 @@ export default function DigitalTwinPage() {
                     {/* dose + source inputs */}
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-[10px] text-zinc-500 mb-1 block">Dosage</label>
+                        <label className="text-[10px] text-faint mb-1 block">Dosage</label>
                         <input
                           value={dose}
                           onChange={(e) => setDraftDose((d) => ({ ...d, [c.realId]: e.target.value }))}
                           placeholder={ex?.dose ?? "e.g. 7.5mg"}
-                          className="w-full bg-[#0a0a0a] border border-zinc-700/80 rounded-lg py-1.5 px-2.5 text-sm text-zinc-200 outline-none focus:border-zinc-500"
+                          className="w-full bg-base border border-line rounded-lg py-1.5 px-2.5 text-sm text-ink outline-none focus:border-signal transition-colors"
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] text-zinc-500 mb-1 block">Source</label>
+                        <label className="text-[10px] text-faint mb-1 block">Source</label>
                         <select
                           value={source}
                           onChange={(e) => setDraftSource((d) => ({ ...d, [c.realId]: e.target.value }))}
-                          className="w-full bg-[#0a0a0a] border border-zinc-700/80 rounded-lg py-1.5 px-2 text-xs text-zinc-200 outline-none focus:border-zinc-500"
+                          className="w-full bg-base border border-line rounded-lg py-1.5 px-2 text-xs text-ink outline-none focus:border-signal transition-colors"
                         >
                           {SOURCE_OPTIONS.map((o) => (
                             <option key={o.value} value={o.value}>{o.label}</option>
@@ -542,8 +563,8 @@ export default function DigitalTwinPage() {
                     <button
                       type="button"
                       onClick={() => handleAddToStack(c)}
-                      className={`w-full rounded-lg px-3 py-2 text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${
-                        added ? "bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700" : "bg-cyan-600 hover:bg-cyan-500 text-white"
+                      className={`w-full rounded-lg px-3 py-2 text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base ${
+                        added ? "bg-surface-2 hover:bg-raised text-ink border border-line" : "bg-signal hover:bg-signal-bright text-on-signal"
                       }`}
                     >
                       <Icon icon={added ? "lucide:refresh-cw" : "lucide:plus"} className="w-4 h-4" />
@@ -557,46 +578,46 @@ export default function DigitalTwinPage() {
         </div>
 
         {/* CENTER — holographic twin + summary overlay / link-data gate */}
-        <div className="flex-1 flex flex-row bg-[#0a0a0a] overflow-hidden h-full">
-          <div className="flex-1 relative flex flex-col items-center justify-center h-full p-8 border-r border-zinc-800/50">
+        <div className="flex-1 flex flex-col md:flex-row bg-base md:overflow-hidden md:h-full">
+          <div className="flex-1 relative flex flex-col items-center justify-center min-h-[620px] md:h-full p-4 md:p-8 border-b md:border-b-0 md:border-r border-line overflow-hidden">
             <div className="absolute top-8 left-8 z-20">
-              <h1 className="text-2xl font-semibold tracking-tight text-zinc-100 flex items-center gap-3">
+              <h1 className="text-2xl font-semibold tracking-tight text-ink flex items-center gap-3">
                 Digital Twin
-                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border tracking-widest uppercase ${connected ? "border-cyan-900/50 text-cyan-400 bg-cyan-900/20" : "border-zinc-700 text-zinc-500 bg-zinc-800/50"}`}>
+                <span className={`readout text-[9px] font-bold px-1.5 py-0.5 rounded border tracking-widest uppercase ${connected ? "border-signal/40 text-signal bg-signal/10" : "border-line text-faint bg-surface-2 void-hatch"}`}>
                   {connected ? "Live" : "No data"}
                 </span>
               </h1>
-              <p className="text-xs text-zinc-500 mt-1">
+              <p className="text-xs text-faint mt-1">
                 {connected ? "Simulating physiology from your linked data." : "Link your data to bring the twin to life."}
               </p>
               {connected && (
-                <div className="mt-3 text-xs text-zinc-400 font-mono">
+                <div className="mt-3 readout text-xs text-muted">
                   {[`age ${patient.age}`, patient.sex === "M" ? "male" : "female", `${patient.weightKg} kg`].join(" · ")}
                 </div>
               )}
             </div>
 
             {/* body — nudged right so it doesn't collide with the top-left summary */}
-            <div className={`translate-x-20 ${connected ? "" : "opacity-40 grayscale transition-all"}`}>
+            <div className={`md:translate-x-20 ${connected ? "" : "opacity-40 grayscale transition-all"}`}>
               <BodyVisualization active={connected} />
             </div>
 
             {/* SUMMARY card — top-left (only once connected) */}
             {connected && (
-              <div className="absolute top-28 left-6 z-20 w-56 rounded-2xl border border-cyan-900/30 bg-black/50 backdrop-blur-md p-4">
+              <div className="absolute top-28 left-6 z-20 w-56 rounded-2xl border border-line bg-base/60 backdrop-blur-md p-4">
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">Summary</span>
-                    <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded border ${og.border} ${og.bg} ${og.text}`}>{overallGrade}</span>
+                    <span className="eyebrow">Summary</span>
+                    <span className={`readout text-[11px] font-bold px-1.5 py-0.5 rounded border ${og.border} ${og.bg} ${og.text}`}>{overallGrade}</span>
                   </div>
                   {BODY_SYSTEMS.map((sys) => {
                     const labs = labsForSystem(imp.labs, sys.key);
                     const grade = gradeFor(labs);
-                    const gm = gradeMeta(grade);
+                    const gm = gradeTone(grade);
                     return (
                       <div key={sys.key} className="flex items-center justify-between gap-1.5 text-xs">
-                        <span className="text-zinc-300">{sys.label}</span>
-                        <span className={`text-[10px] font-bold px-1.5 rounded border ${gm.border} ${gm.bg} ${gm.text}`}>{grade}</span>
+                        <span className="text-muted">{sys.label}</span>
+                        <span className={`readout text-[10px] font-bold px-1.5 rounded border ${gm.border} ${gm.bg} ${gm.text}`}>{grade}</span>
                       </div>
                     );
                   })}
@@ -607,17 +628,17 @@ export default function DigitalTwinPage() {
             {/* Link Data gate — on top of the (greyed) twin until data is linked */}
             {!connected && (
               <div className="absolute inset-0 z-30 flex items-center justify-center">
-                <div className="w-80 rounded-2xl border border-cyan-700/40 bg-[#0d0f12]/90 backdrop-blur-sm p-6 text-center shadow-2xl">
-                  <Icon icon="lucide:link" className="text-cyan-400 text-2xl mb-3 mx-auto block" />
-                  <h3 className="text-base font-semibold text-zinc-100">Link your data</h3>
-                  <p className="text-xs text-zinc-500 mt-1.5 mb-4">
+                <div className="w-80 rounded-2xl border border-signal/25 bg-surface/90 backdrop-blur-sm p-6 text-center shadow-2xl">
+                  <Icon icon="lucide:link" className="text-signal text-2xl mb-3 mx-auto block" />
+                  <h3 className="text-[15px] font-semibold text-ink">Link your data</h3>
+                  <p className="text-xs text-faint mt-1.5 mb-4">
                     Connect a blood panel or wearable via Junction to activate your twin.
                   </p>
                   <button
                     type="button"
                     onClick={imp.pullBloodwork}
                     disabled={imp.bloodwork === "working"}
-                    className="w-full rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-60 px-4 py-3 text-sm font-semibold text-white flex items-center justify-center gap-2 transition-colors"
+                    className="w-full rounded-xl bg-signal hover:bg-signal-bright disabled:opacity-60 px-4 py-3 text-sm font-semibold text-on-signal flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
                   >
                     <Icon icon={imp.bloodwork === "working" ? "svg-spinners:180-ring" : "lucide:test-tube"} />
                     {imp.bloodwork === "working" ? "Pulling your data…" : "Pull Blood Panel"}
@@ -626,20 +647,20 @@ export default function DigitalTwinPage() {
                     type="button"
                     onClick={imp.pullWearable}
                     disabled={imp.wearableState === "working"}
-                    className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 hover:border-cyan-700 px-4 py-2.5 text-sm font-medium text-zinc-200 flex items-center justify-center gap-2 transition-colors"
+                    className="mt-2 w-full rounded-xl border border-line bg-base hover:border-signal px-4 py-2.5 text-sm font-medium text-ink flex items-center justify-center gap-2 transition-colors"
                   >
-                    <Icon icon={imp.wearableState === "working" ? "svg-spinners:180-ring" : "lucide:watch"} className="text-cyan-400" />
+                    <Icon icon={imp.wearableState === "working" ? "svg-spinners:180-ring" : "lucide:watch"} className="text-muted" />
                     {imp.wearableState === "working" ? "Pulling wearable…" : "Pull Wearable Data"}
                   </button>
-                  {imp.error && <p className="mt-2 text-[10px] text-amber-400">{imp.error}</p>}
+                  {imp.error && <p className="mt-2 text-[10px] text-danger">{imp.error}</p>}
                 </div>
               </div>
             )}
           </div>
 
           {/* RIGHT — link controls + health summary + (deferred) result */}
-          <div className="w-[480px] flex-shrink-0 h-full overflow-y-auto flex flex-col border-l border-zinc-800/60">
-            <div className="p-6 border-b border-zinc-800/60">
+          <div className="w-full md:w-[480px] flex-shrink-0 md:h-full md:overflow-y-auto flex flex-col border-t md:border-t-0 md:border-l border-line">
+            <div className="p-4 md:p-6 border-b border-line">
               <div className="grid grid-cols-2 gap-3">
                 <SourceCard
                   title="Pull Blood Panels"
@@ -660,14 +681,14 @@ export default function DigitalTwinPage() {
                   onDisconnect={imp.disconnectWearable}
                 />
               </div>
-              {imp.error && <p className="mt-3 text-[11px] text-amber-400">{imp.error}</p>}
+              {imp.error && <p className="mt-3 text-[11px] text-danger">{imp.error}</p>}
 
               {/* Wearable metrics — shown once the wearable is connected */}
               {imp.wearableConnected && imp.wearableMetrics && (
                 <div className="mt-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-semibold tracking-wider text-zinc-500 uppercase">Wearable</span>
-                    {imp.wearableMocked && <span className="text-[9px] text-zinc-600">demo data</span>}
+                    <span className="eyebrow">Wearable</span>
+                    {imp.wearableMocked && <span className="text-[9px] text-faint">demo data</span>}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <WearableStat icon="lucide:moon" label="Sleep" value={imp.wearableMetrics.sleep_hours != null ? `${imp.wearableMetrics.sleep_hours} h` : "—"} />
@@ -679,11 +700,11 @@ export default function DigitalTwinPage() {
               )}
             </div>
 
-            <div className="p-6 flex-1 flex flex-col gap-6">
+            <div className="p-4 md:p-6 flex-1 flex flex-col gap-6">
               <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold text-zinc-100 tracking-tight">Health Summary</h2>
-                  <p className="text-xs text-zinc-400 mt-2 leading-relaxed max-w-[280px]">
+                  <h2 className="text-xl font-semibold text-ink tracking-tight">Health Summary</h2>
+                  <p className="text-xs text-muted mt-2 leading-relaxed max-w-[280px]">
                     {imp.bloodworkConnected
                       ? "Biomarkers pulled from your linked Junction lab panel."
                       : "Pull your blood panel to populate biomarkers + health score."}
@@ -691,27 +712,28 @@ export default function DigitalTwinPage() {
                 </div>
                 {imp.bloodworkConnected && score != null && (
                   <div className={`flex flex-col items-center justify-center w-16 h-16 rounded-2xl border-2 flex-shrink-0 ${og.border} ${og.bg}`}>
-                    <span className={`text-xl font-bold leading-none ${og.text}`}>{score}</span>
-                    <span className="text-[8px] tracking-widest text-zinc-500 uppercase mt-0.5">Health</span>
+                    <span className={`readout text-xl font-bold leading-none ${og.text}`}>{score}</span>
+                    <span className="text-[8px] tracking-widest text-faint uppercase mt-0.5">Health</span>
                   </div>
                 )}
               </div>
 
               {/* My Stack + Predict (right side) */}
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4">
-                <div className="text-[10px] font-semibold tracking-wider text-zinc-500 uppercase mb-2">My Stack</div>
+              <div className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
+                <div className="eyebrow mb-2">My Stack</div>
                 {stackReal.length === 0 ? (
-                  <p className="text-xs text-zinc-500">Add compounds (with dose + source) on the left to build your stack.</p>
+                  <p className="text-xs text-muted">Add compounds (with dose + source) on the left to build your stack.</p>
                 ) : (
                   <div className="space-y-1.5 mb-3">
                     {stackReal.map(({ item, def }) => (
                       <div key={item.id} className="flex items-center gap-2 text-sm">
-                        <span className="text-zinc-200 font-medium">{def.name}</span>
-                        {item.dose && <span className="text-[11px] text-cyan-300">{item.dose}</span>}
+                        <EvidenceMeter tier={def.tier} className="shrink-0" />
+                        <span className="font-display text-ink font-medium tracking-tight">{def.name}</span>
+                        {item.dose && <span className="readout text-[11px] text-signal">{item.dose}</span>}
                         {item.source_type && item.source_type !== "label_dose" && (
-                          <span className="text-[10px] text-zinc-500">· {item.source_type.replace(/_/g, " ")}</span>
+                          <span className="readout text-[10px] text-faint">· {item.source_type.replace(/_/g, " ")}</span>
                         )}
-                        <button type="button" onClick={() => removeFromStack(item.id)} className="ml-auto text-zinc-600 hover:text-rose-400">
+                        <button type="button" onClick={() => removeFromStack(item.id)} className="ml-auto text-faint hover:text-danger transition-colors">
                           <Icon icon="lucide:x" className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -722,7 +744,7 @@ export default function DigitalTwinPage() {
                   type="button"
                   onClick={handleRun}
                   disabled={loading || stackReal.length === 0}
-                  className="w-full rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-3 text-sm font-semibold text-white flex items-center justify-center gap-2 transition-colors"
+                  className="w-full rounded-xl bg-signal hover:bg-signal-bright disabled:opacity-60 disabled:cursor-not-allowed px-4 py-3 text-sm font-semibold text-on-signal flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-base"
                 >
                   <Icon icon={loading ? "svg-spinners:180-ring" : "lucide:sparkles"} />
                   {loading ? "Predicting…" : `Predict my Result${stackReal.length > 1 ? ` (${stackReal.length})` : ""}`}
@@ -732,17 +754,17 @@ export default function DigitalTwinPage() {
                     type="button"
                     onClick={handleTrack}
                     disabled={stackReal.length === 0}
-                    className="rounded-lg border border-zinc-700 bg-zinc-950 hover:border-cyan-700 px-3 py-2 text-xs font-medium text-zinc-200 flex items-center justify-center gap-1.5 disabled:opacity-50 transition-colors"
+                    className="rounded-lg border border-line bg-base hover:border-signal px-3 py-2 text-xs font-medium text-ink flex items-center justify-center gap-1.5 disabled:opacity-50 transition-colors"
                   >
-                    <Icon icon={trackState === "done" ? "lucide:check" : "lucide:line-chart"} className={trackState === "done" ? "text-emerald-400" : "text-cyan-400"} />
+                    <Icon icon={trackState === "done" ? "lucide:check" : "lucide:line-chart"} className={trackState === "done" ? "text-measured" : "text-muted"} />
                     {trackState === "done" ? "Tracking" : "Track My Result"}
                   </button>
                   <button
                     type="button"
                     onClick={handleExploreTrials}
-                    className="rounded-lg border border-zinc-700 bg-zinc-950 hover:border-cyan-700 px-3 py-2 text-xs font-medium text-zinc-200 flex items-center justify-center gap-1.5 transition-colors"
+                    className="rounded-lg border border-line bg-base hover:border-signal px-3 py-2 text-xs font-medium text-ink flex items-center justify-center gap-1.5 transition-colors"
                   >
-                    <Icon icon="lucide:flask-conical" className="text-cyan-400" />
+                    <Icon icon="lucide:flask-conical" className="text-muted" />
                     Explore Clinical Trials
                   </button>
                 </div>
@@ -752,9 +774,9 @@ export default function DigitalTwinPage() {
               {showResult && (
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-semibold tracking-wider text-zinc-500 uppercase">My Result</span>
+                    <span className="eyebrow">My Result</span>
                     {result && !loading && (
-                      <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+                      <span className="readout text-[10px] text-measured flex items-center gap-1">
                         <Icon icon="lucide:check" className="w-3 h-3" /> simulation complete
                       </span>
                     )}
@@ -780,7 +802,7 @@ export default function DigitalTwinPage() {
                       onClick={handleSaveResult}
                       disabled={resultSaved === "done"}
                       className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${
-                        resultSaved === "done" ? "bg-emerald-600/90 text-white" : "bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700"
+                        resultSaved === "done" ? "bg-measured/15 text-measured border border-measured/30" : "bg-surface-2 hover:bg-raised text-ink border border-line"
                       }`}
                     >
                       <Icon icon={resultSaved === "done" ? "lucide:check" : "lucide:bookmark"} className="w-4 h-4" />
@@ -792,7 +814,7 @@ export default function DigitalTwinPage() {
 
               {/* Biomarkers — only once connected */}
               <div>
-                <div className="flex items-center justify-between text-[10px] font-semibold tracking-wider text-zinc-500 mb-2 px-1 uppercase">
+                <div className="eyebrow flex items-center justify-between mb-2 px-1">
                   <span>Name</span>
                   <div className="flex gap-14 mr-4">
                     <span>Status</span>
@@ -809,9 +831,9 @@ export default function DigitalTwinPage() {
                   <button
                     type="button"
                     onClick={imp.pullBloodwork}
-                    className="w-full rounded-xl border border-dashed border-zinc-700 bg-zinc-950/40 px-4 py-8 text-center text-sm text-zinc-400 hover:border-cyan-700 hover:text-zinc-200 transition-colors"
+                    className="void-hatch w-full rounded-xl border border-dashed border-line bg-surface/40 px-4 py-8 text-center text-sm text-muted hover:border-signal hover:text-ink transition-colors"
                   >
-                    <Icon icon="lucide:test-tube" className="text-cyan-400 text-lg mb-2 mx-auto block" />
+                    <Icon icon="lucide:test-tube" className="text-signal text-lg mb-2 mx-auto block" />
                     Pull your blood panel to populate biomarkers
                   </button>
                 )}

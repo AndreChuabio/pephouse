@@ -9,26 +9,35 @@ Run locally:
 """
 
 import logging
+import os
 
 import anyio
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+import stripe
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
+import billing
 import consult
 import db
 import junction
 import modules
+import report
 import runs
 import summaries
 import tiers
 import user_data
 import user_stack
+import vendors
+from auth import AuthUser, assert_self, require_account, require_admin, require_user
 from evidence import build_simulation_data
 from interactions import build_interactions
 from models import (
+    BillingStatus,
+    CheckoutResponse,
     CompoundEvidenceRequest,
     CompoundInput,
+    ConfirmRequest,
     ConsultSessionRequest,
     ConsultSessionResponse,
     InteractionsResponse,
@@ -45,10 +54,14 @@ from models import (
     SimulationDataResponse,
     StackAddRequest,
     StackItem,
+    StackReportRequest,
     TrialIntake,
     TwinSimulateRequest,
     UserDataBundle,
     UserDataPatch,
+    VendorReview,
+    VendorSubmission,
+    VendorSubmissionResult,
 )
 from twin_engine import run_simulation
 
@@ -56,12 +69,54 @@ logger = logging.getLogger("pephouse.main")
 
 app = FastAPI(title="pephouse")
 
-# Open CORS for the hackathon; tighten before any real deploy.
+# Browser origins allowed to call this API. `*` would let any page on the
+# internet issue authenticated requests with a member's browser, so access is
+# explicit and `*` is rejected outright at startup.
+#
+# Vercel serves this frontend on several hostnames — the stable alias
+# (frontend-alpha-wine-58), the project alias
+# (frontend-andre-chuabios-projects), and a fresh per-deploy URL every push
+# (frontend-<hash>-andre-chuabios-projects). Whitelisting one by name breaks the
+# moment the browser is on another, so a regex covers the whole project plus its
+# preview deploys, and an explicit list covers the fixed alias and local dev.
+DEFAULT_ORIGINS = ",".join(
+    [
+        "https://frontend-alpha-wine-58.vercel.app",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+)
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", DEFAULT_ORIGINS).split(",")
+    if origin.strip()
+]
+if "*" in ALLOWED_ORIGINS:
+    raise RuntimeError("ALLOWED_ORIGINS must name real origins; '*' is not permitted")
+
+# Origins allowed by pattern rather than by exact name:
+#   - the custom domain pephouse.org / .app and their www subdomains (the
+#     production home; both TLDs accepted so the brand is not locked to one)
+#   - every Vercel domain for THIS account's projects
+#     (…-andre-chuabios-projects.vercel.app), including per-deploy preview hashes
+# Scoped deliberately — not an open `*.vercel.app` — so a stranger's site cannot
+# call the API, while a new deploy hash or the custom domain never breaks CORS.
+# The fixed alias without the account suffix (frontend-alpha-wine-58) stays in
+# the explicit list above.
+DEFAULT_ORIGIN_REGEX = (
+    r"https://(www\.)?pephouse\.(org|app)"
+    r"|https://[a-z0-9-]+-andre-chuabios-projects\.vercel\.app"
+)
+ALLOWED_ORIGIN_REGEX = os.getenv("ALLOWED_ORIGIN_REGEX", DEFAULT_ORIGIN_REGEX)
+logger.info("cors: allowing %s and regex %s", ALLOWED_ORIGINS, ALLOWED_ORIGIN_REGEX)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -190,11 +245,13 @@ def get_run(run_id: int) -> dict:
 
 
 @app.post("/compounds/{compound_id}/module")
-def generate_module(compound_id: int) -> dict:
+def generate_module(compound_id: int, _admin: AuthUser = Depends(require_admin)) -> dict:
     """Build + persist a Synthea Generic Module per outcome prior for this compound.
 
     Returns the saved modules. The most recent active module is auto-loaded by
     live cohort generation (live_cohort=true) so the run is compound-specific.
+
+    Operator-only: this writes to the registry, so it is not a member surface.
     """
     if db.get_compound(compound_id) is None:
         raise HTTPException(status_code=404, detail="compound not found")
@@ -226,15 +283,15 @@ def get_module(module_id: int) -> dict:
 
 
 # ----------------------------------------------------------------- import API
-# Patient-data import via Junction (wearable + bloodwork). The frontend keys a
-# per-browser `user_ref`; the Vital API key stays server-side in junction.py.
+# Patient-data import via Junction (wearable + bloodwork). The `user_ref` in each
+# request is checked against the caller's verified session, so a member can only
+# pull their own connected data. The Vital API key stays server-side in junction.py.
 
 
 @app.post("/import/link", response_model=LinkResponse)
-async def import_link(body: LinkRequest) -> LinkResponse:
+async def import_link(body: LinkRequest, user: AuthUser = Depends(require_user)) -> LinkResponse:
     """Create a Junction Link token + hosted URL to connect a wearable provider."""
-    if not body.user_ref:
-        raise HTTPException(status_code=400, detail="user_ref required")
+    assert_self(user, body.user_ref)
     try:
         result = await junction.create_link_token(body.user_ref)
     except Exception as exc:  # noqa: BLE001 - surface Junction failures as 502
@@ -243,8 +300,9 @@ async def import_link(body: LinkRequest) -> LinkResponse:
 
 
 @app.get("/import/profile", response_model=ProfileResponse)
-async def import_profile(user_ref: str) -> ProfileResponse:
+async def import_profile(user_ref: str, user: AuthUser = Depends(require_user)) -> ProfileResponse:
     """Poll target: once a provider is linked, return a patient patch from it."""
+    assert_self(user, user_ref)
     try:
         patch = await junction.get_profile_and_body(user_ref)
     except Exception as exc:  # noqa: BLE001
@@ -255,8 +313,13 @@ async def import_profile(user_ref: str) -> ProfileResponse:
 
 
 @app.get("/import/labs", response_model=ProfilePatch)
-async def import_labs(user_ref: str, order_id: str | None = None) -> ProfilePatch:
+async def import_labs(
+    user_ref: str,
+    order_id: str | None = None,
+    user: AuthUser = Depends(require_user),
+) -> ProfilePatch:
     """Pull a lab order's biomarkers and map flags to conditions."""
+    assert_self(user, user_ref)
     try:
         patch = await junction.get_lab_results(user_ref, order_id)
     except Exception as exc:  # noqa: BLE001
@@ -265,12 +328,13 @@ async def import_labs(user_ref: str, order_id: str | None = None) -> ProfilePatc
 
 
 @app.get("/import/wearable")
-async def import_wearable(user_ref: str) -> dict:
+async def import_wearable(user_ref: str, user: AuthUser = Depends(require_user)) -> dict:
     """Pull recent wearable metrics (sleep / steps / resting HR / HRV).
 
     Real Junction summary data where a provider is linked; realistic mock fill
     otherwise (sandbox wearable linking needs the hosted flow). `mocked` says which.
     """
+    assert_self(user, user_ref)
     try:
         return await junction.get_wearable_metrics(user_ref)
     except Exception as exc:  # noqa: BLE001
@@ -283,8 +347,9 @@ async def import_wearable(user_ref: str) -> dict:
 
 
 @app.get("/users/{user_ref}/data", response_model=UserDataBundle)
-def get_user_data(user_ref: str) -> UserDataBundle:
+def get_user_data(user_ref: str, user: AuthUser = Depends(require_user)) -> UserDataBundle:
     """getUserData — the full stored bundle (profile + wearable + labs) for a user."""
+    assert_self(user, user_ref)
     bundle = user_data.get_user_data(user_ref)
     if bundle is None:
         raise HTTPException(status_code=404, detail="no data for this user")
@@ -292,16 +357,19 @@ def get_user_data(user_ref: str) -> UserDataBundle:
 
 
 @app.post("/users/{user_ref}/data", response_model=UserDataBundle)
-def save_user_data(user_ref: str, body: UserDataPatch) -> UserDataBundle:
+def save_user_data(
+    user_ref: str,
+    body: UserDataPatch,
+    user: AuthUser = Depends(require_user),
+) -> UserDataBundle:
     """Save a connected/reported patch (upsert profile; replace labs/wearable)."""
-    if not user_ref:
-        raise HTTPException(status_code=400, detail="user_ref required")
+    assert_self(user, user_ref)
     merged = user_data.save_user_data(user_ref, body.model_dump(exclude_none=True))
     return UserDataBundle(**merged)
 
 
 @app.delete("/users/{user_ref}/data")
-def delete_user_data(user_ref: str) -> dict:
+def delete_user_data(user_ref: str, user: AuthUser = Depends(require_user)) -> dict:
     """Delete every stored row for this user across all user-keyed tables.
 
     The settings-page "delete my data" control. Removes the user's rows from
@@ -309,8 +377,7 @@ def delete_user_data(user_ref: str) -> dict:
     trial_intakes, returning per-table counts. Deleting a user_ref with no
     rows is a success (all counts zero), not an error.
     """
-    if not user_ref or not user_ref.strip():
-        raise HTTPException(status_code=400, detail="user_ref required")
+    assert_self(user, user_ref)
     try:
         tables = user_data.delete_user_data(user_ref)
         tables["user_stack"] = user_stack.delete_stack(user_ref)
@@ -327,23 +394,32 @@ def delete_user_data(user_ref: str) -> dict:
 
 
 @app.get("/users/{user_ref}/stack", response_model=list[StackItem])
-def get_user_stack(user_ref: str) -> list[StackItem]:
+def get_user_stack(user_ref: str, user: AuthUser = Depends(require_user)) -> list[StackItem]:
     """List the user's stacked compounds."""
+    assert_self(user, user_ref)
     return [StackItem(**row) for row in user_stack.get_stack(user_ref)]
 
 
 @app.post("/users/{user_ref}/stack", response_model=list[StackItem])
-def add_to_stack(user_ref: str, body: StackAddRequest) -> list[StackItem]:
+def add_to_stack(
+    user_ref: str,
+    body: StackAddRequest,
+    user: AuthUser = Depends(require_user),
+) -> list[StackItem]:
     """Add a compound (with dose + source) to the user's stack; returns the stack."""
-    if not user_ref:
-        raise HTTPException(status_code=400, detail="user_ref required")
+    assert_self(user, user_ref)
     user_stack.add_item(user_ref, body.model_dump())
     return [StackItem(**row) for row in user_stack.get_stack(user_ref)]
 
 
 @app.delete("/users/{user_ref}/stack/{item_id}", response_model=list[StackItem])
-def remove_from_stack(user_ref: str, item_id: int) -> list[StackItem]:
+def remove_from_stack(
+    user_ref: str,
+    item_id: int,
+    user: AuthUser = Depends(require_user),
+) -> list[StackItem]:
     """Remove a compound from the user's stack; returns the remaining stack."""
+    assert_self(user, user_ref)
     user_stack.remove_item(user_ref, item_id)
     return [StackItem(**row) for row in user_stack.get_stack(user_ref)]
 
@@ -354,13 +430,20 @@ def remove_from_stack(user_ref: str, item_id: int) -> list[StackItem]:
 
 
 @app.post("/twin/simulate", response_model=SimulateResponse)
-def twin_simulate(body: TwinSimulateRequest) -> SimulateResponse:
+def twin_simulate(
+    body: TwinSimulateRequest,
+    user: AuthUser = Depends(require_user),
+) -> SimulateResponse:
     """Run a simulation from the Digital Twin's data + controls.
 
     Patient resolution: an explicit `patient` wins; otherwise the saved profile
     for `user_ref` is loaded from user_profiles. The compound stack and controls
     (tiers / source_type / n_draws) feed the same engine as POST /simulate.
+
+    A `user_ref` here loads stored health data, so it must be the caller's own.
     """
+    if body.user_ref:
+        assert_self(user, body.user_ref)
     patient = body.patient
     if patient is None and body.user_ref:
         bundle = user_data.get_user_data(body.user_ref)
@@ -391,25 +474,283 @@ def twin_simulate(body: TwinSimulateRequest) -> SimulateResponse:
     )
 
 
+# --------------------------------------------------------------------- vendors
+# The vendor index: who people actually buy from, and what is genuinely known
+# about each. An education surface, not a storefront.
+#
+# The invariant, enforced in code rather than promised in copy: no vendor money
+# can influence this data. There is no price, bid, or placement column anywhere
+# in vendors.py, vendors hold no account and have no write path, and a submission
+# buys a listing and nothing else. What a vendor says about itself is a claim and
+# is returned tagged as one; only a third-party assay counts as evidence of
+# testing. A vendor with nothing on file is listed anyway, saying so — that
+# absence is the most informative field in the index.
+
+
+@app.get("/vendors")
+def list_vendors() -> list[dict]:
+    """The vendor index with each vendor's evidence counts and testing grade."""
+    return vendors.get_index()
+
+
+@app.get("/vendors/submissions")
+def list_vendor_submissions(
+    status: str = "pending",
+    limit: int = 100,
+    _admin: AuthUser = Depends(require_admin),
+) -> list[dict]:
+    """Operator review queue. Declared before /vendors/{id} so it is not shadowed."""
+    try:
+        return vendors.list_submissions(status=status, limit=limit)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"submission queue failed: {exc}")
+
+
+@app.post("/vendors/submissions", response_model=VendorSubmissionResult)
+def submit_vendor(
+    body: VendorSubmission,
+    user: AuthUser = Depends(require_account),
+) -> VendorSubmissionResult:
+    """Record a vendor self-disclosure, or a member reporting a source they use.
+
+    Requires a durable (non-anonymous) account: every submission is tied to a
+    real identity, which is what makes one-per-vendor limits and abuse review
+    possible and keeps a bot from flooding the queue. It lands as `pending` and
+    is published only after operator review.
+    """
+    try:
+        result = vendors.submit(body.model_dump(exclude_none=True), submitter_ref=user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("vendor submission failed", exc_info=True)
+        raise HTTPException(status_code=502, detail=f"submission failed: {exc}")
+    return VendorSubmissionResult(**result)
+
+
+@app.post("/vendors/submissions/{submission_id}/review")
+def review_vendor_submission(
+    submission_id: int,
+    body: VendorReview,
+    _admin: AuthUser = Depends(require_admin),
+) -> dict:
+    """Publish or reject a pending submission.
+
+    Publishing a booth walk-up creates the canonical vendors row, so an approval
+    actually lands in the directory instead of disappearing into a queue.
+    """
+    try:
+        return vendors.review(submission_id, body.status, body.review_note, body.vendor_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("vendor review failed for %d", submission_id, exc_info=True)
+        raise HTTPException(status_code=502, detail=f"review failed: {exc}")
+
+
+@app.get("/vendors/for-compound/{compound_id}")
+def vendors_for_compound(compound_id: int) -> dict:
+    """Sources on file for one compound — the vendor-side view of the match.
+
+    Same editorial, unpurchasable data the stack report uses, so the Vendors page
+    can filter to "who has data for this compound". Declared before /vendors/{id}
+    so the literal path is not captured by the numeric one.
+    """
+    return vendors.sources_for_compound(compound_id)
+
+
+@app.get("/vendors/{vendor_id}")
+def get_vendor(vendor_id: int) -> dict:
+    """The full per-vendor breakdown: assays, claims, member reports, sourcing."""
+    breakdown = vendors.get_breakdown(vendor_id)
+    if breakdown is None:
+        raise HTTPException(status_code=404, detail="vendor not found")
+    return breakdown
+
+
+# --------------------------------------------------------------------- billing
+# Stripe Checkout and the entitlement it grants. The API boots with no Stripe key
+# present so the rest of the product still deploys; only these endpoints refuse.
+
+
+@app.get("/billing/status", response_model=BillingStatus)
+def billing_status(user: AuthUser = Depends(require_user)) -> BillingStatus:
+    """Whether this member holds access, and whether we can take a payment at all."""
+    return BillingStatus(
+        has_access=billing.has_access(user.id),
+        configured=billing.is_configured(),
+        price_cents=billing.PRICE_CENTS,
+        currency=billing.CURRENCY,
+    )
+
+
+@app.post("/billing/checkout", response_model=CheckoutResponse)
+def billing_checkout(user: AuthUser = Depends(require_account)) -> CheckoutResponse:
+    """Open a Stripe Checkout session and hand back the URL to send the buyer to.
+
+    A durable account is required: an anonymous session that is lost would take
+    its entitlement with it, and the member would have paid for nothing.
+    """
+    origin = ALLOWED_ORIGINS[0]
+    try:
+        url = billing.create_checkout(user.id, user.email, origin)
+    except billing.BillingNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("checkout failed for %s", user.id, exc_info=True)
+        raise HTTPException(status_code=502, detail=f"checkout failed: {exc}")
+    return CheckoutResponse(checkout_url=url)
+
+
+@app.post("/billing/confirm", response_model=BillingStatus)
+def billing_confirm(
+    body: ConfirmRequest,
+    user: AuthUser = Depends(require_account),
+) -> BillingStatus:
+    """Confirm a Checkout session on the member's return and grant if it is paid.
+
+    This is what makes a first sale work before any webhook endpoint has been
+    configured in the Stripe dashboard. The session is fetched from Stripe, not
+    trusted from the query string, and its buyer must be the caller.
+    """
+    try:
+        billing.confirm(body.session_id, user.id)
+    except billing.BillingNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("confirm failed for %s", user.id, exc_info=True)
+        raise HTTPException(status_code=502, detail=f"confirm failed: {exc}")
+    return BillingStatus(
+        has_access=billing.has_access(user.id),
+        configured=billing.is_configured(),
+        price_cents=billing.PRICE_CENTS,
+        currency=billing.CURRENCY,
+    )
+
+
+@app.post("/billing/webhook")
+async def billing_webhook(request: Request) -> dict:
+    """Stripe webhook. Signature-verified; an unsigned body is refused.
+
+    Unauthenticated by necessity (Stripe calls it), which is exactly why the
+    signature check is not optional: granting on an unverified POST would let
+    anyone mint themselves a paid entitlement.
+    """
+    payload = await request.body()
+    signature = request.headers.get("Stripe-Signature")
+    try:
+        event_type = billing.handle_webhook(payload, signature)
+    except billing.BillingNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except (ValueError, stripe.SignatureVerificationError) as exc:
+        logger.warning("billing: rejected webhook: %s", exc)
+        raise HTTPException(status_code=400, detail="invalid webhook")
+    return {"received": True, "type": event_type}
+
+
+# ---------------------------------------------------------------- stack report
+# The paid product. Deterministic and registry-derived: no model call, so it
+# costs a fraction of a cent to serve and every line can be audited against the
+# table it came from.
+
+
+@app.post("/report")
+def stack_report(
+    body: StackReportRequest,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    """The tier-honest evidence read on a member's stack. Requires an entitlement."""
+    if not billing.has_access(user.id):
+        raise HTTPException(status_code=402, detail="payment required")
+    try:
+        return report.build(body.compounds)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("report failed for %s", user.id, exc_info=True)
+        raise HTTPException(status_code=502, detail=f"report failed: {exc}")
+
+
+@app.post("/report/preview")
+def stack_report_preview(body: StackReportRequest) -> dict:
+    """The free teaser: the verdict line per compound, without the evidence behind it.
+
+    This is what a member sees before paying, and it is deliberately honest rather
+    than coy — it tells them the shape of the answer ("nothing in this stack is
+    trial-backed") and sells the detail, not the conclusion. Withholding the
+    conclusion itself would make the paywall the thing that decides whether
+    somebody learns their compound has no evidence, which is the one outcome this
+    product exists to prevent.
+    """
+    try:
+        full = report.build(body.compounds)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {
+        "summary": full["summary"],
+        "compounds": [
+            {
+                "compound_id": c["compound_id"],
+                "name": c["name"],
+                "top_tier": c["top_tier"],
+                "verdict": c["verdict"],
+                "verdict_text": c["verdict_text"],
+                # The source match ships FREE: no one should pay a dollar to learn
+                # that no source has been independently tested for what they inject.
+                # That is harm-reduction information, not a paywalled feature.
+                "sources": c["sources"],
+            }
+            for c in full["compounds"]
+        ],
+        "locked": ["evidence_ladder", "trials", "interactions", "counts"],
+    }
+
+
 # -------------------------------------------------------------------- consult
-# The Tavus CVI clinician front. POST /consult/session mints a conversation
-# seeded with a PHI-minimized context. Tools are delivered as app_message, so the
-# tool_call events are handled client-side and forwarded to the plain tool-backing
-# endpoints below (get_compound_evidence / screen_eligibility / intake). There is
-# no Tavus webhook to expose. The Tavus key stays server-side in consult.py.
+# The Tavus CVI front. DISABLED by default: CVI bills real money per wall-clock
+# minute, which no few-dollar product can carry, so it is off unless
+# CONSULT_ENABLED is explicitly set. The code stays mounted and metered so it can
+# be switched back on as a priced extra without a rebuild.
+
+CONSULT_ENABLED = os.getenv("CONSULT_ENABLED", "false").lower() in ("1", "true", "yes")
+if not CONSULT_ENABLED:
+    logger.info("consult: disabled (set CONSULT_ENABLED=true to re-enable)")
+
+
+def require_consult_enabled() -> None:
+    """Dependency: 404 the consult surface unless it has been switched on."""
+    if not CONSULT_ENABLED:
+        raise HTTPException(status_code=404, detail="not found")
 
 
 @app.post("/consult/session", response_model=ConsultSessionResponse)
-async def consult_session(body: ConsultSessionRequest) -> ConsultSessionResponse:
-    """Mint a Tavus conversation seeded with the member's PHI-minimized context."""
+async def consult_session(
+    body: ConsultSessionRequest,
+    user: AuthUser = Depends(require_user),
+    _on: None = Depends(require_consult_enabled),
+) -> ConsultSessionResponse:
+    """Mint a cost-bounded Tavus conversation seeded with the member's context.
+
+    Every conversation costs real money per wall-clock minute and Tavus enforces
+    no spend ceiling of its own, so this endpoint is authenticated and metered.
+    A budget refusal is a 429, not a 502 — the request is well-formed, we are
+    simply out of minutes.
+    """
+    assert_self(user, body.user_ref or "")
     try:
         return await consult.start_session(body)
+    except consult.BudgetExceeded as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
     except Exception as exc:  # noqa: BLE001 - surface Tavus/config failures as 502
         raise HTTPException(status_code=502, detail=f"consult session failed: {exc}")
 
 
 @app.post("/consult/tools/get_compound_evidence")
-def consult_get_compound_evidence(body: CompoundEvidenceRequest) -> dict:
+def consult_get_compound_evidence(
+    body: CompoundEvidenceRequest,
+    _user: AuthUser = Depends(require_user),
+    _on: None = Depends(require_consult_enabled),
+) -> dict:
     """Tool backing: the tier ladder + demographic-filtered narratives for a compound."""
     try:
         return consult.get_compound_evidence(body)
@@ -418,7 +759,11 @@ def consult_get_compound_evidence(body: CompoundEvidenceRequest) -> dict:
 
 
 @app.post("/consult/tools/screen_eligibility")
-def consult_screen_eligibility(body: ScreenEligibilityRequest) -> dict:
+def consult_screen_eligibility(
+    body: ScreenEligibilityRequest,
+    _user: AuthUser = Depends(require_user),
+    _on: None = Depends(require_consult_enabled),
+) -> dict:
     """Tool backing: run the twin over the full tier ladder; void returns lower-tier signal."""
     try:
         return consult.screen_eligibility(body)
@@ -427,10 +772,9 @@ def consult_screen_eligibility(body: ScreenEligibilityRequest) -> dict:
 
 
 @app.post("/consult/intake", response_model=IntakeResult)
-def consult_intake(body: TrialIntake) -> IntakeResult:
+def consult_intake(body: TrialIntake, user: AuthUser = Depends(require_user)) -> IntakeResult:
     """Capture a trial-referral intake row after the consult."""
-    if not body.user_ref:
-        raise HTTPException(status_code=400, detail="user_ref required")
+    assert_self(user, body.user_ref or "")
     try:
         result = consult.insert_intake(body)
     except Exception as exc:  # noqa: BLE001 - surface Supabase failures as 502
@@ -439,8 +783,12 @@ def consult_intake(body: TrialIntake) -> IntakeResult:
 
 
 @app.get("/consult/intakes")
-def consult_intakes(limit: int = 100) -> list[dict]:
-    """Coordinator queue: intakes, most recent first."""
+def consult_intakes(limit: int = 100, _admin: AuthUser = Depends(require_admin)) -> list[dict]:
+    """Coordinator queue: intakes, most recent first.
+
+    Operator-only. These rows carry members' goals, eligibility reads, and health
+    context; this endpoint served all of it to the public internet before auth.
+    """
     return consult.list_intakes(limit)
 
 
@@ -457,10 +805,13 @@ def consult_dossier(slug: str) -> PlainTextResponse:
 
 
 @app.post("/consult/labs/upload", response_model=LabUploadResponse)
-async def consult_labs_upload(user_ref: str = Form(...), file: UploadFile = File(...)) -> LabUploadResponse:
+async def consult_labs_upload(
+    user_ref: str = Form(...),
+    file: UploadFile = File(...),
+    user: AuthUser = Depends(require_user),
+) -> LabUploadResponse:
     """Extract biomarkers from a lab PDF and merge them onto the user's stored data."""
-    if not user_ref:
-        raise HTTPException(status_code=400, detail="user_ref required")
+    assert_self(user, user_ref)
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="empty file")

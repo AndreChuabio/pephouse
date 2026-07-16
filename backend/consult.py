@@ -295,15 +295,36 @@ def build_conversational_context(
 # ================================================================== Tavus API
 
 
-async def create_conversation(context: str, document_tags: list[str]) -> dict:
+def _cost_properties() -> dict:
+    """The cost ceiling on a single conversation.
+
+    Tavus bills wall-clock minutes the replica is live and has no overage limit,
+    so nothing stops a runaway session except these fields. Their defaults are
+    dangerous: `max_call_duration` defaults to 3600s, and `participant_left_timeout`
+    has no documented default at all, so a member who closes the tab can leave the
+    replica running and the meter ticking. At the current overage rate one
+    abandoned session is worth more than twenty dollars. All three are set
+    explicitly here; none may be left to the platform default.
+    """
+    return {
+        "max_call_duration": int(os.getenv("TAVUS_MAX_CALL_SECONDS", "300")),
+        "participant_left_timeout": int(os.getenv("TAVUS_LEFT_TIMEOUT_SECONDS", "45")),
+        "participant_absent_timeout": int(os.getenv("TAVUS_ABSENT_TIMEOUT_SECONDS", "90")),
+        "enable_recording": False,
+    }
+
+
+async def create_conversation(context: str, document_tags: list[str], name: str) -> dict:
     """POST /v2/conversations. Returns the raw Tavus JSON. Raises on HTTP error."""
     key = _tavus_key()
     pal_id, face_id = _tavus_ids()
     body = {
         "pal_id": pal_id,
         "face_id": face_id,
+        "conversation_name": name,
         "conversational_context": context,
         "document_tags": document_tags,
+        "properties": _cost_properties(),
     }
     async with httpx.AsyncClient(timeout=30) as client:
         res = await client.post(
@@ -315,21 +336,130 @@ async def create_conversation(context: str, document_tags: list[str]) -> dict:
         return res.json()
 
 
-async def start_session(body: ConsultSessionRequest) -> ConsultSessionResponse:
-    """Build the PHI-minimized context and mint a Tavus conversation for it."""
-    bundle = None
-    if body.user_ref:
+async def end_conversation(conversation_id: str) -> None:
+    """POST /v2/conversations/{id}/end. Best effort; logs rather than raising.
+
+    Used to reclaim a conversation we minted but could not record, so a failed
+    write never leaves a billable session running unattended.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            res = await client.post(
+                f"{TAVUS_HOST}/v2/conversations/{conversation_id}/end",
+                headers={"x-api-key": _tavus_key()},
+            )
+            res.raise_for_status()
+        logger.info("consult: ended conversation %s", conversation_id)
+    except Exception:  # noqa: BLE001 - reclaiming is best effort
+        logger.error("consult: failed to end conversation %s", conversation_id, exc_info=True)
+
+
+class BudgetExceeded(RuntimeError):
+    """Raised when minting a conversation would breach our own spend limits."""
+
+
+def _month_start() -> str:
+    """First instant of the current UTC month, ISO-8601, for the budget window."""
+    now = datetime.now(timezone.utc)
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+
+def _budget_guard(user_ref: str) -> None:
+    """Refuse to mint a conversation that would breach a spend limit.
+
+    Tavus publishes no credits, usage, or quota endpoint, so the backend cannot
+    ask the platform how many minutes remain. This table is the only meter that
+    exists, and conversation-create is the only point where a refusal is possible.
+
+    Accounting is deliberately worst-case: every session created this month is
+    charged against the budget at its full ``max_call_duration``, because we do
+    not learn the true duration without polling. That under-allocates rather than
+    overspends, which is the correct direction for a limit whose purpose is to
+    make a surprise bill impossible.
+    """
+    budget_minutes = int(os.getenv("TAVUS_MONTHLY_MINUTE_BUDGET", "100"))
+    max_concurrent = int(os.getenv("TAVUS_MAX_CONCURRENT", "2"))
+    per_user_monthly = int(os.getenv("TAVUS_SESSIONS_PER_USER", "3"))
+    cap_seconds = int(os.getenv("TAVUS_MAX_CALL_SECONDS", "300"))
+
+    try:
+        rows = (
+            supabase.table("consult_sessions")
+            .select("user_ref,max_call_seconds,created_at")
+            .gte("created_at", _month_start())
+            .execute()
+            .data
+            or []
+        )
+    except Exception as exc:  # noqa: BLE001 - a meter we cannot read is a meter we must not bypass
+        logger.error("consult: budget meter unreadable", exc_info=True)
+        raise BudgetExceeded("consult is temporarily unavailable") from exc
+
+    committed_minutes = sum(int(r.get("max_call_seconds") or cap_seconds) for r in rows) / 60.0
+    if committed_minutes + (cap_seconds / 60.0) > budget_minutes:
+        logger.warning(
+            "consult: monthly budget reached (%.1f of %d minutes committed)",
+            committed_minutes,
+            budget_minutes,
+        )
+        raise BudgetExceeded("video consults are at capacity for this month")
+
+    mine = [r for r in rows if r.get("user_ref") == user_ref]
+    if len(mine) >= per_user_monthly:
+        raise BudgetExceeded("you have used your video consults for this month")
+
+    # A session is assumed live until its own hard cap has elapsed; that is the
+    # same ceiling Tavus enforces, so it cannot undercount.
+    now = datetime.now(timezone.utc)
+    live = 0
+    for row in rows:
+        created = row.get("created_at")
+        if not created:
+            continue
         try:
-            bundle = user_data.get_user_data(body.user_ref)
-        except Exception:  # noqa: BLE001 - a data-store miss must not block the consult
-            logger.warning("consult: could not load user_data for %s", body.user_ref, exc_info=True)
-            bundle = None
+            started = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        window = int(row.get("max_call_seconds") or cap_seconds)
+        if (now - started).total_seconds() < window:
+            live += 1
+    if live >= max_concurrent:
+        raise BudgetExceeded("video consults are busy; try again in a few minutes")
+
+
+def _record_session(user_ref: str, conversation_id: str, cap_seconds: int) -> None:
+    """Persist the session against the budget meter. Raises on failure."""
+    supabase.table("consult_sessions").insert(
+        {
+            "user_ref": user_ref,
+            "conversation_id": conversation_id,
+            "max_call_seconds": cap_seconds,
+        }
+    ).execute()
+
+
+async def start_session(body: ConsultSessionRequest) -> ConsultSessionResponse:
+    """Build the PHI-minimized context and mint a cost-bounded Tavus conversation."""
+    if not body.user_ref:
+        raise ValueError("user_ref required")
+
+    # Check the budget before spending a minute, not after.
+    _budget_guard(body.user_ref)
+
+    bundle = None
+    try:
+        bundle = user_data.get_user_data(body.user_ref)
+    except Exception:  # noqa: BLE001 - a data-store miss must not block the consult
+        logger.warning("consult: could not load user_data for %s", body.user_ref, exc_info=True)
+        bundle = None
 
     context = build_conversational_context(bundle, goal=body.goal, compound_name=body.compound_name)
     pal_id, _ = _tavus_ids()
+    cap_seconds = int(os.getenv("TAVUS_MAX_CALL_SECONDS", "300"))
+    name = f"consult-{body.user_ref[:8]}-{int(datetime.now(timezone.utc).timestamp())}"
 
     try:
-        data = await create_conversation(context, DOCUMENT_TAGS)
+        data = await create_conversation(context, DOCUMENT_TAGS, name)
     except httpx.HTTPStatusError as exc:
         logger.error("consult: Tavus conversation failed (%s): %s", exc.response.status_code, exc.response.text)
         raise
@@ -337,9 +467,20 @@ async def start_session(body: ConsultSessionRequest) -> ConsultSessionResponse:
         logger.error("consult: Tavus conversation transport error", exc_info=True)
         raise
 
+    conversation_id = data.get("conversation_id", "")
+    try:
+        _record_session(body.user_ref, conversation_id, cap_seconds)
+    except Exception:  # noqa: BLE001
+        # The meter is the only thing standing between us and an unbounded bill.
+        # A conversation we cannot meter is one we must not leave running.
+        logger.error("consult: could not record session %s; ending it", conversation_id, exc_info=True)
+        if conversation_id:
+            await end_conversation(conversation_id)
+        raise RuntimeError("consult session could not be metered") from None
+
     return ConsultSessionResponse(
         conversation_url=data.get("conversation_url", ""),
-        conversation_id=data.get("conversation_id", ""),
+        conversation_id=conversation_id,
         pal_id=data.get("pal_id") or pal_id,
     )
 
